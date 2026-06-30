@@ -1,0 +1,15 @@
+modelList:
+  local-model:
+    api_key: "none"
+    model: "ollama_chat/gemma4:e4b"
+    api_base: "http://ollama:11434"
+    temperature: 0
+    num_ctx: 16384
+
+logLevel: DEBUG
+
+additionalEnvVars:
+  - name: MODEL
+    value: "local-model"
+  - name: OLLAMA_API_BASE
+    value: "http://ollama:11434"
