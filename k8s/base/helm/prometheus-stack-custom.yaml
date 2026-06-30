@@ -1,4 +1,4 @@
-namespaceOverride: "monitoring"
+namespaceOverride: "nuage-monitoring-stack"
 
 grafana:
   grafana.ini:
