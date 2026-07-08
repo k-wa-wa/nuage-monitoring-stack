@@ -1,8 +1,7 @@
 modelList:
   local-model:
     api_key: "none"
-    model: "ollama_chat/gemma4:e4b"
-    api_base: "http://ollama:11434"
+    model: "ollama_chat/sorc/qwen3.5-claude-4.6-opus:9b"
     temperature: 0
     num_ctx: 16384
 
@@ -12,4 +11,17 @@ additionalEnvVars:
   - name: MODEL
     value: "local-model"
   - name: OLLAMA_API_BASE
-    value: "http://ollama:11434"
+    valueFrom:
+      secretKeyRef:
+        name: ollama-secret
+        key: api-base
+
+toolsets:
+  prometheus/metrics:
+    enabled: true
+    config:
+      prometheus_url: http://kube-prometheus-stack-prometheus.nuage-monitoring-stack.svc.cluster.local:9090
+  grafana/loki:
+    enabled: true
+    config:
+      api_url: http://loki-stack.nuage-monitoring-stack.svc.cluster.local:3100

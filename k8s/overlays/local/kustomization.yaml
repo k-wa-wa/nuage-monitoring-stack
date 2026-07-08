@@ -5,3 +5,8 @@ namespace: nuage-monitoring-stack
 
 resources:
   - ../../base
+
+secretGenerator:
+  - name: ollama-secret
+    literals:
+      - api-base=http://192.168.5.222:11434

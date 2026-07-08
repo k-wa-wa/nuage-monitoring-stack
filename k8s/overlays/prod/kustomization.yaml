@@ -6,3 +6,8 @@ namespace: nuage-monitoring-stack
 resources:
   - ../../base
   - ingress.yaml
+
+secretGenerator:
+  - name: ollama-secret
+    literals:
+      - api-base=http://10.20.1.30:11434
