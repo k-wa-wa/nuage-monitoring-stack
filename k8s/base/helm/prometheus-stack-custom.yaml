@@ -5,6 +5,13 @@ grafana:
     dashboards:
       enabled: true
       label: grafana_dashboard
+  grafana.ini:
+    security:
+      allow_embedding: true
+    auth.anonymous:
+      enabled: true
+      org_name: "Main Org."
+      org_role: "Viewer"
 
 # NOTE: this replaces the chart's default Alertmanager config wholesale.
 # pwa-notifier must already be running with a valid VAPID keypair
