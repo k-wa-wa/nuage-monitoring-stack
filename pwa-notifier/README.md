@@ -30,8 +30,12 @@ payload, subscriber list, and server are entirely self-hosted.
 
 ```sh
 go run ./cmd/genvapid                 # prints VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY
-VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... go run ./cmd/server
+PORT=8080 VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... go run ./cmd/server
 ```
+
+`PORT` has no default (config.go reads env vars as-is, no fallbacks) — every
+deployment path sets it explicitly (`PORT=8080` in the Deployment env), so
+leave it unset here and the server binds to a random port instead of 8080.
 
 Open `http://localhost:8080` (Web Push requires either `localhost` or HTTPS —
 plain HTTP on any other host will not work, and iOS additionally requires the
@@ -61,6 +65,18 @@ page to be added to the home screen before push permission can be granted).
   freshly generated for this — replace them (`go run ./cmd/genvapid` /
   `openssl rand -hex 32`) if you'd rather mint your own before encrypting.
 
+  `VAPID_SUBJECT` (the RFC 8292 contact identifier) is *not* a secret, so it's
+  hardcoded directly in each overlay's `secrets/secrets.yaml` — same literal
+  value (`dev@example.com`) in both `local` and `prod` — rather than living in
+  the SOPS-encrypted `prod-secrets.yaml`. It must stay a bare email
+  (`you@example.com`) or an `https:` URL — **not** `mailto:you@example.com`.
+  webpush-go always prepends `mailto:` unless the value already starts with
+  `https:`, without checking for an existing `mailto:` prefix, so a
+  pre-prefixed value ends up as `mailto:mailto:...` in the push JWT's `sub`
+  claim. Apple's push service (`web.push.apple.com`) rejects that outright
+  with `403 BadJwtToken`; FCM and Mozilla's push service are more lenient
+  about it, so this only shows up on Safari/iOS.
+
 ## Deploy
 
 1. Encrypt `k8s/overlays/prod/secrets/prod-secrets.yaml` with `sops` (above),
@@ -76,6 +92,15 @@ page to be added to the home screen before push permission can be granted).
 matching `http_config.authorization.credentials` still needs to be added to
 the `webhook_configs` entry in `prometheus-stack-custom.yaml` so Alertmanager
 authenticates (not yet wired up).
+
+Env vars sourced via `secretKeyRef` are only read once at container start —
+updating `pwa-notifier-secret` (directly, or indirectly by re-encrypting
+`prod-secrets.yaml`) does not get picked up by an already-running pod, and
+Argo CD's selfHeal only reconciles the Secret object itself, not a pod
+restart. After a secret-only change, force one:
+```sh
+kubectl rollout restart deployment/pwa-notifier -n nuage-monitoring-stack
+```
 
 For local dev without a cluster, `go run ./cmd/server` still works directly
 (see above) — the `local` overlay's secret is only relevant when running
