@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-  - pwa-notifier
+  - monitoring-pwa
 #   - ollama.yaml
 
 helmCharts:

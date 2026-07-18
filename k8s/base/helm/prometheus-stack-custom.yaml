@@ -22,5 +22,5 @@ alertmanager:
     receivers:
       - name: pwa-notifier
         webhook_configs:
-          - url: http://pwa-notifier.nuage-monitoring-stack.svc.cluster.local/webhook/alertmanager
+          - url: http://monitoring-pwa-backend.nuage-monitoring-stack.svc.cluster.local/webhook/alertmanager
             send_resolved: true

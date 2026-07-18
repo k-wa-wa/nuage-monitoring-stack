@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-pwa-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monitoring-pwa-backend
+  template:
+    metadata:
+      labels:
+        app: monitoring-pwa-backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-backend:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: DB_PATH
+              value: "/data/monitoring-pwa.db"
+            - name: PROMETHEUS_URL
+              value: "http://kube-prometheus-stack-prometheus.nuage-monitoring-stack.svc.cluster.local:9090"
+            - name: VAPID_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pwa-notifier-secret
+                  key: VAPID_PUBLIC_KEY
+            - name: VAPID_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pwa-notifier-secret
+                  key: VAPID_PRIVATE_KEY
+            - name: VAPID_SUBJECT
+              valueFrom:
+                secretKeyRef:
+                  name: pwa-notifier-secret
+                  key: VAPID_SUBJECT
+                  optional: true
+            - name: WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pwa-notifier-secret
+                  key: WEBHOOK_TOKEN
+                  optional: true
+          volumeMounts:
+            - name: db-volume
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+      volumes:
+        - name: db-volume
+          persistentVolumeClaim:
+            claimName: monitoring-pwa-db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitoring-pwa-backend
+spec:
+  selector:
+    app: monitoring-pwa-backend
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: monitoring-pwa-db
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-pwa-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monitoring-pwa-frontend
+  template:
+    metadata:
+      labels:
+        app: monitoring-pwa-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-frontend:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 20m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitoring-pwa-frontend
+spec:
+  selector:
+    app: monitoring-pwa-frontend
+  ports:
+    - port: 80
+      targetPort: 80

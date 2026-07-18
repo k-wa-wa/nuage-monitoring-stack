@@ -5,7 +5,7 @@ on:
     branches:
       - master
     paths:
-      - "pwa-notifier/**"
+      - "monitoring-pwa/**"
       - ".github/workflows/docker-build-push.yml"
 
 permissions:
@@ -19,9 +19,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: pwa-notifier
-            context: ./pwa-notifier
-            image: ghcr.io/${{ github.repository }}-pwa-notifier
+          - name: monitoring-pwa-backend
+            context: ./monitoring-pwa/backend
+            image: ghcr.io/${{ github.repository }}-monitoring-pwa-backend
+          - name: monitoring-pwa-frontend
+            context: ./monitoring-pwa/frontend
+            image: ghcr.io/${{ github.repository }}-monitoring-pwa-frontend
 
     steps:
       - name: Checkout repository

@@ -1,0 +1,12 @@
+# バイナリ出力である。
+server
+genvapid
+
+# SQLite データベース関連ファイルである。
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# ログファイルである。
+*.log

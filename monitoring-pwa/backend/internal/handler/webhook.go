@@ -1,0 +1,188 @@
+package handler
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+
+	"github.com/labstack/echo/v4"
+
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
+)
+
+// WebhookHandler は Alertmanager および汎用 Webhook リクエストを処理する構造体である。
+type WebhookHandler struct {
+	sender       *push.Sender
+	db           *push.DB
+	webhookToken string
+}
+
+func NewWebhookHandler(sender *push.Sender, db *push.DB, webhookToken string) *WebhookHandler {
+	return &WebhookHandler{
+		sender:       sender,
+		db:           db,
+		webhookToken: webhookToken,
+	}
+}
+
+// notificationPayload はサービスワーカーが受信するプッシュ通知ペイロードの形式である。
+type notificationPayload struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	URL   string `json:"url,omitempty"`
+	Level string `json:"level,omitempty"` // info, warning, error, success
+}
+
+// alertmanagerWebhook は Alertmanager の webhook_config からのペイロードを表現する。
+type alertmanagerWebhook struct {
+	Status      string `json:"status"`
+	ExternalURL string `json:"externalURL"`
+	Alerts      []struct {
+		Status       string            `json:"status"`
+		Labels       map[string]string `json:"labels"`
+		Annotations  map[string]string `json:"annotations"`
+		GeneratorURL string            `json:"generatorURL"`
+	} `json:"alerts"`
+}
+
+// genericWebhook は汎用通知 Webhook のリクエストボディを表現する。
+type genericWebhook struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	URL   string `json:"url,omitempty"`
+	Level string `json:"level,omitempty"`
+}
+
+// checkAuth は Webhook の認証トークンを確認する。
+func (h *WebhookHandler) checkAuth(c echo.Context) error {
+	if h.webhookToken != "" {
+		token := c.Request().Header.Get("Authorization")
+		if token != "Bearer "+h.webhookToken {
+			return echo.NewHTTPError(http.StatusUnauthorized, "invalid webhook token")
+		}
+	}
+	return nil
+}
+
+// AlertmanagerWebhook は Alertmanager の通知を受信し、プッシュ通知をブロードキャストする。
+func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
+	if err := h.checkAuth(c); err != nil {
+		return err
+	}
+
+	var wh alertmanagerWebhook
+	if err := c.Bind(&wh); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid alertmanager payload")
+	}
+
+	if len(wh.Alerts) == 0 {
+		return c.NoContent(http.StatusOK)
+	}
+
+	for _, alert := range wh.Alerts {
+		name := alert.Labels["alertname"]
+		if name == "" {
+			name = "Alert"
+		}
+
+		title := fmt.Sprintf("[%s] %s", alert.Status, name)
+		body := alert.Annotations["summary"]
+		if body == "" {
+			body = alert.Annotations["description"]
+		}
+
+		level := "warning"
+		if alert.Status == "firing" {
+			if alert.Labels["severity"] == "critical" {
+				level = "error"
+			}
+		} else if alert.Status == "resolved" {
+			level = "success"
+		}
+
+		payloadObj := notificationPayload{
+			Title: title,
+			Body:  body,
+			URL:   alert.GeneratorURL,
+			Level: level,
+		}
+
+		// DBに履歴を保存
+		_ = h.db.SaveNotification(payloadObj.Title, payloadObj.Body, payloadObj.URL, payloadObj.Level)
+
+		payload, err := json.Marshal(payloadObj)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to encode notification")
+		}
+
+		h.sender.Broadcast(payload)
+	}
+
+	return c.NoContent(http.StatusOK)
+}
+
+// GenericWebhook は外部からの汎用通知を受信し、プッシュ通知をブロードキャストする。
+func (h *WebhookHandler) GenericWebhook(c echo.Context) error {
+	if err := h.checkAuth(c); err != nil {
+		return err
+	}
+
+	var req genericWebhook
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid generic webhook payload")
+	}
+
+	if req.Title == "" || req.Body == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "title and body are required")
+	}
+
+	level := req.Level
+	if level == "" {
+		level = "info"
+	}
+
+	payloadObj := notificationPayload{
+		Title: req.Title,
+		Body:  req.Body,
+		URL:   req.URL,
+		Level: level,
+	}
+
+	// DBに履歴を保存
+	if err := h.db.SaveNotification(payloadObj.Title, payloadObj.Body, payloadObj.URL, payloadObj.Level); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save notification history")
+	}
+
+	payload, err := json.Marshal(payloadObj)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to encode notification")
+	}
+
+	h.sender.Broadcast(payload)
+	return c.NoContent(http.StatusOK)
+}
+
+// TestNotify は疎通確認のためのテスト通知を送信する。
+func (h *WebhookHandler) TestNotify(c echo.Context) error {
+	var req notificationPayload
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+	if req.Title == "" {
+		req.Title = "テスト通知"
+	}
+	if req.Body == "" {
+		req.Body = "monitoring-pwa からのテスト通知である。"
+	}
+	if req.Level == "" {
+		req.Level = "info"
+	}
+
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to encode notification")
+	}
+
+	h.sender.Broadcast(payload)
+	return c.NoContent(http.StatusOK)
+}
