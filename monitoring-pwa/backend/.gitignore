@@ -1,6 +1,6 @@
 # バイナリ出力である。
-server
-genvapid
+/server
+/genvapid
 
 # SQLite データベース関連ファイルである。
 *.db
