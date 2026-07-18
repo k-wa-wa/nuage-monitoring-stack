@@ -5,3 +5,22 @@ grafana:
     dashboards:
       enabled: true
       label: grafana_dashboard
+
+# NOTE: this replaces the chart's default Alertmanager config wholesale.
+# pwa-notifier must already be running with a valid VAPID keypair
+# (pwa-notifier-secret) before Alertmanager can deliver to it.
+alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: pwa-notifier
+      group_by: ["alertname"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+    receivers:
+      - name: pwa-notifier
+        webhook_configs:
+          - url: http://pwa-notifier.nuage-monitoring-stack.svc.cluster.local/webhook/alertmanager
+            send_resolved: true

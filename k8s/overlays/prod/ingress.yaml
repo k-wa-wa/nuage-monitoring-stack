@@ -21,3 +21,27 @@ spec:
             name: kube-prometheus-stack-grafana
             port:
               number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pwa-notifier-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: "ca-clusterissuer"
+spec:
+  ingressClassName: cilium
+  tls:
+  - hosts:
+    - notify.cluster.wpc
+    secretName: pwa-notifier-tls-secret
+  rules:
+  - host: notify.cluster.wpc
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pwa-notifier
+            port:
+              number: 80

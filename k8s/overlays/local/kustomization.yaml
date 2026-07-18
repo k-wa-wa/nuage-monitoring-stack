@@ -5,6 +5,7 @@ namespace: nuage-monitoring-stack
 
 resources:
   - ../../base
+  - secrets.yaml
 
 secretGenerator:
   - name: ollama-secret

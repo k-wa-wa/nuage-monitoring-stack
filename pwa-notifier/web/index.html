@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Nuage Monitoring Notify</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0f172a" />
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      margin: 0;
+      padding: 2rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      align-items: stretch;
+      max-width: 480px;
+      margin-inline: auto;
+    }
+    h1 { font-size: 1.25rem; }
+    button {
+      font-size: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      border: none;
+      background: #38bdf8;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    button:disabled { opacity: 0.5; }
+    #status {
+      white-space: pre-wrap;
+      background: #1e293b;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Nuage Monitoring Notify</h1>
+  <button id="subscribe">通知を有効にする</button>
+  <button id="test-notify" disabled>テスト通知を送信</button>
+  <pre id="status">initializing...</pre>
+  <script src="/app.js"></script>
+</body>
+</html>
