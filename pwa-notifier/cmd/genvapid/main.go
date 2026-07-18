@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	pub, priv, err := push.GenerateVAPIDKeys()
+	priv, pub, err := push.GenerateVAPIDKeys()
 	if err != nil {
 		log.Fatalf("failed to generate VAPID keys: %v", err)
 	}

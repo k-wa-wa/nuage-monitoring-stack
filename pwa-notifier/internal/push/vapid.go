@@ -6,6 +6,6 @@ import webpush "github.com/SherClockHolmes/webpush-go"
 // requests. Run this once per deployment (see cmd/genvapid) and store the
 // result as a Kubernetes secret; every server replica and every browser
 // subscription must be created against the same keypair.
-func GenerateVAPIDKeys() (publicKey, privateKey string, err error) {
+func GenerateVAPIDKeys() (privateKey, publicKey string, err error) {
 	return webpush.GenerateVAPIDKeys()
 }
