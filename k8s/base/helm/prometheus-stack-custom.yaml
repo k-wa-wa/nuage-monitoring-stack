@@ -44,6 +44,11 @@ prometheus:
 # pwa-notifier must already be running with a valid VAPID keypair
 # (pwa-notifier-secret) before Alertmanager can deliver to it.
 alertmanager:
+  alertmanagerSpec:
+    # pwa-notifier-secret(WEBHOOK_TOKEN)をAlertmanager Podにマウントし、
+    # webhook_configsのAuthorizationヘッダとして参照できるようにする
+    secrets:
+      - pwa-notifier-secret
   config:
     global:
       resolve_timeout: 5m
@@ -58,6 +63,9 @@ alertmanager:
         webhook_configs:
           - url: http://monitoring-pwa-backend.nuage-monitoring-stack.svc.cluster.local/webhook/alertmanager
             send_resolved: true
+            http_config:
+              authorization:
+                credentials_file: /etc/alertmanager/secrets/pwa-notifier-secret/WEBHOOK_TOKEN
       # chart既定のWatchdog(死活監視用の常時発火アラート)向けルートが
       # route.routes 経由で残るため、その受信先として空の"null"を用意する
       - name: "null"
