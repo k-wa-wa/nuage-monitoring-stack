@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - monitoring-pwa
+  - loki-alerting-rules.yaml
 
 helmCharts:
 - name: kube-prometheus-stack
@@ -13,9 +14,9 @@ helmCharts:
   includeCRDs: true
   valuesFile: helm/prometheus-stack-custom.yaml
 
-- name: loki-stack
-  releaseName: loki-stack
-  version: 2.10.2
+- name: loki
+  releaseName: loki
+  version: 6.55.0
   repo: https://grafana.github.io/helm-charts
   valuesFile: helm/loki-custom.yaml
 

@@ -1,4 +1,5 @@
 loki:
+  auth_enabled: false
   isDefault: false
   commonConfig:
     replication_factor: 1
@@ -12,26 +13,44 @@ loki:
           prefix: loki_index_
           period: 24h
   pattern_ingester:
-      enabled: true
+    enabled: true
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
-    retention_period: 672h # 28 days retention
+    retention_period: 672h # 28日間のretention
   compactor:
     retention_enabled: true
     delete_request_store: s3
-  ruler:
+  # ruler(アラート評価)の設定。 auth_enabled: false のためテナントは常に "fake"
+  rulerConfig:
     enable_api: true
-  image:
-    tag: '2.9.3'
+    alertmanager_url: http://kube-prometheus-stack-alertmanager.nuage-monitoring-stack.svc.cluster.local:9093
+    storage:
+      type: local
+      local:
+        directory: /rules
+    ring:
+      kvstore:
+        store: inmemory
 
 minio:
   enabled: true
+
+# gatewayはpromtail/Grafanaから直接loki:3100を参照しているため未使用
+gateway:
+  enabled: false
 
 deploymentMode: SingleBinary
 
 singleBinary:
   replicas: 1
+
+# k8s-sidecarでConfigMap(label: loki_rule)からアラートルールを /rules/fake に配置する
+# ruler.storage.local.directory(/rules) 配下は "fake" テナント固定である前提
+sidecar:
+  rules:
+    enabled: true
+    folder: /rules/fake
 
 # Zero out replica counts of other deployment modes
 backend:
@@ -58,4 +77,10 @@ indexGateway:
 bloomCompactor:
   replicas: 0
 bloomGateway:
+  replicas: 0
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
+  replicas: 0
+ruler:
   replicas: 0
