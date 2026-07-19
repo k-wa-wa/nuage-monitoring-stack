@@ -14,7 +14,7 @@ data:
               sum by (namespace, pod, container) (
                 count_over_time({namespace=~"pechka|bare-web-proxy"} |~ "(?i)error" [5m])
               ) > 0
-            for: 1m
+            for: 0s
             labels:
               severity: warning
             annotations:
