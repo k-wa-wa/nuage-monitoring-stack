@@ -27,7 +27,7 @@ data:
             {
               "refId": "A",
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "count by (instance, nodename) (node_uname_info{job=~\"node-exporter|external-nodes\"})",
+              "expr": "count by (instance, nodename) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(node_uname_info{job=~\"node-exporter|external-nodes\"}, \"nodename\", \"control-plane-1\", \"instance\", \"^10\\\\.20\\\\.1\\\\.11:9100$\"), \"nodename\", \"control-plane-2\", \"instance\", \"^10\\\\.20\\\\.1\\\\.12:9100$\"), \"nodename\", \"control-plane-3\", \"instance\", \"^10\\\\.20\\\\.1\\\\.13:9100$\"), \"nodename\", \"worker-1\", \"instance\", \"^10\\\\.20\\\\.1\\\\.16:9100$\"), \"nodename\", \"worker-2\", \"instance\", \"^10\\\\.20\\\\.1\\\\.17:9100$\"), \"nodename\", \"worker-3\", \"instance\", \"^10\\\\.20\\\\.1\\\\.18:9100$\"))",
               "format": "table",
               "instant": true
             },
@@ -94,6 +94,13 @@ data:
                   "Value #D": "Memory (%)",
                   "Value #E": "Disk (%)"
                 }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "fields": {},
+                "sort": [{ "field": "Node" }]
               }
             }
           ],
