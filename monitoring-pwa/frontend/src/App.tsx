@@ -325,7 +325,7 @@ export default function App() {
 						<div className="card" style={{ padding: '0.75rem', overflow: 'hidden', minHeight: '480px' }}>
 							<h2 className="card-title" style={{ marginBottom: '0.75rem' }}><Activity size={18} />詳細ダッシュボード</h2>
 							<iframe
-								src="https://grafana.cluster.wpc/d/efa86fd1d0c121a26444b636a3f509a8/kubernetes-compute-resources-cluster?orgId=1&kiosk"
+								src="/grafana/d/efa86fd1d0c121a26444b636a3f509a8/kubernetes-compute-resources-cluster?orgId=1&kiosk"
 								width="100%"
 								height="450"
 								style={{ border: 'none', borderRadius: 'var(--radius-md)', backgroundColor: 'transparent' }}
