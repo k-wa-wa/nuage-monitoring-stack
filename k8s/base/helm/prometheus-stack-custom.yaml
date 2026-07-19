@@ -7,7 +7,7 @@ grafana:
       label: grafana_dashboard
   grafana.ini:
     server:
-      root_url: "%(protocol)s://%(domain)s:%(http_port)s/grafana/"
+      root_url: "https://monitoring.cluster.wpc/grafana/"
       serve_from_sub_path: true
     security:
       allow_embedding: true
