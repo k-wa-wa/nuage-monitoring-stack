@@ -35,7 +35,6 @@ func main() {
 	subscribeH := handler.NewSubscribeHandler(cfg.VAPIDPublicKey, db)
 	webhookH := handler.NewWebhookHandler(sender, db, cfg.WebhookToken)
 	historyH := handler.NewHistoryHandler(db)
-	metricsH := handler.NewMetricsHandler(cfg.PrometheusURL)
 
 	e := echo.New()
 	e.HideBanner = true
@@ -54,12 +53,11 @@ func main() {
 	api.POST("/unsubscribe", subscribeH.Unsubscribe)
 	api.POST("/test-notify", webhookH.TestNotify)
 	api.GET("/history", historyH.History)
-	api.GET("/cluster/status", metricsH.ClusterStatus)
 
 	e.POST("/webhook/alertmanager", webhookH.AlertmanagerWebhook)
 	e.POST("/webhook/generic", webhookH.GenericWebhook)
 
-	slog.Info("starting server", "port", cfg.Port, "db_path", cfg.DBPath, "prometheus_url", cfg.PrometheusURL)
+	slog.Info("starting server", "port", cfg.Port, "db_path", cfg.DBPath)
 	if err := e.Start(":" + cfg.Port); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)

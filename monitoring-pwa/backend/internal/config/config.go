@@ -10,7 +10,6 @@ type Config struct {
 	VAPIDSubject    string
 	WebhookToken    string
 	DBPath          string
-	PrometheusURL   string
 }
 
 // Load は環境変数から設定情報をロードする。デフォルト値があるものはフォールバックする。
@@ -20,11 +19,6 @@ func Load() Config {
 		dbPath = "./monitoring-pwa.db"
 	}
 
-	promURL := os.Getenv("PROMETHEUS_URL")
-	if promURL == "" {
-		promURL = "http://kube-prometheus-stack-prometheus.nuage-monitoring-stack.svc.cluster.local:9090"
-	}
-
 	return Config{
 		Port:            os.Getenv("PORT"),
 		VAPIDPublicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
@@ -32,6 +26,5 @@ func Load() Config {
 		VAPIDSubject:    os.Getenv("VAPID_SUBJECT"),
 		WebhookToken:    os.Getenv("WEBHOOK_TOKEN"),
 		DBPath:          dbPath,
-		PrometheusURL:   promURL,
 	}
 }

@@ -1,16 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Activity, History, Settings, Bell, Server, CheckCircle, AlertTriangle, Copy, Check } from 'lucide-react'
 
-// クラスタステータスの型定義である。
-interface ClusterStatus {
-	cpu_percent: number
-	memory_percent: number
-	disk_percent: number
-	nodes_ready: number
-	nodes_total: number
-	updated_at: string
-}
-
 // 通知履歴レコードの型定義である。
 interface NotificationItem {
 	id: number
@@ -24,7 +14,6 @@ interface NotificationItem {
 export default function App() {
 	const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'settings'>('dashboard')
 	const [online, setOnline] = useState(navigator.onLine)
-	const [metrics, setMetrics] = useState<ClusterStatus | null>(null)
 	const [history, setHistory] = useState<NotificationItem[]>([])
 	const [isSubscribed, setIsSubscribed] = useState(false)
 	const [submitting, setSubmitting] = useState(false)
@@ -51,19 +40,6 @@ export default function App() {
 		}
 	}, [])
 
-	// Prometheus 経由のメトリクス取得処理である。
-	const fetchMetrics = useCallback(async () => {
-		try {
-			const res = await fetch(`${apiBase}/api/cluster/status`)
-			if (res.ok) {
-				const data = await res.json()
-				setMetrics(data)
-			}
-		} catch (err: any) {
-			console.error('Failed to fetch metrics:', err)
-		}
-	}, [apiBase])
-
 	// 過去の通知履歴取得処理である。
 	const fetchHistory = useCallback(async () => {
 		try {
@@ -77,14 +53,10 @@ export default function App() {
 		}
 	}, [apiBase])
 
-	// 初期処理および定期更新の設定である。
+	// 初期処理である。
 	useEffect(() => {
-		fetchMetrics()
 		fetchHistory()
-
-		const interval = setInterval(fetchMetrics, 10000) // 10秒毎にポーリング
-		return () => clearInterval(interval)
-	}, [fetchMetrics, fetchHistory])
+	}, [fetchHistory])
 
 	// 履歴タブを開いた際に最新の履歴をフェッチする。
 	useEffect(() => {
@@ -217,13 +189,6 @@ export default function App() {
 		setTimeout(() => setCopied(false), 2000)
 	}
 
-	// 円形ゲージのオフセットを計算する。
-	const getStrokeDashoffset = (percent: number) => {
-		const radius = 40
-		const circumference = 2 * Math.PI * radius
-		return circumference - (percent / 100) * circumference
-	}
-
 	return (
 		<>
 			<header className="app-header">
@@ -237,93 +202,19 @@ export default function App() {
 			<main className="app-content">
 				{activeTab === 'dashboard' && (
 					<>
-						<div className="card">
-							<h2 className="card-title"><Server size={18} />ノード状態</h2>
-							<div className="nodes-status-container">
-								<div>
-									<span className="nodes-count">
-										{metrics ? metrics.nodes_ready : 0}
-										<span className="nodes-total">/ {metrics ? metrics.nodes_total : 0} Ready</span>
-									</span>
-								</div>
-								<div className="nodes-status-dots">
-									{metrics && Array.from({ length: metrics.nodes_total }).map((_, i) => (
-										<span
-											key={i}
-											className={`status-dot ${i < metrics.nodes_ready ? '' : 'error'}`}
-										></span>
-									))}
-								</div>
-							</div>
+						<div className="card" style={{ padding: '0.75rem', overflow: 'hidden' }}>
+							<h2 className="card-title" style={{ marginBottom: '0.75rem' }}><Server size={18} />ノード健全性</h2>
+							<iframe
+								src="/grafana/d/nuage-node-health/node-health-overview?orgId=1&kiosk"
+								width="100%"
+								height="360"
+								style={{ border: 'none', borderRadius: 'var(--radius-md)', backgroundColor: 'transparent' }}
+								title="Grafana Node Health Dashboard"
+							></iframe>
 						</div>
 
-						<div className="metrics-grid">
-							<div className="card metric-card">
-								<div className="gauge-container">
-									<svg className="gauge-svg" viewBox="0 0 100 100">
-										<circle className="gauge-bg" cx="50" cy="50" r="40" />
-										<circle
-											className="gauge-fill"
-											cx="50"
-											cy="50"
-											r="40"
-											style={{
-												strokeDashoffset: getStrokeDashoffset(metrics ? metrics.cpu_percent : 0),
-												stroke: (metrics && metrics.cpu_percent > 80) ? 'var(--error)' : 'var(--accent)'
-											}}
-										/>
-									</svg>
-									<span className="gauge-value">{metrics ? Math.round(metrics.cpu_percent) : 0}%</span>
-								</div>
-								<span className="metric-name">CPU</span>
-								<span className="metric-info">平均使用率</span>
-							</div>
-
-							<div className="card metric-card">
-								<div className="gauge-container">
-									<svg className="gauge-svg" viewBox="0 0 100 100">
-										<circle className="gauge-bg" cx="50" cy="50" r="40" />
-										<circle
-											className="gauge-fill"
-											cx="50"
-											cy="50"
-											r="40"
-											style={{
-												strokeDashoffset: getStrokeDashoffset(metrics ? metrics.memory_percent : 0),
-												stroke: (metrics && metrics.memory_percent > 80) ? 'var(--warning)' : 'var(--info)'
-											}}
-										/>
-									</svg>
-									<span className="gauge-value">{metrics ? Math.round(metrics.memory_percent) : 0}%</span>
-								</div>
-								<span className="metric-name">Memory</span>
-								<span className="metric-info">使用率</span>
-							</div>
-
-							<div className="card metric-card" style={{ gridColumn: 'span 2' }}>
-								<div className="gauge-container" style={{ margin: '0 auto 0.75rem' }}>
-									<svg className="gauge-svg" viewBox="0 0 100 100">
-										<circle className="gauge-bg" cx="50" cy="50" r="40" />
-										<circle
-											className="gauge-fill"
-											cx="50"
-											cy="50"
-											r="40"
-											style={{
-												strokeDashoffset: getStrokeDashoffset(metrics ? metrics.disk_percent : 0),
-												stroke: 'var(--success)'
-											}}
-										/>
-									</svg>
-									<span className="gauge-value">{metrics ? Math.round(metrics.disk_percent) : 0}%</span>
-								</div>
-								<span className="metric-name">Disk (Root)</span>
-								<span className="metric-info">全体ストレージ使用率</span>
-							</div>
-						</div>
-
-						<div className="card" style={{ padding: '0.75rem', overflow: 'hidden', minHeight: '480px' }}>
-							<h2 className="card-title" style={{ marginBottom: '0.75rem' }}><Activity size={18} />詳細ダッシュボード</h2>
+						<div className="card" style={{ padding: '0.75rem', overflow: 'hidden' }}>
+							<h2 className="card-title" style={{ marginBottom: '0.75rem' }}><Activity size={18} />クラスタ詳細</h2>
 							<iframe
 								src="/grafana/d/efa86fd1d0c121a26444b636a3f509a8/kubernetes-compute-resources-cluster?orgId=1&kiosk"
 								width="100%"
@@ -332,12 +223,6 @@ export default function App() {
 								title="Grafana Cluster Dashboard"
 							></iframe>
 						</div>
-
-						{metrics && (
-							<div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-								最終更新: {new Date(metrics.updated_at).toLocaleString()}
-							</div>
-						)}
 					</>
 				)}
 

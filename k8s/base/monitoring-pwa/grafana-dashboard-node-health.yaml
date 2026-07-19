@@ -1,0 +1,180 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-node-health
+  labels:
+    grafana_dashboard: "1"
+data:
+  node-health.json: |
+    {
+      "title": "Node Health Overview",
+      "uid": "nuage-node-health",
+      "tags": ["nuage", "node-exporter"],
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 1,
+      "time": { "from": "now-1h", "to": "now" },
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "id": 1,
+          "type": "table",
+          "title": "全ノード健全性",
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "count by (instance, nodename) (node_uname_info{job=\"prometheus-node-exporter\"})",
+              "format": "table",
+              "instant": true
+            },
+            {
+              "refId": "B",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (instance) (up{job=\"prometheus-node-exporter\"})",
+              "format": "table",
+              "instant": true
+            },
+            {
+              "refId": "C",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+              "format": "table",
+              "instant": true
+            },
+            {
+              "refId": "D",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "100 - 100 * (sum by (instance) (node_memory_MemAvailable_bytes) / sum by (instance) (node_memory_MemTotal_bytes))",
+              "format": "table",
+              "instant": true
+            },
+            {
+              "refId": "E",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "100 - 100 * (sum by (instance) (node_filesystem_free_bytes{mountpoint=\"/\"}) / sum by (instance) (node_filesystem_size_bytes{mountpoint=\"/\"}))",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "joinByField",
+              "options": {
+                "byField": "instance",
+                "mode": "outer"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Time 1": true,
+                  "Time 2": true,
+                  "Time 3": true,
+                  "Time 4": true,
+                  "instance": true,
+                  "Value #A": true
+                },
+                "indexByName": {
+                  "nodename": 0,
+                  "Value #B": 1,
+                  "Value #C": 2,
+                  "Value #D": 3,
+                  "Value #E": 4
+                },
+                "renameByName": {
+                  "nodename": "Node",
+                  "Value #B": "Status",
+                  "Value #C": "CPU (%)",
+                  "Value #D": "Memory (%)",
+                  "Value #E": "Disk (%)"
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "center",
+                "cellOptions": { "type": "auto" }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 70 },
+                  { "color": "red", "value": 85 }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Status" },
+                "properties": [
+                  { "id": "unit", "value": "none" },
+                  { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "1": { "text": "Up", "color": "green", "index": 0 },
+                          "0": { "text": "Down", "color": "red", "index": 1 }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        { "color": "red", "value": null },
+                        { "color": "green", "value": 1 }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": { "id": "byName", "options": "CPU (%)" },
+                "properties": [
+                  { "id": "unit", "value": "percent" },
+                  { "id": "decimals", "value": 1 },
+                  { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+                  { "id": "max", "value": 100 },
+                  { "id": "min", "value": 0 }
+                ]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Memory (%)" },
+                "properties": [
+                  { "id": "unit", "value": "percent" },
+                  { "id": "decimals", "value": 1 },
+                  { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+                  { "id": "max", "value": 100 },
+                  { "id": "min", "value": 0 }
+                ]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Disk (%)" },
+                "properties": [
+                  { "id": "unit", "value": "percent" },
+                  { "id": "decimals", "value": 1 },
+                  { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+                  { "id": "max", "value": 100 },
+                  { "id": "min", "value": 0 }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }

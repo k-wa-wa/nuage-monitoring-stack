@@ -22,8 +22,6 @@ spec:
               value: "8080"
             - name: DB_PATH
               value: "/data/monitoring-pwa.db"
-            - name: PROMETHEUS_URL
-              value: "http://kube-prometheus-stack-prometheus.nuage-monitoring-stack.svc.cluster.local:9090"
             - name: VAPID_PUBLIC_KEY
               valueFrom:
                 secretKeyRef:
