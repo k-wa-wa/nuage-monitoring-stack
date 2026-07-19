@@ -12,7 +12,7 @@ data:
           - alert: KubernetesPodErrorLogs
             expr: |
               sum by (namespace, pod, container) (
-                count_over_time({namespace=~".+"} |~ "(?i)error" [5m])
+                count_over_time({namespace=~"pechka|bare-web-proxy"} |~ "(?i)error" [5m])
               ) > 0
             for: 1m
             labels:
