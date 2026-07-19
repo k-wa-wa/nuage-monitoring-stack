@@ -59,13 +59,6 @@ spec:
             name: kube-prometheus-stack-grafana
             port:
               number: 80
-      - path: /chaos-monitor
-        pathType: Prefix
-        backend:
-          service:
-            name: chaos-monitor-grafana
-            port:
-              number: 3000
       - path: /
         pathType: Prefix
         backend:

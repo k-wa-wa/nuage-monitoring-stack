@@ -6,7 +6,6 @@ namespace: nuage-monitoring-stack
 resources:
   - ../../base
   - ingress.yaml
-  - chaos-monitor-shim.yaml
   - secrets/secrets.yaml
 
 secretGenerator:
