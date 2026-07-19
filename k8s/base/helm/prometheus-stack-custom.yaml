@@ -58,3 +58,6 @@ alertmanager:
         webhook_configs:
           - url: http://monitoring-pwa-backend.nuage-monitoring-stack.svc.cluster.local/webhook/alertmanager
             send_resolved: true
+      # chart既定のWatchdog(死活監視用の常時発火アラート)向けルートが
+      # route.routes 経由で残るため、その受信先として空の"null"を用意する
+      - name: "null"
