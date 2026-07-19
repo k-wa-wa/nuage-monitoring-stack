@@ -258,6 +258,30 @@ body {
   gap: 0.25rem;
 }
 
+/* リンクカード */
+.link-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.link-card:hover {
+  border-color: var(--accent);
+  background-color: rgba(99, 102, 241, 0.06);
+}
+
+.link-card .card-title {
+  margin-bottom: 0;
+}
+
+.link-card-arrow {
+  color: var(--text-muted);
+}
+
 .history-link:hover {
   text-decoration: underline;
 }

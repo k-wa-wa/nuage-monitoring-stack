@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Activity, History, Settings, Bell, Server, CheckCircle, AlertTriangle, Copy, Check } from 'lucide-react'
+import { Activity, History, Settings, Bell, Server, CheckCircle, AlertTriangle, Copy, Check, LayoutDashboard, Skull, ChevronRight } from 'lucide-react'
 
 // 通知履歴レコードの型定義である。
 interface NotificationItem {
@@ -213,16 +213,15 @@ export default function App() {
 							></iframe>
 						</div>
 
-						<div className="card" style={{ padding: '0.75rem', overflow: 'hidden' }}>
-							<h2 className="card-title" style={{ marginBottom: '0.75rem' }}><Activity size={18} />クラスタ詳細</h2>
-							<iframe
-								src="/grafana/d/efa86fd1d0c121a26444b636a3f509a8/kubernetes-compute-resources-cluster?orgId=1&kiosk"
-								width="100%"
-								height="450"
-								style={{ border: 'none', borderRadius: 'var(--radius-md)', backgroundColor: 'transparent' }}
-								title="Grafana Cluster Dashboard"
-							></iframe>
-						</div>
+						<a href="/grafana" target="_blank" rel="noopener noreferrer" className="card link-card">
+							<h2 className="card-title"><LayoutDashboard size={18} />Grafana</h2>
+							<ChevronRight size={18} className="link-card-arrow" />
+						</a>
+
+						<a href="/chaos-monitor" target="_blank" rel="noopener noreferrer" className="card link-card">
+							<h2 className="card-title"><Skull size={18} />Chaos Monitor</h2>
+							<ChevronRight size={18} className="link-card-arrow" />
+						</a>
 					</>
 				)}
 

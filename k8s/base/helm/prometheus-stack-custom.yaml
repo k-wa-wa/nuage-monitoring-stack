@@ -16,6 +16,30 @@ grafana:
       org_name: "Main Org."
       org_role: "Viewer"
 
+prometheus:
+  prometheusSpec:
+    additionalScrapeConfigs:
+      - job_name: external-nodes
+        scrape_interval: 30s
+        static_configs:
+          - targets:
+              - 10.20.1.21:9100
+              - 10.20.1.22:9100
+              - 10.20.1.23:9100
+            labels: { role: loadbalancer }
+          - targets:
+              - 10.20.1.30:9100
+            labels: { role: egress-gateway }
+          - targets:
+              - 10.20.1.41:9100
+              - 10.20.1.42:9100
+              - 10.20.1.43:9100
+            labels: { role: postgres-cluster }
+          - targets:
+              - 10.20.1.71:9100
+              - 10.20.1.72:9100
+            labels: { role: minio-cluster }
+
 # NOTE: this replaces the chart's default Alertmanager config wholesale.
 # pwa-notifier must already be running with a valid VAPID keypair
 # (pwa-notifier-secret) before Alertmanager can deliver to it.
