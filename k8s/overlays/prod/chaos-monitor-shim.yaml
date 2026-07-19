@@ -1,0 +1,9 @@
+# 実体は nuage-cluster リポジトリの external-service namespace が一元管理しているので、
+# ここでは同名serviceでDNS転送するだけでよい(IPの手動同期は不要)。
+apiVersion: v1
+kind: Service
+metadata:
+  name: chaos-monitor-grafana
+spec:
+  type: ExternalName
+  externalName: chaos-monitor-grafana.external-service.svc.cluster.local
