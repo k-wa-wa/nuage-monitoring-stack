@@ -27,35 +27,35 @@ data:
             {
               "refId": "A",
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "count by (instance, nodename) (node_uname_info{job=\"prometheus-node-exporter\"})",
+              "expr": "count by (instance, nodename) (node_uname_info{job=\"node-exporter\"})",
               "format": "table",
               "instant": true
             },
             {
               "refId": "B",
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "sum by (instance) (up{job=\"prometheus-node-exporter\"})",
+              "expr": "sum by (instance) (up{job=\"node-exporter\"})",
               "format": "table",
               "instant": true
             },
             {
               "refId": "C",
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+              "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{job=\"node-exporter\",mode=\"idle\"}[5m])) * 100)",
               "format": "table",
               "instant": true
             },
             {
               "refId": "D",
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "100 - 100 * (sum by (instance) (node_memory_MemAvailable_bytes) / sum by (instance) (node_memory_MemTotal_bytes))",
+              "expr": "100 - 100 * (sum by (instance) (node_memory_MemAvailable_bytes{job=\"node-exporter\"}) / sum by (instance) (node_memory_MemTotal_bytes{job=\"node-exporter\"}))",
               "format": "table",
               "instant": true
             },
             {
               "refId": "E",
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "100 - 100 * (sum by (instance) (node_filesystem_free_bytes{mountpoint=\"/\"}) / sum by (instance) (node_filesystem_size_bytes{mountpoint=\"/\"}))",
+              "expr": "100 - 100 * (sum by (instance) (node_filesystem_free_bytes{job=\"node-exporter\",mountpoint=\"/var\"}) / sum by (instance) (node_filesystem_size_bytes{job=\"node-exporter\",mountpoint=\"/var\"}))",
               "format": "table",
               "instant": true
             }
