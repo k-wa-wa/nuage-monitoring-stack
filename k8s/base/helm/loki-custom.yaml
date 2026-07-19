@@ -35,6 +35,8 @@ loki:
 
 minio:
   enabled: true
+  persistence:
+    storageClass: local-path
 
 # gatewayはpromtail/Grafanaから直接loki:3100を参照しているため未使用
 gateway:
@@ -44,6 +46,8 @@ deploymentMode: SingleBinary
 
 singleBinary:
   replicas: 1
+  persistence:
+    storageClass: local-path
 
 # k8s-sidecarでConfigMap(label: loki_rule)からアラートルールを /rules/fake に配置する
 # ruler.storage.local.directory(/rules) 配下は "fake" テナント固定である前提
