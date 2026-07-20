@@ -192,7 +192,7 @@ export default function App() {
 	return (
 		<>
 			<header className="app-header">
-				<h1 className="app-title">Nuage Monitor</h1>
+				<h1 className="app-title"><span className="app-logo"></span>Nuage Monitor</h1>
 				<div className="connection-badge">
 					<span className={`connection-dot ${online ? 'online' : ''}`}></span>
 					{online ? 'オンライン' : 'オフライン'}
@@ -202,25 +202,35 @@ export default function App() {
 			<main className="app-content">
 				{activeTab === 'dashboard' && (
 					<>
-						<div className="card" style={{ padding: '0.75rem', overflow: 'hidden' }}>
-							<h2 className="card-title" style={{ marginBottom: '0.75rem' }}><Server size={18} />ノード健全性</h2>
+						<div className="card card-flush">
+							<div className="panel-header">
+								<h2 className="panel-title"><Server size={14} />ノード健全性</h2>
+								<a
+									href="/grafana/d/nuage-node-health/node-health-overview?orgId=1"
+									target="_blank"
+									rel="noopener noreferrer"
+									className="panel-action"
+								>
+									Grafanaで開く
+									<ChevronRight size={12} />
+								</a>
+							</div>
 							<iframe
-								src="/grafana/d/nuage-node-health/node-health-overview?orgId=1&kiosk"
-								width="100%"
-								height="360"
-								style={{ border: 'none', borderRadius: 'var(--radius-md)', backgroundColor: 'transparent' }}
+								src="/grafana/d/nuage-node-health/node-health-overview?orgId=1&kiosk&theme=dark"
+								height="420"
+								className="grafana-embed"
 								title="Grafana Node Health Dashboard"
 							></iframe>
 						</div>
 
 						<a href="/grafana" target="_blank" rel="noopener noreferrer" className="card link-card">
-							<h2 className="card-title"><LayoutDashboard size={18} />Grafana</h2>
-							<ChevronRight size={18} className="link-card-arrow" />
+							<h2 className="card-title"><LayoutDashboard size={16} />Grafana</h2>
+							<ChevronRight size={16} className="link-card-arrow" />
 						</a>
 
 						<a href="/chaos-monitor" target="_blank" rel="noopener noreferrer" className="card link-card">
-							<h2 className="card-title"><Skull size={18} />Chaos Monitor</h2>
-							<ChevronRight size={18} className="link-card-arrow" />
+							<h2 className="card-title"><Skull size={16} />Chaos Monitor</h2>
+							<ChevronRight size={16} className="link-card-arrow" />
 						</a>
 					</>
 				)}
@@ -279,8 +289,8 @@ export default function App() {
 								</div>
 
 								{isSubscribed && (
-									<div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
-										<button onClick={sendTestNotify} className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '0.5rem 0.75rem' }}>
+									<div className="settings-actions">
+										<button onClick={sendTestNotify} className="btn btn-secondary">
 											テスト通知を送信
 										</button>
 									</div>
@@ -309,9 +319,9 @@ export default function App() {
 						</div>
 
 						{logs.length > 0 && (
-							<div className="card" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-								<h3 style={{ marginBottom: '0.5rem', color: 'var(--text-primary)' }}>システムログ</h3>
-								<div style={{ maxHeight: '120px', overflowY: 'auto', fontFamily: 'monospace' }}>
+							<div className="card">
+								<h3 className="syslog-title">システムログ</h3>
+								<div className="syslog-body">
 									{logs.map((logItem, idx) => (
 										<div key={idx}>{logItem}</div>
 									))}
