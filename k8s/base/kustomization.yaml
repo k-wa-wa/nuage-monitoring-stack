@@ -31,3 +31,18 @@ helmCharts:
   version: 0.34.0
   repo: https://robusta-charts.storage.googleapis.com
   valuesFile: helm/holmesgpt-custom.yaml
+
+# Argo CDでの同期時、loki-0がReadyになるまでSyncフェーズが完了せず、
+# post-installフック（Job）が実行されないデッドロック（バケット未作成による起動失敗）を防ぐため、
+# JobからHelm Hookアノテーションを削除して通常のJobとしてデプロイする
+patches:
+  - target:
+      group: batch
+      version: v1
+      kind: Job
+      name: loki-minio-post-job
+    patch: |-
+      - op: remove
+        path: /metadata/annotations/helm.sh~1hook
+      - op: remove
+        path: /metadata/annotations/helm.sh~1hook-delete-policy
