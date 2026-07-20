@@ -69,3 +69,14 @@ alertmanager:
       # chart既定のWatchdog(死活監視用の常時発火アラート)向けルートが
       # route.routes 経由で残るため、その受信先として空の"null"を用意する
       - name: "null"
+
+# Talos Linuxでは標準のkube-proxyを使用せず、Ciliumのkube-proxy-replacementを
+# 使用するため、kube-proxyの監視ターゲットおよびデフォルトアラートルールを無効化する。
+kubeProxy:
+  enabled: false
+
+defaultRules:
+  create: true
+  rules:
+    kubeProxy: false
+
