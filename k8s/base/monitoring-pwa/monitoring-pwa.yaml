@@ -11,6 +11,10 @@ spec:
     metadata:
       labels:
         app: monitoring-pwa-backend
+      annotations:
+        keel.sh/policy: force
+        keel.sh/trigger: poll
+        keel.sh/pollSchedule: "@every 2m"
     spec:
       containers:
         - name: backend
@@ -107,6 +111,10 @@ spec:
     metadata:
       labels:
         app: monitoring-pwa-frontend
+      annotations:
+        keel.sh/policy: force
+        keel.sh/trigger: poll
+        keel.sh/pollSchedule: "@every 2m"
     spec:
       containers:
         - name: frontend
