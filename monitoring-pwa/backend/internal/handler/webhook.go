@@ -47,10 +47,11 @@ type alertmanagerWebhook struct {
 
 // genericWebhook は汎用通知 Webhook のリクエストボディを表現する。
 type genericWebhook struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	URL   string `json:"url,omitempty"`
-	Level string `json:"level,omitempty"`
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	URL     string `json:"url,omitempty"`
+	Level   string `json:"level,omitempty"`
+	Details string `json:"details,omitempty"`
 }
 
 // checkAuth は Webhook の認証トークンを確認する。
@@ -100,15 +101,23 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 			level = "success"
 		}
 
+		alertDetails, _ := json.Marshal(alert)
+
+		// DBに履歴を保存
+		id, err := h.db.SaveNotification(title, body, alert.GeneratorURL, level, string(alertDetails))
+		if err != nil {
+			id = 0
+		}
+
 		payloadObj := notificationPayload{
 			Title: title,
 			Body:  body,
-			URL:   alert.GeneratorURL,
+			URL:   "/",
 			Level: level,
 		}
-
-		// DBに履歴を保存
-		_ = h.db.SaveNotification(payloadObj.Title, payloadObj.Body, payloadObj.URL, payloadObj.Level)
+		if id > 0 {
+			payloadObj.URL = fmt.Sprintf("/history/%d", id)
+		}
 
 		payload, err := json.Marshal(payloadObj)
 		if err != nil {
@@ -141,16 +150,17 @@ func (h *WebhookHandler) GenericWebhook(c echo.Context) error {
 		level = "info"
 	}
 
+	// DBに履歴を保存
+	id, err := h.db.SaveNotification(req.Title, req.Body, req.URL, level, req.Details)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save notification history")
+	}
+
 	payloadObj := notificationPayload{
 		Title: req.Title,
 		Body:  req.Body,
-		URL:   req.URL,
+		URL:   fmt.Sprintf("/history/%d", id),
 		Level: level,
-	}
-
-	// DBに履歴を保存
-	if err := h.db.SaveNotification(payloadObj.Title, payloadObj.Body, payloadObj.URL, payloadObj.Level); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save notification history")
 	}
 
 	payload, err := json.Marshal(payloadObj)

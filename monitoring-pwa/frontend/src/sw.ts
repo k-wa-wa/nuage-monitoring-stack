@@ -45,16 +45,24 @@ self.addEventListener('notificationclick', (event) => {
 	event.notification.close()
 
 	const targetUrl = event.notification.data?.url || '/'
+	const absoluteTargetUrl = new URL(targetUrl, self.location.origin).href
 
 	event.waitUntil(
 		self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+			// すでに同じオリジンのウィンドウが開いているかチェックする
 			for (const client of clientList) {
-				if (client.url === targetUrl && 'focus' in client) {
+				const clientUrl = new URL(client.url)
+				if (clientUrl.origin === self.location.origin && 'focus' in client) {
+					// 既存のウィンドウにフォーカスを当て、そのURLを目的のものにナビゲートする
+					if ('navigate' in client) {
+						client.navigate(absoluteTargetUrl)
+					}
 					return client.focus()
 				}
 			}
+			// なければ新しく開く
 			if (self.clients.openWindow) {
-				return self.clients.openWindow(targetUrl)
+				return self.clients.openWindow(absoluteTargetUrl)
 			}
 		})
 	)

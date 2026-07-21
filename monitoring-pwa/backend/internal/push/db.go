@@ -21,6 +21,7 @@ type Notification struct {
 	Body      string    `json:"body"`
 	URL       string    `json:"url,omitempty"`
 	Level     string    `json:"level"`
+	Details   string    `json:"details,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -65,6 +66,7 @@ func (db *DB) migrate() error {
 			body TEXT NOT NULL,
 			url TEXT,
 			level TEXT NOT NULL,
+			details TEXT,
 			created_at DATETIME NOT NULL
 		);`,
 	}
@@ -74,6 +76,33 @@ func (db *DB) migrate() error {
 			return err
 		}
 	}
+
+	// details カラムが未追加の場合はマイグレーションを実行する。
+	rows, err := db.conn.Query(`PRAGMA table_info(notifications)`)
+	if err == nil {
+		defer rows.Close()
+		hasDetails := false
+		for rows.Next() {
+			var cid int
+			var name string
+			var typeStr string
+			var notnull int
+			var dfltVal interface{}
+			var pk int
+			if err := rows.Scan(&cid, &name, &typeStr, &notnull, &dfltVal, &pk); err == nil {
+				if name == "details" {
+					hasDetails = true
+					break
+				}
+			}
+		}
+		if !hasDetails {
+			if _, err := db.conn.Exec(`ALTER TABLE notifications ADD COLUMN details TEXT`); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -120,20 +149,23 @@ func (db *DB) List() []webpush.Subscription {
 	return subs
 }
 
-// SaveNotification は通知履歴を保存する。
-func (db *DB) SaveNotification(title, body, url, level string) error {
-	_, err := db.conn.Exec(
-		`INSERT INTO notifications (title, body, url, level, created_at)
-		 VALUES (?, ?, ?, ?, ?)`,
-		title, body, url, level, time.Now(),
+// SaveNotification は通知履歴を保存し、自動生成された ID を返す。
+func (db *DB) SaveNotification(title, body, url, level, details string) (int64, error) {
+	res, err := db.conn.Exec(
+		`INSERT INTO notifications (title, body, url, level, details, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		title, body, url, level, details, time.Now(),
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
 }
 
 // ListNotifications は通知履歴を指定件数ロードする。
 func (db *DB) ListNotifications(limit int) ([]Notification, error) {
 	rows, err := db.conn.Query(
-		`SELECT id, title, body, url, level, created_at
+		`SELECT id, title, body, url, level, details, created_at
 		 FROM notifications
 		 ORDER BY created_at DESC LIMIT ?`,
 		limit,
@@ -147,11 +179,15 @@ func (db *DB) ListNotifications(limit int) ([]Notification, error) {
 	for rows.Next() {
 		var n Notification
 		var urlVal sql.NullString
-		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &urlVal, &n.Level, &n.CreatedAt); err != nil {
+		var detailsVal sql.NullString
+		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &urlVal, &n.Level, &detailsVal, &n.CreatedAt); err != nil {
 			return nil, err
 		}
 		if urlVal.Valid {
 			n.URL = urlVal.String
+		}
+		if detailsVal.Valid {
+			n.Details = detailsVal.String
 		}
 		notes = append(notes, n)
 	}

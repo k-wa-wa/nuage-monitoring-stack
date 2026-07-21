@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Activity, History, Settings, Bell, Server, CheckCircle, AlertTriangle, Copy, Check, LayoutDashboard, Skull, ChevronRight } from 'lucide-react'
+import { Activity, History, Settings as SettingsIcon } from 'lucide-react'
+import Dashboard from './components/Dashboard'
+import Settings from './components/Settings'
+import HistoryItem from './components/HistoryItem'
 
 // 通知履歴レコードの型定義である。
 interface NotificationItem {
@@ -8,11 +11,22 @@ interface NotificationItem {
 	body: string
 	url?: string
 	level: 'info' | 'success' | 'warning' | 'error'
+	details?: string
 	created_at: string
 }
 
 export default function App() {
-	const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'settings'>('dashboard')
+	// パスからタブを取得するヘルパーである。
+	const getTabFromPath = (path: string): 'dashboard' | 'history' | 'settings' => {
+		if (path.startsWith('/history')) return 'history'
+		if (path.startsWith('/settings')) return 'settings'
+		return 'dashboard'
+	}
+
+	const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'settings'>(() =>
+		getTabFromPath(window.location.pathname)
+	)
+	const [expandedId, setExpandedId] = useState<number | null>(null)
 	const [online, setOnline] = useState(navigator.onLine)
 	const [history, setHistory] = useState<NotificationItem[]>([])
 	const [isSubscribed, setIsSubscribed] = useState(false)
@@ -22,13 +36,24 @@ export default function App() {
 
 	// ローカル開発時に別ポートで動くバックエンドを指すように、Viteの環境変数でURLを定義する。
 	const apiBase = import.meta.env.DEV ? 'http://localhost:8080' : ''
+	// 開発環境と本番環境で Grafana のベースURLを切り替える。
+	const grafanaBase = import.meta.env.DEV ? 'https://monitoring.cluster.wpc' : ''
 
 	// システムログの追加用メソッドである。
 	const log = useCallback((msg: string) => {
 		setLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev])
 	}, [])
 
-	// ブラウザのオンライン・オフライン監視を設定する。
+	// ルーティングを処理する navigateTo メソッドである。
+	const navigateTo = (tab: 'dashboard' | 'history' | 'settings', extraPath = '') => {
+		setActiveTab(tab)
+		const newPath = tab === 'dashboard' ? '/' : `/${tab}${extraPath}`
+		if (window.location.pathname !== newPath) {
+			window.history.pushState(null, '', newPath)
+		}
+	}
+
+	// ブラウザ of オンライン・オフライン監視を設定する。
 	useEffect(() => {
 		const handleOnline = () => setOnline(true)
 		const handleOffline = () => setOnline(false)
@@ -64,6 +89,48 @@ export default function App() {
 			fetchHistory()
 		}
 	}, [activeTab, fetchHistory])
+
+	// URL パスのディープリンク（/history/:id）を検知して表示を更新する。
+	useEffect(() => {
+		const path = window.location.pathname
+		if (path.startsWith('/history/')) {
+			const idStr = path.substring('/history/'.length)
+			const id = parseInt(idStr, 10)
+			if (!isNaN(id)) {
+				setActiveTab('history')
+				setExpandedId(id)
+
+				if (history.length > 0) {
+					setTimeout(() => {
+						const el = document.getElementById(`history-item-${id}`)
+						if (el) {
+							el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+						}
+					}, 150)
+				}
+			}
+		}
+	}, [history])
+
+	// 戻る・進むボタンのイベント（popstate）を監視して state を同期する。
+	useEffect(() => {
+		const handlePopState = () => {
+			const path = window.location.pathname
+			const tab = getTabFromPath(path)
+			setActiveTab(tab)
+			if (path.startsWith('/history/')) {
+				const idStr = path.substring('/history/'.length)
+				const id = parseInt(idStr, 10)
+				if (!isNaN(id)) {
+					setExpandedId(id)
+				}
+			} else {
+				setExpandedId(null)
+			}
+		}
+		window.addEventListener('popstate', handlePopState)
+		return () => window.removeEventListener('popstate', handlePopState)
+	}, [])
 
 	// プッシュ通知の購読状態チェックである。
 	const checkSubscription = useCallback(async () => {
@@ -183,16 +250,27 @@ export default function App() {
 
 	// Webhook の curl コマンドをクリップボードにコピーする。
 	const copyWebhookCommand = () => {
-		const cmd = `curl -X POST https://monitoring.cluster.wpc/webhook/generic \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer <WEBHOOK_TOKEN>" \\\n  -d '{"title": "タイトル", "body": "本文", "level": "info"}'`
+		const cmd = `curl -X POST https://monitoring.cluster.wpc/webhook/generic \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer <WEBHOOK_TOKEN>" \\\n  -d '{"title": "エラー検知", "body": "エラーが発生した。", "level": "error", "details": "Error: something went wrong\\n  at main.js:10:5"}'`
 		navigator.clipboard.writeText(cmd)
 		setCopied(true)
 		setTimeout(() => setCopied(false), 2000)
 	}
 
+	// iframe 内で読み込まれた場合は描画を制限する（無限ネスト防止）。
+	if (window.self !== window.top) {
+		return (
+			<div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+				Nuage Monitor is loaded inside an iframe.
+			</div>
+		)
+	}
+
 	return (
 		<>
 			<header className="app-header">
-				<h1 className="app-title"><span className="app-logo"></span>Nuage Monitor</h1>
+				<h1 className="app-title">
+					<span className="app-logo"></span>Nuage Monitor
+				</h1>
 				<div className="connection-badge">
 					<span className={`connection-dot ${online ? 'online' : ''}`}></span>
 					{online ? 'オンライン' : 'オフライン'}
@@ -200,69 +278,30 @@ export default function App() {
 			</header>
 
 			<main className="app-content">
-				{activeTab === 'dashboard' && (
-					<>
-						<div className="card card-flush">
-							<div className="panel-header">
-								<h2 className="panel-title"><Server size={14} />ノード健全性</h2>
-								<a
-									href="/grafana/d/nuage-node-health/node-health-overview?orgId=1"
-									target="_blank"
-									rel="noopener noreferrer"
-									className="panel-action"
-								>
-									Grafanaで開く
-									<ChevronRight size={12} />
-								</a>
-							</div>
-							<iframe
-								src="/grafana/d/nuage-node-health/node-health-overview?orgId=1&kiosk&theme=dark"
-								height="420"
-								className="grafana-embed"
-								title="Grafana Node Health Dashboard"
-							></iframe>
-						</div>
-
-						<a href="/grafana" target="_blank" rel="noopener noreferrer" className="card link-card">
-							<h2 className="card-title"><LayoutDashboard size={16} />Grafana</h2>
-							<ChevronRight size={16} className="link-card-arrow" />
-						</a>
-
-						<a href="/chaos-monitor" target="_blank" rel="noopener noreferrer" className="card link-card">
-							<h2 className="card-title"><Skull size={16} />Chaos Monitor</h2>
-							<ChevronRight size={16} className="link-card-arrow" />
-						</a>
-					</>
-				)}
+				{activeTab === 'dashboard' && <Dashboard grafanaBase={grafanaBase} />}
 
 				{activeTab === 'history' && (
 					<div className="card">
-						<h2 className="card-title"><History size={18} />通知履歴</h2>
+						<h2 className="card-title">
+							<History size={18} />
+							通知履歴
+						</h2>
 						<div className="history-list">
 							{history.length === 0 ? (
 								<div className="empty-state">履歴は存在しない。</div>
 							) : (
 								history.map((item) => (
-									<div key={item.id} className={`history-item ${item.level}`}>
-										<div className="history-icon-wrapper">
-											{item.level === 'error' && <AlertTriangle size={16} />}
-											{item.level === 'warning' && <AlertTriangle size={16} />}
-											{item.level === 'success' && <CheckCircle size={16} />}
-											{item.level === 'info' && <Bell size={16} />}
-										</div>
-										<div className="history-content">
-											<div className="history-header">
-												<span className="history-item-title">{item.title}</span>
-												<span className="history-time">{new Date(item.created_at).toLocaleTimeString()}</span>
-											</div>
-											<span className="history-body">{item.body}</span>
-											{item.url && (
-												<a href={item.url} target="_blank" rel="noopener noreferrer" className="history-link">
-													詳細を表示
-												</a>
-											)}
-										</div>
-									</div>
+									<HistoryItem
+										key={item.id}
+										item={item}
+										isExpanded={expandedId === item.id}
+										onToggle={() => {
+											const nextId = expandedId === item.id ? null : item.id
+											setExpandedId(nextId)
+											navigateTo('history', nextId ? `/${nextId}` : '')
+										}}
+										grafanaBase={grafanaBase}
+									/>
 								))
 							)}
 						</div>
@@ -270,88 +309,38 @@ export default function App() {
 				)}
 
 				{activeTab === 'settings' && (
-					<>
-						<div className="card">
-							<h2 className="card-title"><Settings size={18} />通知設定</h2>
-							<div className="settings-section">
-								<div className="settings-row">
-									<div className="settings-label">
-										<span className="label-title">プッシュ通知</span>
-										<span className="label-desc">この端末でクラスタのアラートを受信する。</span>
-									</div>
-									<button
-										onClick={isSubscribed ? unsubscribe : subscribe}
-										disabled={submitting}
-										className={`btn ${submitting ? 'btn-disabled' : 'btn-primary'}`}
-									>
-										{isSubscribed ? '解除する' : '有効にする'}
-									</button>
-								</div>
-
-								{isSubscribed && (
-									<div className="settings-actions">
-										<button onClick={sendTestNotify} className="btn btn-secondary">
-											テスト通知を送信
-										</button>
-									</div>
-								)}
-							</div>
-						</div>
-
-						<div className="card">
-							<h2 className="card-title"><Bell size={18} />汎用 Webhook URL</h2>
-							<div className="settings-section">
-								<span className="label-desc">
-									GitHub Actions や任意の Cron ジョブ等から、以下のエンドポイントを叩くことでプッシュ通知をトリガーできる。
-								</span>
-								<div className="webhook-code-block">
-									<pre>
-										{`curl -X POST https://monitoring.cluster.wpc/webhook/generic \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer <WEBHOOK_TOKEN>" \\
-  -d '{"title": "タイトル", "body": "本文", "level": "info"}'`}
-									</pre>
-									<button onClick={copyWebhookCommand} className="copy-btn">
-										{copied ? <Check size={12} /> : <Copy size={12} />}
-									</button>
-								</div>
-							</div>
-						</div>
-
-						{logs.length > 0 && (
-							<div className="card">
-								<h3 className="syslog-title">システムログ</h3>
-								<div className="syslog-body">
-									{logs.map((logItem, idx) => (
-										<div key={idx}>{logItem}</div>
-									))}
-								</div>
-							</div>
-						)}
-					</>
+					<Settings
+						isSubscribed={isSubscribed}
+						submitting={submitting}
+						onSubscribeToggle={isSubscribed ? unsubscribe : subscribe}
+						onSendTestNotify={sendTestNotify}
+						copyWebhookCommand={copyWebhookCommand}
+						copied={copied}
+						logs={logs}
+					/>
 				)}
 			</main>
 
 			<nav className="app-nav">
 				<button
-					onClick={() => setActiveTab('dashboard')}
+					onClick={() => navigateTo('dashboard')}
 					className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
 				>
 					<Activity size={20} />
 					ダッシュボード
 				</button>
 				<button
-					onClick={() => setActiveTab('history')}
+					onClick={() => navigateTo('history')}
 					className={`nav-item ${activeTab === 'history' ? 'active' : ''}`}
 				>
 					<History size={20} />
 					履歴
 				</button>
 				<button
-					onClick={() => setActiveTab('settings')}
+					onClick={() => navigateTo('settings')}
 					className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
 				>
-					<Settings size={20} />
+					<SettingsIcon size={20} />
 					設定
 				</button>
 			</nav>
