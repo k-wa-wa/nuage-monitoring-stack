@@ -12,16 +12,14 @@ import (
 
 // WebhookHandler は Alertmanager および汎用 Webhook リクエストを処理する構造体である。
 type WebhookHandler struct {
-	sender       *push.Sender
-	db           *push.DB
-	webhookToken string
+	sender *push.Sender
+	db     *push.DB
 }
 
-func NewWebhookHandler(sender *push.Sender, db *push.DB, webhookToken string) *WebhookHandler {
+func NewWebhookHandler(sender *push.Sender, db *push.DB) *WebhookHandler {
 	return &WebhookHandler{
-		sender:       sender,
-		db:           db,
-		webhookToken: webhookToken,
+		sender: sender,
+		db:     db,
 	}
 }
 
@@ -54,14 +52,19 @@ type genericWebhook struct {
 	Details string `json:"details,omitempty"`
 }
 
-// checkAuth は Webhook の認証トークンを確認する。
+// keelWebhook は Keel からの通知 Webhook のリクエストボディを表現する。
+type keelWebhook struct {
+	Name    string `json:"name"`
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	Event   *struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+	} `json:"event,omitempty"`
+}
+
+// checkAuth は Webhook の認証チェックを行う。
 func (h *WebhookHandler) checkAuth(c echo.Context) error {
-	if h.webhookToken != "" {
-		token := c.Request().Header.Get("Authorization")
-		if token != "Bearer "+h.webhookToken {
-			return echo.NewHTTPError(http.StatusUnauthorized, "invalid webhook token")
-		}
-	}
 	return nil
 }
 
@@ -159,6 +162,53 @@ func (h *WebhookHandler) GenericWebhook(c echo.Context) error {
 	payloadObj := notificationPayload{
 		Title: req.Title,
 		Body:  req.Body,
+		URL:   fmt.Sprintf("/history/%d", id),
+		Level: level,
+	}
+
+	payload, err := json.Marshal(payloadObj)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to encode notification")
+	}
+
+	h.sender.Broadcast(payload)
+	return c.NoContent(http.StatusOK)
+}
+
+// KeelWebhook は Keel からの自動更新通知を受信し、プッシュ通知をブロードキャストする。
+func (h *WebhookHandler) KeelWebhook(c echo.Context) error {
+	var req keelWebhook
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid keel webhook payload")
+	}
+
+	name := req.Name
+	if name == "" {
+		name = "Keel"
+	}
+
+	body := req.Message
+	if body == "" && req.Event != nil {
+		body = req.Event.Message
+	}
+	if body == "" {
+		body = fmt.Sprintf("%s のイメージ更新が実行された。", name)
+	}
+
+	title := fmt.Sprintf("[Keel] %s 更新通知", name)
+	level := "info"
+
+	detailsObj, _ := json.Marshal(req)
+
+	// DBに履歴を保存
+	id, err := h.db.SaveNotification(title, body, "", level, string(detailsObj))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save notification history")
+	}
+
+	payloadObj := notificationPayload{
+		Title: title,
+		Body:  body,
 		URL:   fmt.Sprintf("/history/%d", id),
 		Level: level,
 	}

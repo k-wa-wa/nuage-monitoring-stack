@@ -33,7 +33,7 @@ func main() {
 	sender := push.NewSender(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, db)
 
 	subscribeH := handler.NewSubscribeHandler(cfg.VAPIDPublicKey, db)
-	webhookH := handler.NewWebhookHandler(sender, db, cfg.WebhookToken)
+	webhookH := handler.NewWebhookHandler(sender, db)
 	historyH := handler.NewHistoryHandler(db)
 
 	e := echo.New()
@@ -56,6 +56,7 @@ func main() {
 
 	e.POST("/webhook/alertmanager", webhookH.AlertmanagerWebhook)
 	e.POST("/webhook/generic", webhookH.GenericWebhook)
+	e.POST("/webhook/keel", webhookH.KeelWebhook)
 
 	slog.Info("starting server", "port", cfg.Port, "db_path", cfg.DBPath)
 	if err := e.Start(":" + cfg.Port); err != nil {

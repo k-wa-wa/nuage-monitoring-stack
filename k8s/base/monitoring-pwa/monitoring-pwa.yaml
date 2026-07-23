@@ -42,12 +42,6 @@ spec:
                   name: pwa-notifier-secret
                   key: VAPID_SUBJECT
                   optional: true
-            - name: WEBHOOK_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: pwa-notifier-secret
-                  key: WEBHOOK_TOKEN
-                  optional: true
           volumeMounts:
             - name: db-volume
               mountPath: /data

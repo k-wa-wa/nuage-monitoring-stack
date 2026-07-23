@@ -8,7 +8,6 @@ type Config struct {
 	VAPIDPublicKey  string
 	VAPIDPrivateKey string
 	VAPIDSubject    string
-	WebhookToken    string
 	DBPath          string
 }
 
@@ -24,7 +23,6 @@ func Load() Config {
 		VAPIDPublicKey:  os.Getenv("VAPID_PUBLIC_KEY"),
 		VAPIDPrivateKey: os.Getenv("VAPID_PRIVATE_KEY"),
 		VAPIDSubject:    os.Getenv("VAPID_SUBJECT"),
-		WebhookToken:    os.Getenv("WEBHOOK_TOKEN"),
 		DBPath:          dbPath,
 	}
 }

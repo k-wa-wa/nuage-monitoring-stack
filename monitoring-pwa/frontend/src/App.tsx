@@ -250,7 +250,7 @@ export default function App() {
 
 	// Webhook の curl コマンドをクリップボードにコピーする。
 	const copyWebhookCommand = () => {
-		const cmd = `curl -X POST https://monitoring.cluster.wpc/webhook/generic \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer <WEBHOOK_TOKEN>" \\\n  -d '{"title": "エラー検知", "body": "エラーが発生した。", "level": "error", "details": "Error: something went wrong\\n  at main.js:10:5"}'`
+		const cmd = `curl -X POST https://monitoring.cluster.wpc/webhook/generic \\\n  -H "Content-Type: application/json" \\\n  -d '{"title": "エラー検知", "body": "エラーが発生した。", "level": "error", "details": "Error: something went wrong\\n  at main.js:10:5"}'`
 		navigator.clipboard.writeText(cmd)
 		setCopied(true)
 		setTimeout(() => setCopied(false), 2000)

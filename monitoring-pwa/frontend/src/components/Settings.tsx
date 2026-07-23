@@ -65,7 +65,6 @@ export default function Settings({
 						<pre>
 							{`curl -X POST https://monitoring.cluster.wpc/webhook/generic \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer <WEBHOOK_TOKEN>" \\
   -d '{"title": "エラータイトル", "body": "エラーメッセージ", "level": "error", "details": "詳細ログまたはスタックトレース"}'`}
 						</pre>
 						<button onClick={copyWebhookCommand} className="copy-btn">
