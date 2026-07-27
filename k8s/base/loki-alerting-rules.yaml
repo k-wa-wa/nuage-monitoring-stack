@@ -12,7 +12,18 @@ data:
           - alert: KubernetesPodErrorLogs
             expr: |
               sum by (namespace, pod, container) (
-                count_over_time({namespace=~"pechka|bare-web-proxy"} |~ "(?i)error" [5m])
+                count_over_time(
+                  {namespace=~"pechka|bare-web-proxy"}
+                    |~ "(?i)error"
+                    # --- 除外パターン (False Positive 対策) ---
+                    # 今後、無害なログによる誤検知が発生した場合はここに !~ パターンを追記する。
+                    #
+                    # 1. gRPC ストリーム切断ログ (EOF)
+                    # 経緯: argo-server の WatchWorkflows ストリーム終了時に error="rpc error: code = ResourceExhausted desc = EOF"
+                    #      を含む Warning ログが出力され、誤検知が発生したため除外。
+                    !~ "(?i)code = ResourceExhausted desc = EOF"
+                  [5m]
+                )
               ) > 0
             for: 0s
             labels:
