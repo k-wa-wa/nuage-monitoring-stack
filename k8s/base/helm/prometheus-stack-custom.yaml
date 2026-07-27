@@ -72,4 +72,7 @@ defaultRules:
   create: true
   rules:
     kubeProxy: false
-
+  disabled:
+    # Argo Workflows 由来の Pod を除外したカスタムルール (custom-prometheus-rules.yaml) を
+    # 代わりに使用するため、既定の KubePodNotReady アラートルールを無効化する。
+    KubePodNotReady: true

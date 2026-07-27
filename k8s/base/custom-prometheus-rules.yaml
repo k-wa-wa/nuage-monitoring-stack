@@ -1,0 +1,31 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: custom-kubernetes-apps-rules
+  namespace: nuage-monitoring-stack
+  labels:
+    app: kube-prometheus-stack
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: custom-kubernetes-apps
+      rules:
+        # Argo Workflows のステップ Pod（owner_kind="Workflow"）が Error 状態で終了し、
+        # ログ保持目的で残存している場合に KubePodNotReady アラートが誤発報するのを防ぐため、
+        # 標準の owner_kind!="Job" に加えて owner_kind!~"Job|Workflow" を指定したカスタムルールを定義する。
+        - alert: KubePodNotReady
+          annotations:
+            description: Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-ready state for longer than 15 minutes on cluster {{ $labels.cluster }}.
+            runbook_url: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodnotready
+            summary: Pod has been in a non-ready state for more than 15 minutes.
+          expr: |-
+            sum by (namespace, pod, cluster) (
+              max by (namespace, pod, cluster) (
+                kube_pod_status_phase{job="kube-state-metrics", namespace=~".*", phase=~"Pending|Unknown|Failed"}
+              ) * on (namespace, pod, cluster) group_left(owner_kind) topk by (namespace, pod, cluster) (
+                1, max by (namespace, pod, owner_kind, cluster) (kube_pod_owner{owner_kind!~"Job|Workflow"})
+              )
+            ) > 0
+          for: 15m
+          labels:
+            severity: warning

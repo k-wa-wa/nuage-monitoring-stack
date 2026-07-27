@@ -5,6 +5,7 @@ resources:
   - namespace.yaml
   - monitoring-pwa
   - loki-alerting-rules.yaml
+  - custom-prometheus-rules.yaml
 
 helmCharts:
 - name: kube-prometheus-stack
