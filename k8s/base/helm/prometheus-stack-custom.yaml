@@ -65,7 +65,14 @@ alertmanager:
 
 # Talos Linuxでは標準のkube-proxyを使用せず、Ciliumのkube-proxy-replacementを
 # 使用するため、kube-proxyの監視ターゲットおよびデフォルトアラートルールを無効化する。
+# また、kube-controller-managerおよびkube-schedulerのメトリクスポートは127.0.0.1にバインドされているため無効化する。
 kubeProxy:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeScheduler:
   enabled: false
 
 defaultRules:
