@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle, Bell } from 'lucide-react'
 import HistoryDetailPanel from './HistoryDetailPanel'
+import { formatHistoryTimestamp } from '../utils/date'
 
 interface NotificationItem {
 	id: number
@@ -34,7 +35,7 @@ export default function HistoryItem({ item, isExpanded, onToggle, grafanaBase }:
 			<div className="history-content">
 				<div className="history-header">
 					<span className="history-item-title">{item.title}</span>
-					<span className="history-time">{new Date(item.created_at).toLocaleTimeString()}</span>
+					<span className="history-time">{formatHistoryTimestamp(item.created_at)}</span>
 				</div>
 				<span className="history-body">{item.body}</span>
 				<div className="history-actions">
