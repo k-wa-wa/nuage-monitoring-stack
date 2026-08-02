@@ -3,17 +3,8 @@ import { Activity, History, Settings as SettingsIcon } from 'lucide-react'
 import Dashboard from './components/Dashboard'
 import Settings from './components/Settings'
 import HistoryItem from './components/HistoryItem'
-
-// 通知履歴レコードの型定義である。
-interface NotificationItem {
-	id: number
-	title: string
-	body: string
-	url?: string
-	level: 'info' | 'success' | 'warning' | 'error'
-	details?: string
-	created_at: string
-}
+import ActiveAlerts from './components/ActiveAlerts'
+import type { AlertItem } from './types/alert'
 
 export default function App() {
 	// パスからタブを取得するヘルパーである。
@@ -28,7 +19,8 @@ export default function App() {
 	)
 	const [expandedId, setExpandedId] = useState<number | null>(null)
 	const [online, setOnline] = useState(navigator.onLine)
-	const [history, setHistory] = useState<NotificationItem[]>([])
+	const [activeAlerts, setActiveAlerts] = useState<AlertItem[]>([])
+	const [alertHistory, setAlertHistory] = useState<AlertItem[]>([])
 	const [isSubscribed, setIsSubscribed] = useState(false)
 	const [submitting, setSubmitting] = useState(false)
 	const [logs, setLogs] = useState<string[]>([])
@@ -65,30 +57,39 @@ export default function App() {
 		}
 	}, [])
 
-	// 過去の通知履歴取得処理である。
-	const fetchHistory = useCallback(async () => {
+	// アラートデータ（アクティブ・履歴）の取得処理である。
+	const fetchAlertData = useCallback(async () => {
 		try {
-			const res = await fetch(`${apiBase}/api/history`)
-			if (res.ok) {
-				const data = await res.json()
-				setHistory(data)
+			const [activeRes, historyRes] = await Promise.all([
+				fetch(`${apiBase}/api/alerts/active`),
+				fetch(`${apiBase}/api/alerts/history`),
+			])
+			if (activeRes.ok) {
+				const activeData = await activeRes.json()
+				setActiveAlerts(activeData)
+			}
+			if (historyRes.ok) {
+				const historyData = await historyRes.json()
+				setAlertHistory(historyData)
 			}
 		} catch (err: any) {
-			console.error('Failed to fetch history:', err)
+			console.error('Failed to fetch alert data:', err)
 		}
 	}, [apiBase])
 
-	// 初期処理である。
+	// 初期処理および定期更新である。
 	useEffect(() => {
-		fetchHistory()
-	}, [fetchHistory])
+		fetchAlertData()
+		const timer = setInterval(fetchAlertData, 15000)
+		return () => clearInterval(timer)
+	}, [fetchAlertData])
 
-	// 履歴タブを開いた際に最新の履歴をフェッチする。
+	// 履歴タブを開いた際に最新のデータをフェッチする。
 	useEffect(() => {
-		if (activeTab === 'history') {
-			fetchHistory()
+		if (activeTab === 'history' || activeTab === 'dashboard') {
+			fetchAlertData()
 		}
-	}, [activeTab, fetchHistory])
+	}, [activeTab, fetchAlertData])
 
 	// URL パスのディープリンク（/history/:id）を検知して表示を更新する。
 	useEffect(() => {
@@ -278,34 +279,41 @@ export default function App() {
 			</header>
 
 			<main className="app-content">
-				{activeTab === 'dashboard' && <Dashboard grafanaBase={grafanaBase} />}
+				{activeTab === 'dashboard' && (
+					<Dashboard grafanaBase={grafanaBase} activeAlerts={activeAlerts} />
+				)}
 
 				{activeTab === 'history' && (
-					<div className="card">
-						<h2 className="card-title">
-							<History size={18} />
-							通知履歴
-						</h2>
-						<div className="history-list">
-							{history.length === 0 ? (
-								<div className="empty-state">履歴は存在しない。</div>
-							) : (
-								history.map((item) => (
-									<HistoryItem
-										key={item.id}
-										item={item}
-										isExpanded={expandedId === item.id}
-										onToggle={() => {
-											const nextId = expandedId === item.id ? null : item.id
-											setExpandedId(nextId)
-											navigateTo('history', nextId ? `/${nextId}` : '')
-										}}
-										grafanaBase={grafanaBase}
-									/>
-								))
-							)}
+					<>
+						<ActiveAlerts alerts={activeAlerts} />
+						<div className="card">
+							<div className="panel-header">
+								<h2 className="panel-title">
+									<History size={16} />
+									アラート履歴 (スレッド)
+								</h2>
+							</div>
+							<div className="history-list">
+								{alertHistory.length === 0 ? (
+									<div className="empty-state">履歴は存在しない。</div>
+								) : (
+									alertHistory.map((item) => (
+										<HistoryItem
+											key={item.id}
+											item={item}
+											isExpanded={expandedId === item.id}
+											onToggle={() => {
+												const nextId = expandedId === item.id ? null : item.id
+												setExpandedId(nextId)
+												navigateTo('history', nextId ? `/${nextId}` : '')
+											}}
+											grafanaBase={grafanaBase}
+										/>
+									))
+								)}
+							</div>
 						</div>
-					</div>
+					</>
 				)}
 
 				{activeTab === 'settings' && (

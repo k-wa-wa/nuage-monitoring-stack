@@ -53,6 +53,8 @@ func main() {
 	api.POST("/unsubscribe", subscribeH.Unsubscribe)
 	api.POST("/test-notify", webhookH.TestNotify)
 	api.GET("/history", historyH.History)
+	api.GET("/alerts/active", historyH.ActiveAlerts)
+	api.GET("/alerts/history", historyH.AlertHistory)
 
 	e.POST("/webhook/alertmanager", webhookH.AlertmanagerWebhook)
 	e.POST("/webhook/generic", webhookH.GenericWebhook)

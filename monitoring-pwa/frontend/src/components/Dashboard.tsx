@@ -1,13 +1,17 @@
 import { Server, ChevronRight, LayoutDashboard, Skull } from 'lucide-react'
+import ActiveAlerts from './ActiveAlerts'
+import type { AlertItem } from '../types/alert'
 
 interface DashboardProps {
 	grafanaBase: string
+	activeAlerts: AlertItem[]
 }
 
-// Dashboard コンポーネントである。ノード健全性グラフおよびGrafanaリンクを表示する。
-export default function Dashboard({ grafanaBase }: DashboardProps) {
+// Dashboard コンポーネントである。アクティブアラート、ノード健全性グラフおよびGrafanaリンクを表示する。
+export default function Dashboard({ grafanaBase, activeAlerts }: DashboardProps) {
 	return (
 		<>
+			<ActiveAlerts alerts={activeAlerts} />
 			<div className="card card-flush">
 				<div className="panel-header">
 					<h2 className="panel-title">

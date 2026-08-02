@@ -3,7 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 
@@ -68,7 +71,30 @@ func (h *WebhookHandler) checkAuth(c echo.Context) error {
 	return nil
 }
 
-// AlertmanagerWebhook は Alertmanager の通知を受信し、プッシュ通知をブロードキャストする。
+// generateFingerprint はラベルからアラートを一意に識別するキーを生成する。
+func generateFingerprint(labels map[string]string) string {
+	alertname := labels["alertname"]
+	if alertname == "" {
+		alertname = "Alert"
+	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var sb strings.Builder
+	sb.WriteString(alertname)
+	for _, k := range keys {
+		if k == "alertname" {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf(";%s=%s", k, labels[k]))
+	}
+	return sb.String()
+}
+
+// AlertmanagerWebhook は Alertmanager の通知を受信し、状態保存およびプッシュ通知を処理する。
 func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 	if err := h.checkAuth(c); err != nil {
 		return err
@@ -89,11 +115,17 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 			name = "Alert"
 		}
 
+		fingerprint := generateFingerprint(alert.Labels)
+
 		title := fmt.Sprintf("[%s] %s", alert.Status, name)
-		body := alert.Annotations["summary"]
-		if body == "" {
-			body = alert.Annotations["description"]
+		summary := alert.Annotations["summary"]
+		if summary == "" {
+			summary = alert.Annotations["description"]
 		}
+		if summary == "" {
+			summary = name
+		}
+		description := alert.Annotations["description"]
 
 		level := "warning"
 		if alert.Status == "firing" {
@@ -106,19 +138,42 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 
 		alertDetails, _ := json.Marshal(alert)
 
-		// DBに履歴を保存
-		id, err := h.db.SaveNotification(title, body, alert.GeneratorURL, level, string(alertDetails))
+		// DBにアラート状態を保存・更新
+		savedAlert, err := h.db.UpsertAlert(
+			fingerprint,
+			name,
+			alert.Status,
+			level,
+			summary,
+			description,
+			alert.GeneratorURL,
+			string(alertDetails),
+		)
+		if err != nil {
+			slog.Error("failed to upsert alert", "fingerprint", fingerprint, "error", err)
+		}
+
+		// 互換性のため既存の notification にも保存
+		id, err := h.db.SaveNotification(title, summary, alert.GeneratorURL, level, string(alertDetails))
 		if err != nil {
 			id = 0
 		}
 
+		// resolved の場合は Push 通知（バイブ・通知音）を送信しない
+		if alert.Status == "resolved" {
+			continue
+		}
+
+		// firing の場合のみ Push 通知をブロードキャストする
 		payloadObj := notificationPayload{
 			Title: title,
-			Body:  body,
+			Body:  summary,
 			URL:   "/",
 			Level: level,
 		}
-		if id > 0 {
+		if savedAlert != nil {
+			payloadObj.URL = fmt.Sprintf("/history/%d", savedAlert.ID)
+		} else if id > 0 {
 			payloadObj.URL = fmt.Sprintf("/history/%d", id)
 		}
 
