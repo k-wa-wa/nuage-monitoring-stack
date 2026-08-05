@@ -29,3 +29,53 @@ spec:
           for: 15m
           labels:
             severity: warning
+
+        # kube-prometheus-stack既定ルールにはOOMKilledを直接検知するアラートが存在しないため、
+        # カスタムルールとして追加する。
+        - alert: KubePodContainerOOMKilled
+          annotations:
+            description: Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} was OOMKilled on cluster {{ $labels.cluster }}.
+            summary: Container was OOMKilled.
+          expr: |-
+            kube_pod_container_status_last_terminated_reason{job="kube-state-metrics", reason="OOMKilled"} == 1
+          for: 0m
+          labels:
+            severity: warning
+
+        # 既定のKubeContainerWaitingはreasonを問わず1時間後に発報するため、
+        # デプロイ直後に気づきたいImagePullBackOffについては短いforで別途検知する。
+        - alert: KubeContainerImagePullBackOff
+          annotations:
+            description: Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} is in ImagePullBackOff state on cluster {{ $labels.cluster }}.
+            summary: Container image pull is failing.
+          expr: |-
+            kube_pod_container_status_waiting_reason{job="kube-state-metrics", reason="ImagePullBackOff"} == 1
+          for: 5m
+          labels:
+            severity: warning
+
+    - name: custom-external-nodes
+      rules:
+        # 既定のNodeSystemdServiceFailed/NodeSystemdServiceCrashloopingはjob="node-exporter"
+        # （クラスタ内DaemonSet）のみを対象とし、additionalScrapeConfigsで追加している
+        # 外部NixOSホスト（job="external-nodes"）はカバーされないため、同等のルールを追加する。
+        # 対象ホストのnode-exporterで--collector.systemdが有効になっている必要がある。
+        - alert: NodeSystemdServiceFailed
+          annotations:
+            description: Systemd service {{ $labels.name }} has entered failed state at {{ $labels.instance }}
+            runbook_url: https://runbooks.prometheus-operator.dev/runbooks/node/nodesystemdservicefailed
+            summary: Systemd service has entered failed state.
+          expr: node_systemd_unit_state{job="external-nodes", state="failed"} == 1
+          for: 5m
+          labels:
+            severity: warning
+
+        - alert: NodeSystemdServiceCrashlooping
+          annotations:
+            description: Systemd service {{ $labels.name }} has being restarted too many times at {{ $labels.instance }} for the last 15 minutes. Please check if service is crash looping.
+            runbook_url: https://runbooks.prometheus-operator.dev/runbooks/node/nodesystemdservicecrashlooping
+            summary: Systemd service keeps restaring, possibly crash looping.
+          expr: increase(node_systemd_service_restart_total{job="external-nodes"}[5m]) > 2
+          for: 15m
+          labels:
+            severity: warning
