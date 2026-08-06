@@ -55,16 +55,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  comment-preview-url:
-    name: Comment Preview URL
-    needs: push-preview-image
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Comment preview URL on PR
+        if: github.event_name == 'pull_request'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
