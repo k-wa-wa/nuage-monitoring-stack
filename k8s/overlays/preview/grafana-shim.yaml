@@ -1,0 +1,16 @@
+# preview には kube-prometheus-stack を入れないため、Ingress の /grafana は
+# prod namespace の Grafana 実体へ同名Serviceで転送する (pechka の minio-shim と同じ手口)。
+#
+# 注意: prod の Grafana は root_url が https://monitoring.cluster.wpc/grafana/ 前提のため、
+# preview ホストから開くとリダイレクトやcookieで崩れることがある。あくまで導線確認用で、
+# きちんと見たいときは prod の grafana.cluster.wpc / monitoring.cluster.wpc を直接開く。
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-prometheus-stack-grafana
+spec:
+  type: ExternalName
+  externalName: kube-prometheus-stack-grafana.nuage-monitoring-stack.svc.cluster.local
+  ports:
+    - port: 80
+      targetPort: 3000

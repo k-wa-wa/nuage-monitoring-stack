@@ -1,0 +1,38 @@
+# PRのpreview環境。
+# - monitoring-pwa frontend/backend: このPRのイメージ (DBは毎回まっさらなPVC)
+# - Helm チャート一式 (kube-prometheus-stack / loki / promtail / holmesgpt) は入れない。
+#   CRDがクラスター共有・promtailはDaemonSet・監視対象はクラスター本体そのものなので、
+#   PRごとに複製しても意味がなく重いだけ。base/ ごと取り込まず monitoring-pwa だけを取り込む。
+# - PrometheusRule / Loki ルール / Grafana ダッシュボードも入れない。特に PrometheusRule は
+#   kube-prometheus-stack の ruleNamespaceSelector が全namespaceを対象にするため、
+#   preview namespace に置くと prod の Prometheus に同じアラートが二重登録される。
+# - Grafana (/grafana) は ExternalName shim で prod namespace の実体に転送する。
+#
+# VAPIDキーはpreview用のダミーを平文で持つため、pechkaと違い
+# argocd-vault-plugin を使う別Applicationは不要で、このoverlay 1本で完結する。
+#
+# namespace名・イメージタグ・ingress hostはArgoCD側のネイティブなkustomize.namespace/images/patches
+# 上書きでPRごとに書き換える。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - ../../base/monitoring-pwa
+  - local-secrets.yaml
+  - grafana-shim.yaml
+  - chaos-monitor-shim.yaml
+  - ingress.yaml
+
+patches:
+  # base/monitoring-pwa には Grafana ダッシュボードのConfigMapも含まれるが、
+  # preview に prod と同名のダッシュボードを増やしたくないため取り除く。
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboard-node-health
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-node-health
