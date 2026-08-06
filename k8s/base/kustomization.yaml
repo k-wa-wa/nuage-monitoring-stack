@@ -27,12 +27,6 @@ helmCharts:
   repo: https://grafana.github.io/helm-charts
   valuesFile: helm/promtail-custom.yaml
 
-- name: holmes
-  releaseName: holmesgpt
-  version: 0.34.0
-  repo: https://robusta-charts.storage.googleapis.com
-  valuesFile: helm/holmesgpt-custom.yaml
-
 # Argo CDでの同期時、loki-0がReadyになるまでSyncフェーズが完了せず、
 # post-installフック（Job）が実行されないデッドロック（バケット未作成による起動失敗）を防ぐため、
 # JobからHelm Hookアノテーションを削除して通常のJobとしてデプロイする
