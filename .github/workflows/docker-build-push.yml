@@ -61,6 +61,9 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Comment preview URL on PR
         continue-on-error: true
         env:
@@ -79,7 +82,7 @@ jobs:
           if [ -n "$COMMENT_ID" ]; then
             gh api -X PATCH repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -f body="$COMMENT_BODY"
           else
-            gh pr comment "$PR_NUMBER" --body "$COMMENT_BODY"
+            gh api -X POST repos/${{ github.repository }}/issues/${PR_NUMBER}/comments -f body="$COMMENT_BODY"
           fi
 
   build-and-push:
