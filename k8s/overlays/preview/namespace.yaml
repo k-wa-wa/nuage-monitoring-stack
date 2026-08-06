@@ -1,4 +1,4 @@
-# 名前は ApplicationSet の kustomize.patches で monitoring-pr-<N> に置換される。
+# 名前は ApplicationSet の kustomize.patches で nuage-monitoring-stack-pr-<N> に置換される。
 # Namespace自体をApplicationの管理下に置くことで、PR close時に resources-finalizer が
 # Namespaceごと削除できるようにする。
 # base/namespace.yaml と違い pod-security の privileged 指定は付けない (promtail を入れないため)。
