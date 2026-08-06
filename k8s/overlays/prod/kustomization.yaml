@@ -8,8 +8,3 @@ resources:
   - ingress.yaml
   - chaos-monitor-grafana.yaml
   - secrets/secrets.yaml
-
-secretGenerator:
-  - name: ollama-secret
-    literals:
-      - api-base=http://10.20.1.30:11434
