@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   packages: write
+  pull-requests: write
 
 jobs:
   push-preview-image:
@@ -53,6 +54,28 @@ jobs:
             ${{ matrix.image }}:sha-${{ github.event.pull_request.head.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Comment preview URL on PR
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments --jq '.[] | select(.body | contains("🚀 Preview Environment")) | .id' | head -n 1)
+
+          COMMENT_BODY=$(cat <<EOF
+          ### 🚀 Preview Environment
+          PR プレビュー環境のイメージビルドが完了しました：
+          🔗 [Preview Environment](https://monitoring-pr-${PR_NUMBER}.wpcapp.net)
+          EOF
+          )
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api -X PATCH repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -f body="$COMMENT_BODY"
+          else
+            gh api -X POST repos/${{ github.repository }}/issues/${PR_NUMBER}/comments -f body="$COMMENT_BODY"
+          fi
 
   build-and-push:
     name: Push Image
