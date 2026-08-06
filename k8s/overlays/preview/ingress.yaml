@@ -1,15 +1,15 @@
 # host / tls は ApplicationSet の template (ArgoCDネイティブのkustomize.patches) で
 # PR ごとに書き換えられる (base値はダミー)。
-# *.cluster.wpc は CoreDNS (nix/hosts/loadbalancer/dns.nix) がワイルドカードで
+# *.wpcapp.net は CoreDNS (nix/hosts/loadbalancer/dns.nix) がワイルドカードで
 # 192.168.5.200 に解決するため、PRごとのホスト追加は不要。
 #
-# prod の grafana.cluster.wpc に相当する単独ホストは作らず、パス構成だけ prod に揃える。
+# prod の grafana.wpcapp.net に相当する単独ホストは作らず、パス構成だけ prod に揃える。
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: monitoring-pwa-ingress
   annotations:
-    cert-manager.io/cluster-issuer: "ca-clusterissuer"
+    cert-manager.io/cluster-issuer: "letsencrypt-cloudflare-prod"
 spec:
   ingressClassName: cilium
   tls:

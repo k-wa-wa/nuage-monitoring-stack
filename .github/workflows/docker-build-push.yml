@@ -72,7 +72,7 @@ jobs:
           COMMENT_BODY=$(cat <<EOF
           ### 🚀 Preview Environment
           PR プレビュー環境のイメージビルドが完了しました：
-          🔗 [Preview Environment](https://nuage-monitoring-stack-pr-${PR_NUMBER}.cluster.wpc)
+          🔗 [Preview Environment](https://monitoring-pr-${PR_NUMBER}.wpcapp.net)
           EOF
           )
 
