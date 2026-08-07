@@ -15,10 +15,8 @@ permissions:
   pull-requests: write
 
 jobs:
-  push-preview-image:
-    name: Push Preview Image
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+  docker-build-push:
+    name: Docker Build and Push (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
@@ -29,90 +27,14 @@ jobs:
           - name: monitoring-pwa-frontend
             context: ./monitoring-pwa/frontend
             image: ghcr.io/${{ github.repository }}-monitoring-pwa-frontend
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push preview Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ${{ matrix.context }}
-          push: true
-          tags: |
-            ${{ matrix.image }}:pr-${{ github.event.pull_request.number }}
-            ${{ matrix.image }}:sha-${{ github.event.pull_request.head.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Comment preview URL on PR
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments --jq '.[] | select(.body | contains("🚀 Preview Environment")) | .id' | head -n 1)
-
-          COMMENT_BODY=$(cat <<EOF
-          ### 🚀 Preview Environment
-          PR プレビュー環境のイメージビルドが完了しました：
-          🔗 [Preview Environment](https://monitoring-pr-${PR_NUMBER}.wpcapp.net)
-          EOF
-          )
-
-          if [ -n "$COMMENT_ID" ]; then
-            gh api -X PATCH repos/${{ github.repository }}/issues/comments/${COMMENT_ID} -f body="$COMMENT_BODY"
-          else
-            gh api -X POST repos/${{ github.repository }}/issues/${PR_NUMBER}/comments -f body="$COMMENT_BODY"
-          fi
-
-  build-and-push:
-    name: Push Image
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: monitoring-pwa-backend
-            context: ./monitoring-pwa/backend
-            image: ghcr.io/${{ github.repository }}-monitoring-pwa-backend
-          - name: monitoring-pwa-frontend
-            context: ./monitoring-pwa/frontend
-            image: ghcr.io/${{ github.repository }}-monitoring-pwa-frontend
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ${{ matrix.context }}
-          push: true
-          tags: |
-            ${{ matrix.image }}:latest
-            ${{ matrix.image }}:sha-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            pr-comment-marker: "🚀 Preview Environment"
+            pr-comment-body: |
+              ### 🚀 Preview Environment
+              PR プレビュー環境のイメージビルドが完了した:
+              🔗 [Preview Environment](https://monitoring-pr-${{ github.event.pull_request.number }}.wpcapp.net)
+    uses: k-wa-wa/nuage-workspace/.github/workflows/docker-build-push.yml@master
+    with:
+      context: ${{ matrix.context }}
+      image: ${{ matrix.image }}
+      pr-comment-marker: ${{ matrix.pr-comment-marker }}
+      pr-comment-body: ${{ matrix.pr-comment-body }}
