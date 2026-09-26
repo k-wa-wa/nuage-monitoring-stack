@@ -1,0 +1,50 @@
+# レプリカ b。チャートが作るレプリカ a (VMSingle / VLSingle "vm") と同じ構成で、別ノードに置く
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMSingle
+metadata:
+  name: vm-b
+spec:
+  port: "8428"
+  retentionPeriod: "100y"
+  extraArgs:
+    # TrueNAS へ移すまではノードのディスクに置くため、空きが減ったら書き込みを止めてノードを守る
+    storage.minFreeDiskSpaceBytes: "20GB"
+  storage:
+    storageClassName: local-path
+    accessModes: [ReadWriteOnce]
+    resources:
+      requests:
+        storage: 20Gi
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: vmsingle
+              app.kubernetes.io/instance: vm
+---
+apiVersion: operator.victoriametrics.com/v1
+kind: VLSingle
+metadata:
+  name: vm-b
+spec:
+  port: "9428"
+  retentionPeriod: "100y"
+  extraArgs:
+    # TrueNAS へ移すまではノードのディスクに置くため、空きが減ったら書き込みを止めてノードを守る
+    storage.minFreeDiskSpaceBytes: "20GB"
+  storage:
+    storageClassName: local-path
+    accessModes: [ReadWriteOnce]
+    resources:
+      requests:
+        storage: 20Gi
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: vlsingle
+              app.kubernetes.io/instance: vm

@@ -1,0 +1,34 @@
+# クラスタ外の NixOS ホストの node-exporter。
+# kube-prometheus-stack の additionalScrapeConfigs (external-nodes) と同じ対象である
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMStaticScrape
+metadata:
+  name: external-nodes
+spec:
+  jobName: external-nodes
+  targetEndpoints:
+    - targets:
+        - 10.20.1.21:9100
+        - 10.20.1.22:9100
+        - 10.20.1.23:9100
+      labels:
+        role: loadbalancer
+      interval: 30s
+    - targets:
+        - 10.20.1.30:9100
+      labels:
+        role: egress-gateway
+      interval: 30s
+    - targets:
+        - 10.20.1.41:9100
+        - 10.20.1.42:9100
+        - 10.20.1.43:9100
+      labels:
+        role: postgres-cluster
+      interval: 30s
+    - targets:
+        - 10.20.1.71:9100
+        - 10.20.1.72:9100
+      labels:
+        role: minio-cluster
+      interval: 30s

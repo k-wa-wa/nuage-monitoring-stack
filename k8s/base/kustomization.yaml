@@ -6,6 +6,7 @@ resources:
   - monitoring-pwa
   - loki-alerting-rules.yaml
   - custom-prometheus-rules.yaml
+  - victoria
 
 helmCharts:
 - name: kube-prometheus-stack
@@ -26,6 +27,15 @@ helmCharts:
   version: 6.17.0
   repo: https://grafana.github.io/helm-charts
   valuesFile: helm/promtail-custom.yaml
+
+# Victoria スタック。helm テンプレート内の URL が Release の namespace を使うため namespace を明示する
+- name: victoria-metrics-k8s-stack
+  releaseName: vm
+  namespace: nuage-monitoring-stack
+  version: 0.93.0
+  repo: https://victoriametrics.github.io/helm-charts/
+  includeCRDs: true
+  valuesFile: helm/victoria-stack-custom.yaml
 
 # Argo CDでの同期時、loki-0がReadyになるまでSyncフェーズが完了せず、
 # post-installフック（Job）が実行されないデッドロック（バケット未作成による起動失敗）を防ぐため、

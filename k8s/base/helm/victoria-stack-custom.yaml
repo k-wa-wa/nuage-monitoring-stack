@@ -1,0 +1,291 @@
+# Victoria スタック (VictoriaMetrics + VictoriaLogs)。
+# 既存の kube-prometheus-stack / Loki とは独立した 1 系統として並行稼働させ、移行が済んだら旧スタックを撤去する。
+# exporter・スクレイプ設定・ルール・ダッシュボード・Grafana も旧スタックに頼らず、すべてこちらで持つ。
+#
+# 構成:
+# - VMSingle / VLSingle をレプリカ a (このチャートが作る "vm") と b (victoria/replica-b.yaml) の 2 台、別ノードに置く
+# - vmagent / vlagent は a と b の両方に書き込む。片方が止まっている間の分は永続キューに溜めて、復帰後に送る
+# - 読み取りは vmauth が a と b のうち生きている方に振る (first_available)。削除系 API は url_map に載せず通さない
+#
+# 旧スタック撤去時にやること:
+# - prometheus-node-exporter の port を 9100 に戻す
+# - alertmanager の通知先を pwa-notifier にする
+# - Grafana の Ingress をこちらの Grafana に向け、grafana.ini の root_url 等を旧 Grafana と揃える
+fullnameOverride: vm
+
+victoria-metrics-operator:
+  enabled: true
+  crds:
+    # pre-delete hook の Job で全 CR を消す仕組み。Argo CD では pre-delete hook として扱われないため無効化する
+    cleanup:
+      enabled: false
+  # 証明書を描画のたびに生成するため、Argo CD で常に差分が出る。検証 webhook は使わない
+  admissionWebhooks:
+    enabled: false
+  operator:
+    # 旧スタックの ServiceMonitor / PrometheusRule は変換しない (こちらは独立した系統として持つ)
+    disable_prometheus_converter: true
+
+# 既定のルールとダッシュボードを取得して VMRule / ConfigMap を作る Job。
+# Helm の post-install hook であり、Argo CD では PostSync hook として同期のたびに実行される
+syncJob:
+  enabled: true
+
+defaultRules:
+  enabled: true
+  rules:
+    # Argo Workflows の Pod を除外したカスタムルール (victoria/rules.yaml) を代わりに使う
+    KubePodNotReady:
+      enabled: false
+
+defaultDashboards:
+  enabled: true
+
+# --- exporter / スクレイプ対象 ---
+
+# 旧スタックの node-exporter がホストの 9100 番を使っているため、並行稼働中は 9101 番で動かす
+prometheus-node-exporter:
+  enabled: true
+  service:
+    port: 9101
+    targetPort: 9101
+  vmScrape:
+    spec:
+      # 同じ namespace にある旧スタックの node-exporter を拾わないよう、instance でも絞る
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus-node-exporter
+          app.kubernetes.io/instance: vm
+
+kube-state-metrics:
+  enabled: true
+
+kubelet:
+  enabled: true
+kubeApiServer:
+  enabled: true
+# チャートの coreDns は kube-system に Service を作る前提だが、overlay の namespace 指定で
+# nuage-monitoring-stack に移されて Pod を選べなくなるため、victoria/scrape-coredns.yaml の VMPodScrape で取る
+coreDns:
+  enabled: false
+
+# Talos では etcd / controller-manager / scheduler のメトリクスは 127.0.0.1 にバインドされ、
+# kube-proxy は Cilium で置き換えているため取らない (旧スタックと同じ)
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeDns:
+  enabled: false
+
+# --- 保存先 ---
+
+# TODO: TrueNAS の iSCSI (静的 PV) に移すまでは local-path に置く
+vmsingle:
+  enabled: true
+  spec:
+    retentionPeriod: "100y"
+    extraArgs:
+      # TrueNAS へ移すまではノードのディスクに置くため、空きが減ったら書き込みを止めてノードを守る
+      storage.minFreeDiskSpaceBytes: "20GB"
+    storage:
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 20Gi
+
+vlsingle:
+  enabled: true
+  spec:
+    retentionPeriod: "100y"
+    extraArgs:
+      # TrueNAS へ移すまではノードのディスクに置くため、空きが減ったら書き込みを止めてノードを守る
+      storage.minFreeDiskSpaceBytes: "20GB"
+    storage:
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 20Gi
+
+# --- 収集 ---
+
+vmagent:
+  # レプリカ b にも同じデータを書き込む
+  additionalRemoteWrites:
+    - url: http://vmsingle-vm-b.nuage-monitoring-stack.svc:8428/api/v1/write
+  spec:
+    scrapeInterval: 30s
+    # 送信先が止まっている間のキューを Pod の再起動で失わないよう、PVC に置く
+    statefulMode: true
+    statefulStorage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 5Gi
+
+# k8s のログ収集 (DaemonSet) と、クラスタ外からのログ投入 (journald / OpenTelemetry) の受け口を兼ねる。
+# キューはノードの hostPath (/var/lib/vlagent-data) に置かれるため、Pod の再起動では失われない
+vlagent:
+  enabled: true
+  additionalRemoteWrites:
+    - url: http://vlsingle-vm-b.nuage-monitoring-stack.svc:9428/insert/native
+  spec:
+    k8sCollector:
+      enabled: true
+    # control plane ノードのログも集める
+    tolerations:
+      - operator: Exists
+    extraArgs:
+      # 既定の _SYSTEMD_UNIT だと sshd@ の接続ごとに stream が分かれて増えるため、プロセス名でまとめる
+      journald.streamFields: _HOSTNAME,SYSLOG_IDENTIFIER
+
+# --- アラート ---
+
+vmalert:
+  enabled: true
+  # ALERTS などの書き込みを vmagent 経由にして、a と b の両方に残す
+  remoteWriteVMAgent: true
+  spec:
+    extraArgs:
+      # アラートから Grafana の Explore へのリンク。チャート既定は defaultDatasources.victoriametrics の
+      # 先頭を参照するが、それを空にしている (extra で定義している) ため明示する。値はチャート内で tpl を通る
+      external.alert.source: 'explore?left={"datasource":"VictoriaMetrics","queries":[{"expr":{{"{{"}} .Expr|jsonEscape|queryEscape {{"}}"}},"refId":"A"}],"range":{"from":"{{"{{"}} .ActiveAt.UnixMilli {{"}}"}}","to":"now"}}'
+    # アラート状態の復元も a/b のうち生きている方から読む
+    remoteRead:
+      url: http://vmauth-vm-internal.nuage-monitoring-stack.svc:8427
+
+# vmalert の datasource。チャート既定はレプリカ a だけを向くため、a/b の生きている方に振るよう上書きする
+internal:
+  vmauth:
+    spec:
+      port: "8427"
+      unauthorizedUserAccessSpec:
+        url_map:
+          - src_paths:
+              - /select/logsql/.*
+            url_prefix:
+              - http://vlsingle-vm.nuage-monitoring-stack.svc:9428/
+              - http://vlsingle-vm-b.nuage-monitoring-stack.svc:9428/
+            load_balancing_policy: first_available
+          - src_paths:
+              - /.*
+            url_prefix:
+              - http://vmsingle-vm.nuage-monitoring-stack.svc:8428/
+              - http://vmsingle-vm-b.nuage-monitoring-stack.svc:8428/
+            load_balancing_policy: first_available
+
+# 移行が済むまでは通知しない (旧スタックの Alertmanager と二重通知になるため)
+alertmanager:
+  enabled: true
+  config:
+    route:
+      receiver: blackhole
+    receivers:
+      - name: blackhole
+
+# --- 入口 ---
+
+# 外部向けの入口 (Grafana、lb の journald など)。
+# 読み取りは a/b のうち生きている方に振る。削除系 API は載せないことで通さない
+vmauth:
+  enabled: true
+  spec:
+    unauthorizedUserAccessSpec:
+      disabled: false
+      discover_backend_ips: false
+      url_map:
+        # メトリクスの参照
+        - src_paths:
+            - /api/v1/query.*
+            - /api/v1/series
+            - /api/v1/labels
+            - /api/v1/label/.*
+            - /api/v1/status/.*
+            - /api/v1/metadata
+            - /vmui.*
+          url_prefix:
+            - http://vmsingle-vm.nuage-monitoring-stack.svc:8428/
+            - http://vmsingle-vm-b.nuage-monitoring-stack.svc:8428/
+          load_balancing_policy: first_available
+        # ログの参照
+        - src_paths:
+            - /select/.*
+          url_prefix:
+            - http://vlsingle-vm.nuage-monitoring-stack.svc:9428/
+            - http://vlsingle-vm-b.nuage-monitoring-stack.svc:9428/
+          load_balancing_policy: first_available
+        # ログの投入。a と b の両方に書く必要があるため vlagent を経由する
+        - src_paths:
+            - /insert/.*
+          url_prefix:
+            - http://vlagent-vm.nuage-monitoring-stack.svc:9429/
+
+# --- Grafana ---
+
+# チャート既定のデータソースはレプリカ a を直接向くため使わず、extra で vmauth 経由のものを定義する
+defaultDatasources:
+  victoriametrics:
+    datasources: []
+  victorialogs:
+    datasources: []
+  extra:
+    - name: VictoriaMetrics
+      type: prometheus
+      uid: VictoriaMetrics
+      url: http://vmauth-vm.nuage-monitoring-stack.svc:8427/
+      access: proxy
+      isDefault: true
+      jsonData:
+        httpMethod: POST
+        timeInterval: 30s
+    # 既存のダッシュボード (grafana-dashboard-node-health など) が uid "prometheus" を参照しているための互換用
+    - name: Prometheus
+      type: prometheus
+      uid: prometheus
+      url: http://vmauth-vm.nuage-monitoring-stack.svc:8427/
+      access: proxy
+      isDefault: false
+      jsonData:
+        httpMethod: POST
+        timeInterval: 30s
+    - name: VictoriaLogs
+      type: victoriametrics-logs-datasource
+      uid: VictoriaLogs
+      url: http://vmauth-vm.nuage-monitoring-stack.svc:8427/
+      access: proxy
+      isDefault: false
+
+grafana:
+  enabled: true
+  # 描画のたびにランダムなパスワードが生成されて Argo CD で差分が出るのを防ぐため固定する (旧スタックの既定値と同じ)
+  adminPassword: prom-operator
+  plugins:
+    - victoriametrics-logs-datasource
+  sidecar:
+    datasources:
+      # 旧スタックの Grafana 用データソース (label grafana_datasource) を拾わないよう、別の label にする
+      label: grafana_datasource_vm
+      labelValue: "1"
+    dashboards:
+      # 既存のダッシュボード ConfigMap と同じ label。旧スタックと共通で読み込む
+      label: grafana_dashboard
+      labelValue: "1"
+  grafana.ini:
+    auth.anonymous:
+      enabled: true
+      org_name: "Main Org."
+      org_role: "Viewer"
+  vmScrape:
+    spec:
+      # 同じ namespace にある旧スタックの Grafana を拾わないよう、instance でも絞る
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: grafana
+          app.kubernetes.io/instance: vm

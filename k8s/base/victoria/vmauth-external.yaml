@@ -1,0 +1,16 @@
+# クラスタ外 (lb の journald など) から vmauth に届くようにする。
+# lb の HAProxy が :8427 をこの NodePort に中継する (nuage-cluster/nix/hosts/loadbalancer/haproxy.cfg)
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmauth-external
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: vmauth
+    app.kubernetes.io/instance: vm
+  ports:
+    - name: http
+      port: 8427
+      targetPort: 8427
+      nodePort: 30427

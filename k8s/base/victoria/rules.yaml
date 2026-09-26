@@ -1,0 +1,55 @@
+# 旧スタックの custom-prometheus-rules.yaml / loki-alerting-rules.yaml を Victoria 用に移したもの。
+# 旧スタック撤去までは両方に同じ内容を持つ
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: custom-kubernetes-apps-rules
+spec:
+  groups:
+    - name: custom-kubernetes-apps
+      rules:
+        # Argo Workflows のステップ Pod（owner_kind="Workflow"）が Error 状態で終了し、
+        # ログ保持目的で残存している場合に KubePodNotReady アラートが誤発報するのを防ぐため、
+        # 標準の owner_kind!="Job" に加えて owner_kind!~"Job|Workflow" を指定したカスタムルールを定義する。
+        - alert: KubePodNotReady
+          annotations:
+            description: Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-ready state for longer than 15 minutes on cluster {{ $labels.cluster }}.
+            runbook_url: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodnotready
+            summary: Pod has been in a non-ready state for more than 15 minutes.
+          expr: |-
+            sum by (namespace, pod, cluster) (
+              max by (namespace, pod, cluster) (
+                kube_pod_status_phase{job="kube-state-metrics", namespace=~".*", phase=~"Pending|Unknown|Failed"}
+              ) * on (namespace, pod, cluster) group_left(owner_kind) topk by (namespace, pod, cluster) (
+                1, max by (namespace, pod, owner_kind, cluster) (kube_pod_owner{owner_kind!~"Job|Workflow"})
+              )
+            ) > 0
+          for: 15m
+          labels:
+            severity: warning
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: k8s-error-logs
+spec:
+  groups:
+    - name: k8s-error-logs
+      type: vlogs
+      interval: 1m
+      rules:
+        - alert: KubernetesPodErrorLogs
+          # 除外パターン (False Positive 対策)。無害なログによる誤検知が発生した場合はここに NOT 条件を追記する。
+          # 1. gRPC ストリーム切断ログ (EOF)
+          #    argo-server の WatchWorkflows ストリーム終了時に error="rpc error: code = ResourceExhausted desc = EOF"
+          #    を含む Warning ログが出力され、誤検知が発生したため除外。
+          expr: |-
+            _time:5m kubernetes.pod_namespace:~"^(pechka|bare-web-proxy)$" ~"(?i)error"
+              NOT ~"(?i)code = ResourceExhausted desc = EOF"
+            | stats by (kubernetes.pod_namespace, kubernetes.pod_name, kubernetes.container_name) count() as errors
+            | filter errors:>0
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ index $labels \"kubernetes.pod_namespace\" }}/{{ index $labels \"kubernetes.pod_name\" }} でエラーログを検出した"
+            description: "container={{ index $labels \"kubernetes.container_name\" }} が過去5分間にエラーログを出力している。"

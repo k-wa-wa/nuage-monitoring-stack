@@ -1,0 +1,15 @@
+# kube-system の CoreDNS の Pod を直接スクレイプする
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: coredns
+spec:
+  jobLabel: k8s-app
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      k8s-app: kube-dns
+  podMetricsEndpoints:
+    - port: metrics
