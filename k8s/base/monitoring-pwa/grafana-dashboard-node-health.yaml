@@ -22,39 +22,39 @@ data:
           "type": "table",
           "title": "全ノード健全性",
           "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
           "targets": [
             {
               "refId": "A",
-              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
               "expr": "count by (instance, nodename) (label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(node_uname_info{job=~\"node-exporter|external-nodes\"}, \"nodename\", \"control-plane-1\", \"instance\", \"^10\\\\.20\\\\.1\\\\.11:9100$\"), \"nodename\", \"control-plane-2\", \"instance\", \"^10\\\\.20\\\\.1\\\\.12:9100$\"), \"nodename\", \"control-plane-3\", \"instance\", \"^10\\\\.20\\\\.1\\\\.13:9100$\"), \"nodename\", \"worker-1\", \"instance\", \"^10\\\\.20\\\\.1\\\\.16:9100$\"), \"nodename\", \"worker-2\", \"instance\", \"^10\\\\.20\\\\.1\\\\.17:9100$\"), \"nodename\", \"worker-3\", \"instance\", \"^10\\\\.20\\\\.1\\\\.18:9100$\"))",
               "format": "table",
               "instant": true
             },
             {
               "refId": "B",
-              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
               "expr": "sum by (instance) (up{job=~\"node-exporter|external-nodes\"})",
               "format": "table",
               "instant": true
             },
             {
               "refId": "C",
-              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
               "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{job=~\"node-exporter|external-nodes\",mode=\"idle\"}[5m])) * 100)",
               "format": "table",
               "instant": true
             },
             {
               "refId": "D",
-              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
               "expr": "100 - 100 * (sum by (instance) (node_memory_MemAvailable_bytes{job=~\"node-exporter|external-nodes\"}) / sum by (instance) (node_memory_MemTotal_bytes{job=~\"node-exporter|external-nodes\"}))",
               "format": "table",
               "instant": true
             },
             {
               "refId": "E",
-              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
               "expr": "100 - 100 * (sum by (instance) (node_filesystem_free_bytes{job=~\"node-exporter|external-nodes\",mountpoint=~\"^(/var|/)$\"}) / sum by (instance) (node_filesystem_size_bytes{job=~\"node-exporter|external-nodes\",mountpoint=~\"^(/var|/)$\"}))",
               "format": "table",
               "instant": true

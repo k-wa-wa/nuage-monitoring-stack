@@ -254,16 +254,6 @@ defaultDatasources:
       jsonData:
         httpMethod: POST
         timeInterval: 30s
-    # monitoring-pwa の grafana-dashboard-node-health が uid "prometheus" を参照しているための互換用
-    - name: Prometheus
-      type: prometheus
-      uid: prometheus
-      url: http://vmauth-vm.nuage-monitoring-stack.svc:8427/
-      access: proxy
-      isDefault: false
-      jsonData:
-        httpMethod: POST
-        timeInterval: 30s
     - name: VictoriaLogs
       type: victoriametrics-logs-datasource
       uid: VictoriaLogs
