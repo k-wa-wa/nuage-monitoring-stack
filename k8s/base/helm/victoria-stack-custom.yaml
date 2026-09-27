@@ -1,16 +1,10 @@
 # Victoria スタック (VictoriaMetrics + VictoriaLogs)。
-# 既存の kube-prometheus-stack / Loki とは独立した 1 系統として並行稼働させ、移行が済んだら旧スタックを撤去する。
-# exporter・スクレイプ設定・ルール・ダッシュボード・Grafana も旧スタックに頼らず、すべてこちらで持つ。
+# exporter・スクレイプ設定・ルール・ダッシュボード・Grafana をすべてこのスタックで持つ。
 #
 # 構成:
 # - VMSingle / VLSingle をレプリカ a (このチャートが作る "vm") と b (victoria/replica-b.yaml) の 2 台、別ノードに置く
 # - vmagent / vlagent は a と b の両方に書き込む。片方が止まっている間の分は永続キューに溜めて、復帰後に送る
 # - 読み取りは vmauth が a と b のうち生きている方に振る (first_available)。削除系 API は url_map に載せず通さない
-#
-# 旧スタック撤去時にやること:
-# - prometheus-node-exporter の port を 9100 に戻す
-# - alertmanager の通知先を pwa-notifier にする
-# - Grafana の Ingress をこちらの Grafana に向け、grafana.ini の root_url 等を旧 Grafana と揃える
 fullnameOverride: vm
 
 victoria-metrics-operator:
@@ -23,7 +17,7 @@ victoria-metrics-operator:
   admissionWebhooks:
     enabled: false
   operator:
-    # 旧スタックの ServiceMonitor / PrometheusRule は変換しない (こちらは独立した系統として持つ)
+    # Prometheus Operator の CRD (ServiceMonitor / PrometheusRule) は使わない。取得対象・ルールは VM の CR で持つ
     disable_prometheus_converter: true
 
 # 既定のルールとダッシュボードを取得して VMRule / ConfigMap を作る Job。
@@ -43,19 +37,8 @@ defaultDashboards:
 
 # --- exporter / スクレイプ対象 ---
 
-# 旧スタックの node-exporter がホストの 9100 番を使っているため、並行稼働中は 9101 番で動かす
 prometheus-node-exporter:
   enabled: true
-  service:
-    port: 9101
-    targetPort: 9101
-  vmScrape:
-    spec:
-      # 同じ namespace にある旧スタックの node-exporter を拾わないよう、instance でも絞る
-      selector:
-        matchLabels:
-          app.kubernetes.io/name: prometheus-node-exporter
-          app.kubernetes.io/instance: vm
 
 kube-state-metrics:
   enabled: true
@@ -70,7 +53,7 @@ coreDns:
   enabled: false
 
 # Talos では etcd / controller-manager / scheduler のメトリクスは 127.0.0.1 にバインドされ、
-# kube-proxy は Cilium で置き換えているため取らない (旧スタックと同じ)
+# kube-proxy は Cilium で置き換えているため取らない
 kubeEtcd:
   enabled: false
 kubeControllerManager:
@@ -181,14 +164,40 @@ internal:
               - http://vmsingle-vm-b.nuage-monitoring-stack.svc:8428/
             load_balancing_policy: first_available
 
-# 移行が済むまでは通知しない (旧スタックの Alertmanager と二重通知になるため)
+# pwa-notifier (monitoring-pwa の Web Push) へ通知する。
+# pwa-notifier は有効な VAPID キーペア (pwa-notifier-secret) が用意されている前提である。
+# チャート既定の config を丸ごと置き換える。
 alertmanager:
   enabled: true
   config:
+    global:
+      resolve_timeout: 5m
     route:
-      receiver: blackhole
+      receiver: pwa-notifier
+      group_by: ["alertname"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        # Watchdog は死活監視用の常時発火アラートであり、通知しない
+        # InfoInhibitor は info の抑止用の内部アラートであり、通知しない
+        - receiver: "null"
+          matchers:
+            - alertname=~"Watchdog|InfoInhibitor"
+    inhibit_rules:
+      # InfoInhibitor が発火している間は info レベルを抑止する (kube-prometheus の既定と同じ)
+      - target_matchers:
+          - severity=info
+        source_matchers:
+          - alertname=InfoInhibitor
+        equal:
+          - namespace
     receivers:
-      - name: blackhole
+      - name: pwa-notifier
+        webhook_configs:
+          - url: http://monitoring-pwa-backend.nuage-monitoring-stack.svc.cluster.local/webhook/alertmanager
+            send_resolved: true
+      - name: "null"
 
 # --- 入口 ---
 
@@ -245,7 +254,7 @@ defaultDatasources:
       jsonData:
         httpMethod: POST
         timeInterval: 30s
-    # 既存のダッシュボード (grafana-dashboard-node-health など) が uid "prometheus" を参照しているための互換用
+    # monitoring-pwa の grafana-dashboard-node-health が uid "prometheus" を参照しているための互換用
     - name: Prometheus
       type: prometheus
       uid: prometheus
@@ -264,28 +273,25 @@ defaultDatasources:
 
 grafana:
   enabled: true
-  # 描画のたびにランダムなパスワードが生成されて Argo CD で差分が出るのを防ぐため固定する (旧スタックの既定値と同じ)
+  # 描画のたびにランダムなパスワードが生成されて Argo CD で差分が出るのを防ぐため固定する
   adminPassword: prom-operator
   plugins:
     - victoriametrics-logs-datasource
   sidecar:
     datasources:
-      # 旧スタックの Grafana 用データソース (label grafana_datasource) を拾わないよう、別の label にする
-      label: grafana_datasource_vm
+      label: grafana_datasource
       labelValue: "1"
     dashboards:
-      # 既存のダッシュボード ConfigMap と同じ label。旧スタックと共通で読み込む
+      # monitoring-pwa の node-health ダッシュボード (label grafana_dashboard) も読み込む
       label: grafana_dashboard
       labelValue: "1"
   grafana.ini:
+    server:
+      root_url: "https://monitoring.wpcapp.net/grafana/"
+      serve_from_sub_path: true
+    security:
+      allow_embedding: true
     auth.anonymous:
       enabled: true
       org_name: "Main Org."
       org_role: "Viewer"
-  vmScrape:
-    spec:
-      # 同じ namespace にある旧スタックの Grafana を拾わないよう、instance でも絞る
-      selector:
-        matchLabels:
-          app.kubernetes.io/name: grafana
-          app.kubernetes.io/instance: vm

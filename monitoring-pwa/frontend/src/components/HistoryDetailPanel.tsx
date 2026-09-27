@@ -1,11 +1,11 @@
-import { rewriteGeneratorUrl, getLokiUrl } from '../utils/url'
+import { rewriteGeneratorUrl, getLogsUrl } from '../utils/url'
 
 interface HistoryDetailPanelProps {
 	details: string
 	grafanaBase: string
 }
 
-// HistoryDetailPanel コンポーネントである。エラー履歴の詳細やLokiログリンクを表示する。
+// HistoryDetailPanel コンポーネントである。エラー履歴の詳細やVictoriaLogsのログリンクを表示する。
 export default function HistoryDetailPanel({ details, grafanaBase }: HistoryDetailPanelProps) {
 	try {
 		const parsed = JSON.parse(details) as {
@@ -15,7 +15,7 @@ export default function HistoryDetailPanel({ details, grafanaBase }: HistoryDeta
 		}
 
 		if (parsed.labels || parsed.annotations) {
-			const lokiUrl = getLokiUrl(parsed.labels || {}, grafanaBase)
+			const logsUrl = getLogsUrl(parsed.labels || {}, grafanaBase)
 			return (
 				<div className="details-parsed">
 					{parsed.labels && (
@@ -56,14 +56,14 @@ export default function HistoryDetailPanel({ details, grafanaBase }: HistoryDeta
 								Prometheusで確認
 							</a>
 						)}
-						{lokiUrl && (
+						{logsUrl && (
 							<a
-								href={lokiUrl}
+								href={logsUrl}
 								target="_blank"
 								rel="noopener noreferrer"
 								className="btn btn-primary btn-sm"
 							>
-								Lokiのログを確認 (Grafana)
+								ログを確認 (Grafana)
 							</a>
 						)}
 					</div>

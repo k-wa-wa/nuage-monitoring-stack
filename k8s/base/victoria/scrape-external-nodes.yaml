@@ -1,5 +1,4 @@
-# クラスタ外の NixOS ホストの node-exporter。
-# kube-prometheus-stack の additionalScrapeConfigs (external-nodes) と同じ対象である
+# クラスタ外の NixOS ホストの node-exporter
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMStaticScrape
 metadata:

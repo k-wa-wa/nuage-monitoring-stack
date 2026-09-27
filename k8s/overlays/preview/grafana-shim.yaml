@@ -1,4 +1,4 @@
-# preview には kube-prometheus-stack を入れないため、Ingress の /grafana は
+# preview には Victoria スタックを入れないため、Ingress の /grafana は
 # prod namespace の Grafana 実体へ同名Serviceで転送する (pechka の minio-shim と同じ手口)。
 #
 # 注意: prod の Grafana は root_url が https://monitoring.wpcapp.net/grafana/ 前提のため、
@@ -7,10 +7,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: kube-prometheus-stack-grafana
+  name: vm-grafana
 spec:
   type: ExternalName
-  externalName: kube-prometheus-stack-grafana.nuage-monitoring-stack.svc.cluster.local
+  externalName: vm-grafana.nuage-monitoring-stack.svc.cluster.local
   ports:
     - port: 80
       targetPort: 3000

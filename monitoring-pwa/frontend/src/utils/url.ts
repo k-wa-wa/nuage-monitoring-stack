@@ -4,33 +4,30 @@ export const rewriteGeneratorUrl = (url: string, base: string) => {
 	return url.replace(/http:\/\/.*\.svc\.cluster\.local(:\d+)?/, `${base}/grafana`)
 }
 
-// LabelsからLokiログリンク（Grafana Explore）を生成する。
-export const getLokiUrl = (labels: Record<string, string>, base: string) => {
+// LabelsからVictoriaLogsのログリンク（Grafana Explore）を生成する。
+// アラートのラベル (namespace / pod / container) を VictoriaLogs の Kubernetes メタデータのフィールドに対応させる。
+export const getLogsUrl = (labels: Record<string, string>, base: string) => {
 	if (!labels) return null
 	const parts: string[] = []
 	if (labels.namespace) {
-		parts.push(`namespace="${labels.namespace}"`)
+		parts.push(`kubernetes.pod_namespace:="${labels.namespace}"`)
 	}
 	if (labels.pod) {
-		parts.push(`pod="${labels.pod}"`)
+		parts.push(`kubernetes.pod_name:="${labels.pod}"`)
 	} else if (labels.app) {
-		parts.push(`app="${labels.app}"`)
+		parts.push(`kubernetes.pod_labels.app:="${labels.app}"`)
 	}
 	if (labels.container) {
-		parts.push(`container="${labels.container}"`)
+		parts.push(`kubernetes.container_name:="${labels.container}"`)
 	}
 
 	if (parts.length === 0) return null
 
-	const logql = `{${parts.join(', ')}}`
-	const exploreState = [
-		'now-1h',
-		'now',
-		'Loki',
-		{
-			expr: logql
-		}
-	]
+	const exploreState = {
+		datasource: 'VictoriaLogs',
+		queries: [{ refId: 'A', expr: parts.join(' ') }],
+		range: { from: 'now-1h', to: 'now' }
+	}
 	const encoded = encodeURIComponent(JSON.stringify(exploreState))
 	return `${base}/grafana/explore?left=${encoded}`
 }

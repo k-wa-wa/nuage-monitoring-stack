@@ -1,5 +1,6 @@
-# 旧スタックの custom-prometheus-rules.yaml / loki-alerting-rules.yaml を Victoria 用に移したもの。
-# 旧スタック撤去までは両方に同じ内容を持つ
+# カスタムのアラートルール。
+# - custom-kubernetes-apps-rules: 既定の KubePodNotReady を置き換えるカスタム版
+# - k8s-error-logs: Pod のエラーログ検知 (VictoriaLogs)
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
@@ -49,10 +50,11 @@ spec:
           expr: |-
             _time:5m kubernetes.pod_namespace:~"^(pechka|bare-web-proxy)$" ~"(?i)error"
               NOT ~"(?i)code = ResourceExhausted desc = EOF"
-            | stats by (kubernetes.pod_namespace, kubernetes.pod_name, kubernetes.container_name) count() as errors
+            | rename kubernetes.pod_namespace as namespace, kubernetes.pod_name as pod, kubernetes.container_name as container
+            | stats by (namespace, pod, container) count() as errors
             | filter errors:>0
           labels:
             severity: warning
           annotations:
-            summary: "{{ index $labels \"kubernetes.pod_namespace\" }}/{{ index $labels \"kubernetes.pod_name\" }} でエラーログを検出した"
-            description: "container={{ index $labels \"kubernetes.container_name\" }} が過去5分間にエラーログを出力している。"
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} でエラーログを検出した"
+            description: "container={{ $labels.container }} が過去5分間にエラーログを出力している。"
