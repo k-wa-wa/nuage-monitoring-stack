@@ -25,9 +25,3 @@ spec:
       labels:
         role: postgres-cluster
       interval: 30s
-    - targets:
-        - 10.20.1.71:9100
-        - 10.20.1.72:9100
-      labels:
-        role: minio-cluster
-      interval: 30s
