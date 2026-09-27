@@ -11,7 +11,9 @@ spec:
         # Argo Workflows のステップ Pod（owner_kind="Workflow"）が Error 状態で終了し、
         # ログ保持目的で残存している場合に KubePodNotReady アラートが誤発報するのを防ぐため、
         # 標準の owner_kind!="Job" に加えて owner_kind!~"Job|Workflow" を指定したカスタムルールを定義する。
+        # record: "" は CRD の既定値。省略すると実機との差分が残って Argo CD が OutOfSync のままになるため明示する
         - alert: KubePodNotReady
+          record: ""
           annotations:
             description: Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-ready state for longer than 15 minutes on cluster {{ $labels.cluster }}.
             runbook_url: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodnotready
@@ -39,6 +41,7 @@ spec:
       interval: 1m
       rules:
         - alert: KubernetesPodErrorLogs
+          record: ""
           # 除外パターン (False Positive 対策)。無害なログによる誤検知が発生した場合はここに NOT 条件を追記する。
           # 1. gRPC ストリーム切断ログ (EOF)
           #    argo-server の WatchWorkflows ストリーム終了時に error="rpc error: code = ResourceExhausted desc = EOF"
