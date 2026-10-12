@@ -1,21 +1,27 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/alertmanager"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 )
 
 // HistoryHandler は通知履歴 API のリクエストを処理する構造体である。
 type HistoryHandler struct {
-	db *push.DB
+	db       *push.DB
+	amClient *alertmanager.Client
 }
 
-func NewHistoryHandler(db *push.DB) *HistoryHandler {
-	return &HistoryHandler{db: db}
+func NewHistoryHandler(db *push.DB, amClient *alertmanager.Client) *HistoryHandler {
+	return &HistoryHandler{
+		db:       db,
+		amClient: amClient,
+	}
 }
 
 // History はデータベースに保存された通知履歴を取得する。
@@ -43,11 +49,12 @@ func (h *HistoryHandler) History(c echo.Context) error {
 	return c.JSON(http.StatusOK, notes)
 }
 
-// ActiveAlerts は現在 firing 状態のアラート一覧を取得する。
+// ActiveAlerts は現在 firing 状態のアラート一覧を Alertmanager からリアルタイム取得する。
 func (h *HistoryHandler) ActiveAlerts(c echo.Context) error {
-	alerts, err := h.db.ListActiveAlerts()
+	alerts, err := h.amClient.GetActiveAlerts(c.Request().Context())
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch active alerts")
+		slog.Error("failed to fetch active alerts from alertmanager", "error", err)
+		return c.JSON(http.StatusOK, []push.Alert{})
 	}
 
 	if alerts == nil {

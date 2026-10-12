@@ -27,6 +27,8 @@ spec:
               value: "8080"
             - name: DB_PATH
               value: "/data/monitoring-pwa.db"
+            - name: ALERTMANAGER_URL
+              value: "http://vmalertmanager-vm:9093"
             - name: VAPID_PUBLIC_KEY
               valueFrom:
                 secretKeyRef:

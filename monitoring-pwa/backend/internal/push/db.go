@@ -135,6 +135,10 @@ func (db *DB) migrate() error {
 		}
 	}
 
+	// 過去の取りこぼしアラート（firing のまま残存していたゴーストアラート）を resolved に更新する。
+	// アクティブアラートは Alertmanager API からリアルタイム取得するため、DB 上の未解決レコードを解消する。
+	_, _ = db.conn.Exec(`UPDATE alerts SET status = 'resolved', level = 'success', resolved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE status = 'firing'`)
+
 	return nil
 }
 

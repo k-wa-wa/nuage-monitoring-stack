@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/alertmanager"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/config"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/handler"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
@@ -30,11 +31,12 @@ func main() {
 	}
 	defer db.Close()
 
+	amClient := alertmanager.NewClient(cfg.AlertmanagerURL)
 	sender := push.NewSender(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, db)
 
 	subscribeH := handler.NewSubscribeHandler(cfg.VAPIDPublicKey, db)
 	webhookH := handler.NewWebhookHandler(sender, db)
-	historyH := handler.NewHistoryHandler(db)
+	historyH := handler.NewHistoryHandler(db, amClient)
 
 	e := echo.New()
 	e.HideBanner = true
