@@ -853,3 +853,57 @@ body {
   }
 }
 
+/* 履歴パネルヘッダー & フィルターボタングループ */
+.history-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.filter-pill-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--bg-canvas);
+  padding: 2px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-weak);
+}
+
+.filter-pill {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  font-family: inherit;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.filter-pill:hover {
+  color: var(--text-primary);
+  background: rgba(204, 204, 220, 0.08);
+}
+
+.filter-pill.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+}
+
+.filter-pill.pill-firing {
+  color: var(--error-text);
+}
+
+.filter-pill.pill-firing.active {
+  border-color: rgba(209, 14, 92, 0.4);
+  color: var(--error-text);
+  background: rgba(209, 14, 92, 0.1);
+}
+

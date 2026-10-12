@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Activity, History, Settings as SettingsIcon } from 'lucide-react'
 import Dashboard from './components/Dashboard'
 import Settings from './components/Settings'
 import HistoryItem from './components/HistoryItem'
-import ActiveAlerts from './components/ActiveAlerts'
 import type { AlertItem } from './types/alert'
 
 export default function App() {
@@ -21,10 +20,34 @@ export default function App() {
 	const [online, setOnline] = useState(navigator.onLine)
 	const [activeAlerts, setActiveAlerts] = useState<AlertItem[]>([])
 	const [alertHistory, setAlertHistory] = useState<AlertItem[]>([])
+	const [historyFilter, setHistoryFilter] = useState<'all' | 'firing' | 'resolved'>('all')
 	const [isSubscribed, setIsSubscribed] = useState(false)
 	const [submitting, setSubmitting] = useState(false)
 	const [logs, setLogs] = useState<string[]>([])
 	const [copied, setCopied] = useState(false)
+
+	// 現在発生中のアラートと履歴アラートをマージする。
+	const mergedAlerts = useMemo(() => {
+		const activeFpSet = new Set(activeAlerts.map((a) => a.fingerprint))
+		// alertHistory のうち、activeAlerts と重複しないものだけを残す
+		const filteredHistory = alertHistory.filter((h) => !activeFpSet.has(h.fingerprint))
+		// 発生中（firing）を先頭、続いて過去の解決済み履歴を配置する
+		return [...activeAlerts, ...filteredHistory]
+	}, [activeAlerts, alertHistory])
+
+	// 選択されたフィルターに応じて表示用アラートを絞り込む。
+	const displayedAlerts = useMemo(() => {
+		if (historyFilter === 'firing') {
+			return mergedAlerts.filter((a) => a.status === 'firing')
+		}
+		if (historyFilter === 'resolved') {
+			return mergedAlerts.filter((a) => a.status === 'resolved')
+		}
+		return mergedAlerts
+	}, [mergedAlerts, historyFilter])
+
+	const firingCount = useMemo(() => mergedAlerts.filter((a) => a.status === 'firing').length, [mergedAlerts])
+	const resolvedCount = useMemo(() => mergedAlerts.filter((a) => a.status === 'resolved').length, [mergedAlerts])
 
 	// ローカル開発時に別ポートで動くバックエンドを指すように、Viteの環境変数でURLを定義する。
 	const apiBase = import.meta.env.DEV ? 'http://localhost:8080' : ''
@@ -101,7 +124,7 @@ export default function App() {
 				setActiveTab('history')
 				setExpandedId(id)
 
-				if (history.length > 0) {
+				if (mergedAlerts.length > 0) {
 					setTimeout(() => {
 						const el = document.getElementById(`history-item-${id}`)
 						if (el) {
@@ -111,7 +134,7 @@ export default function App() {
 				}
 			}
 		}
-	}, [history])
+	}, [mergedAlerts])
 
 	// 戻る・進むボタンのイベント（popstate）を監視して state を同期する。
 	useEffect(() => {
@@ -284,36 +307,59 @@ export default function App() {
 				)}
 
 				{activeTab === 'history' && (
-					<>
-						<ActiveAlerts alerts={activeAlerts} />
-						<div className="card">
-							<div className="panel-header">
-								<h2 className="panel-title">
-									<History size={16} />
-									アラート履歴 (スレッド)
-								</h2>
-							</div>
-							<div className="history-list">
-								{alertHistory.length === 0 ? (
-									<div className="empty-state">履歴は存在しない。</div>
-								) : (
-									alertHistory.map((item) => (
-										<HistoryItem
-											key={item.id}
-											item={item}
-											isExpanded={expandedId === item.id}
-											onToggle={() => {
-												const nextId = expandedId === item.id ? null : item.id
-												setExpandedId(nextId)
-												navigateTo('history', nextId ? `/${nextId}` : '')
-											}}
-											grafanaBase={grafanaBase}
-										/>
-									))
-								)}
+					<div className="card">
+						<div className="panel-header history-panel-header">
+							<h2 className="panel-title">
+								<History size={16} />
+								アラート履歴 (スレッド)
+							</h2>
+							<div className="filter-pill-group">
+								<button
+									className={`filter-pill ${historyFilter === 'all' ? 'active' : ''}`}
+									onClick={() => setHistoryFilter('all')}
+								>
+									すべて ({mergedAlerts.length})
+								</button>
+								<button
+									className={`filter-pill ${historyFilter === 'firing' ? 'active' : ''} ${firingCount > 0 ? 'pill-firing' : ''}`}
+									onClick={() => setHistoryFilter('firing')}
+								>
+									発生中 ({firingCount})
+								</button>
+								<button
+									className={`filter-pill ${historyFilter === 'resolved' ? 'active' : ''}`}
+									onClick={() => setHistoryFilter('resolved')}
+								>
+									解決済み ({resolvedCount})
+								</button>
 							</div>
 						</div>
-					</>
+						<div className="history-list">
+							{displayedAlerts.length === 0 ? (
+								<div className="empty-state">
+									{historyFilter === 'firing'
+										? '現在発生中のアラートは存在しない。'
+										: historyFilter === 'resolved'
+										? '解決済みのアラートは存在しない。'
+										: '履歴は存在しない。'}
+								</div>
+							) : (
+								displayedAlerts.map((item) => (
+									<HistoryItem
+										key={item.id}
+										item={item}
+										isExpanded={expandedId === item.id}
+										onToggle={() => {
+											const nextId = expandedId === item.id ? null : item.id
+											setExpandedId(nextId)
+											navigateTo('history', nextId ? `/${nextId}` : '')
+										}}
+										grafanaBase={grafanaBase}
+									/>
+								))
+							)}
+						</div>
+					</div>
 				)}
 
 				{activeTab === 'settings' && (
