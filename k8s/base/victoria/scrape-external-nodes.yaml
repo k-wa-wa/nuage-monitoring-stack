@@ -1,4 +1,7 @@
-# クラスタ外の NixOS ホストの node-exporter
+# クラスタ外の NixOS ホストの node-exporter。
+# TODO:
+# - 追加したホスト (swfs-cluster-1/2/3, mainframe) の勘定を nuage-usage-ledger の mvs/cntl/ACCTDEF に登録する
+# - autopilot-server (10.20.1.51), bluray-extractor (10.20.1.80), chaos-monitor (10.20.1.250) への node-exporter 導入と追加を検討する
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMStaticScrape
 metadata:
@@ -24,4 +27,16 @@ spec:
         - 10.20.1.43:9100
       labels:
         role: postgres-cluster
+      interval: 30s
+    - targets:
+        - 10.20.1.61:9100
+        - 10.20.1.62:9100
+        - 10.20.1.63:9100
+      labels:
+        role: swfs-cluster
+      interval: 30s
+    - targets:
+        - 10.20.1.90:9100
+      labels:
+        role: mainframe
       interval: 30s

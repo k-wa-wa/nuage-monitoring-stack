@@ -1,6 +1,7 @@
 # カスタムのアラートルール。
 # - custom-kubernetes-apps-rules: 既定の KubePodNotReady を置き換えるカスタム版
-# - k8s-error-logs: Pod のエラーログ検知 (VictoriaLogs)
+# - external-nodes-rules: クラスタ外の NixOS ホスト (job="external-nodes") の systemd 失敗・MVS バッチジョブ失敗検知
+# - k8s-error-logs: Pod のエラーログ検知およびホスト journald の systemd 失敗検知 (VictoriaLogs)
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
@@ -34,6 +35,63 @@ spec:
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
+  name: external-nodes-rules
+spec:
+  groups:
+    - name: external-nodes
+      rules:
+        # 既定の NodeSystemdServiceFailed / NodeSystemdServiceCrashlooping は job="node-exporter" (k8s ノード) のみが対象のため、
+        # VMStaticScrape (job="external-nodes") で収集する NixOS ホスト向けのルールを定義する
+        - alert: NodeSystemdServiceFailed
+          record: ""
+          annotations:
+            description: Systemd service {{ $labels.name }} has entered failed state at {{ $labels.instance }}
+            runbook_url: https://runbooks.prometheus-operator.dev/runbooks/node/nodesystemdservicefailed
+            summary: Systemd service has entered failed state.
+          expr: node_systemd_unit_state{job="external-nodes",state="failed"} == 1
+          for: 5m
+          labels:
+            severity: warning
+        - alert: NodeSystemdServiceCrashlooping
+          record: ""
+          annotations:
+            description: Systemd service {{ $labels.name }} has being restarted too many times at {{ $labels.instance }} for the last 15 minutes. Please check if service is crash looping.
+            runbook_url: https://runbooks.prometheus-operator.dev/runbooks/node/nodesystemdservicecrashlooping
+            summary: Systemd service keeps restarting, possibly crash looping.
+          expr: increase(node_systemd_service_restart_total{job="external-nodes"}[5m]) > 2
+          for: 15m
+          labels:
+            severity: warning
+        # mainframe の MVS バッチジョブの失敗・未実行検知。
+        # LEDGER の GET ステップ RC 4 (締める日が無い) と MVSLCAT の RC 4 (未作成データセットの確認) は正常終了として扱う
+        - alert: MvsJobFailed
+          record: ""
+          annotations:
+            summary: "MVS ジョブ {{ $labels.job_name }} が失敗した (RC={{ $value }})"
+            description: "mainframe ({{ $labels.instance }}) の MVS ジョブ {{ $labels.job_name }} の直近の実行が異常終了した (RC={{ $value }})。"
+          expr: |-
+            mvs_job_last_rc{job_name!~"LEDGER|MVSLCAT"} > 0
+            or
+            (mvs_job_last_rc{job_name="LEDGER"} > 0 and mvs_job_last_rc{job_name="LEDGER"} != 4)
+            or
+            mvs_job_last_rc{job_name="MVSLCAT"} > 4
+          for: 1m
+          labels:
+            severity: warning
+        - alert: MvsJobNotRun
+          record: ""
+          annotations:
+            summary: "MVS 日次ジョブ {{ $labels.job_name }} が 26 時間以上成功していない"
+            description: "mainframe ({{ $labels.instance }}) の MVS 日次ジョブ {{ $labels.job_name }} が最後の成功から 26 時間以上経過している。ZTIMER または Hercules の状態を確認すること。"
+          expr: |-
+            time() - mvs_job_last_success_timestamp_seconds{job_name=~"USAGERPT|LEDGER"} > 26 * 3600
+          for: 5m
+          labels:
+            severity: warning
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
   name: k8s-error-logs
 spec:
   groups:
@@ -58,3 +116,22 @@ spec:
           annotations:
             summary: "{{ $labels.namespace }}/{{ $labels.pod }} でエラーログを検出した"
             description: "container={{ $labels.container }} が過去5分間にエラーログを出力している。"
+        - alert: HostSystemdUnitFailed
+          record: ""
+          # ホストの journald から systemd ユニットの失敗ログを検知する (メトリクス経路とは独立した保険)。
+          # 除外パターン (False Positive 対策):
+          # 1. systemd-journal-upload.service: 送信先 (LB / vmauth) の瞬断時に exit-code で終了し、
+          #    Restart=always で即座に自動復旧するため除外する。
+          # 2. serial-getty@ttyS0.service: シリアルデバイスを持たない VM で起動試行・失敗するため除外する。
+          # 3. sshd-keygen.service: 初回起動時の鍵生成前後の過渡的な失敗を除外する。
+          expr: |-
+            _time:5m SYSLOG_IDENTIFIER:systemd "Failed with result"
+              NOT UNIT:~"^(systemd-journal-upload|serial-getty@ttyS0|sshd-keygen)\\.service$"
+            | rename _HOSTNAME as host, UNIT as unit, UNIT_RESULT as result
+            | stats by (host, unit, result) count() as failures
+            | filter failures:>0
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.host }} の {{ $labels.unit }} が失敗した ({{ $labels.result }})"
+            description: "ホスト {{ $labels.host }} で systemd ユニット {{ $labels.unit }} が Failed with result '{{ $labels.result }}' を出力した。"
