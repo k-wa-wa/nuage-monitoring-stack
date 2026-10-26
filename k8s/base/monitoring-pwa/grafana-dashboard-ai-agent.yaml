@@ -851,13 +851,13 @@ data:
         {
           "id": 13,
           "type": "table",
-          "title": "作業タスク・PR 実行実績テーブル (全期間累計)",
+          "title": "完了済み autopilot 実績テーブル (全期間累計)",
           "description": "autopilot の全期間累計実行実績（PR・タスク・担当・結果・実行回数）",
           "gridPos": {
             "h": 9,
             "w": 24,
             "x": 0,
-            "y": 20
+            "y": 26
           },
           "datasource": {
             "type": "prometheus",
@@ -995,6 +995,212 @@ data:
                   {
                     "id": "custom.width",
                     "value": 110
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "center"
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true
+          }
+        },
+        {
+          "id": 17,
+          "type": "table",
+          "title": "現在自走中の autopilot タスク (リアルタイム)",
+          "description": "現在実行中の autopilot セッション（リポジトリ、ブランチ、PR、現在の作業フェーズ、タスク名、担当、実行レベル）",
+          "gridPos": {
+            "h": 6,
+            "w": 24,
+            "x": 0,
+            "y": 20
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "max by (repo, branch, pr, phase, task, impl, level) (nuage_ai_agent_autopilot_active == 1)",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true
+                },
+                "indexByName": {
+                  "repo": 0,
+                  "branch": 1,
+                  "pr": 2,
+                  "phase": 3,
+                  "task": 4,
+                  "impl": 5,
+                  "level": 6
+                },
+                "renameByName": {
+                  "repo": "リポジトリ",
+                  "branch": "ブランチ",
+                  "pr": "PR 番号",
+                  "phase": "進行中フェーズ",
+                  "task": "タスク名",
+                  "impl": "担当",
+                  "level": "レベル"
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "進行中フェーズ"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "center"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "implementing": {
+                            "text": "実装中 (implementing)",
+                            "color": "blue"
+                          },
+                          "reviewing": {
+                            "text": "レビュー中 (reviewing)",
+                            "color": "purple"
+                          },
+                          "fixing": {
+                            "text": "修正中 (fixing)",
+                            "color": "orange"
+                          },
+                          "waiting_ci": {
+                            "text": "CI 待ち (waiting_ci)",
+                            "color": "yellow"
+                          },
+                          "summarizing": {
+                            "text": "要約中 (summarizing)",
+                            "color": "green"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "gradient"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "PR 番号"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "center"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "リポジトリ"
+                },
+                "properties": [
+                  {
+                    "id": "custom.minWidth",
+                    "value": 140
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ブランチ"
+                },
+                "properties": [
+                  {
+                    "id": "custom.minWidth",
+                    "value": 180
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "タスク名"
+                },
+                "properties": [
+                  {
+                    "id": "custom.minWidth",
+                    "value": 260
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "担当"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "center"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "レベル"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 80
                   },
                   {
                     "id": "custom.align",
