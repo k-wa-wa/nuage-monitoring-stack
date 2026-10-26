@@ -35,3 +35,12 @@ patches:
       kind: ConfigMap
       metadata:
         name: grafana-dashboard-node-health
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboard-ai-agent
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-ai-agent
