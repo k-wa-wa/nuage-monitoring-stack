@@ -24,12 +24,12 @@ data:
       "schemaVersion": 39,
       "panels": [
         {
-          "id": 1,
+          "id": 14,
           "type": "stat",
-          "title": "今日の総トークン消費量",
+          "title": "今日の総推定コスト (USD)",
           "gridPos": {
             "h": 4,
-            "w": 4,
+            "w": 3,
             "x": 0,
             "y": 0
           },
@@ -44,7 +44,144 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_tokens_total[1d]))",
+              "expr": "sum(increase(nuage_ai_agent_cost_usd_total[1d])) or vector(0)",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 2,
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 50
+                  },
+                  {
+                    "color": "red",
+                    "value": 100
+                  }
+                ]
+              },
+              "unit": "currencyUSD"
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "description": "rates.yaml で定義されたモデル単価に基づく累積推定コスト。"
+        },
+        {
+          "id": 16,
+          "type": "stat",
+          "title": "コスト未算定トークン",
+          "description": "rates.yaml に単価が定義されていないモデルの直近 1 日のトークン量。0 であれば全モデルのコストが計算されている。",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 3,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\",model!~\".*(opus|sonnet|haiku|flash|argon|gpt-oss).*\"}[1d])) or vector(0)",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 100000
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          }
+        },
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "今日の総トークン消費量",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 6,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d]))",
               "instant": true
             }
           ],
@@ -69,7 +206,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -88,8 +225,8 @@ data:
           "title": "今日の入力トークン",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 4,
+            "w": 3,
+            "x": 9,
             "y": 0
           },
           "datasource": {
@@ -128,7 +265,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -147,8 +284,8 @@ data:
           "title": "今日の出力トークン",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 8,
+            "w": 3,
+            "x": 12,
             "y": 0
           },
           "datasource": {
@@ -187,7 +324,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -206,8 +343,8 @@ data:
           "title": "今日のキャッシュ読込",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 12,
+            "w": 3,
+            "x": 15,
             "y": 0
           },
           "datasource": {
@@ -246,7 +383,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -265,8 +402,8 @@ data:
           "title": "今日の総セッション数",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 16,
+            "w": 3,
+            "x": 18,
             "y": 0
           },
           "datasource": {
@@ -305,7 +442,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -324,8 +461,8 @@ data:
           "title": "今日の autopilot 完走回数",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 20,
+            "w": 3,
+            "x": 21,
             "y": 0
           },
           "datasource": {
@@ -364,7 +501,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -398,7 +535,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (model) (rate(nuage_ai_agent_tokens_total[5m])) * 60",
+              "expr": "sum by (model) (rate(nuage_ai_agent_tokens_total{type!=\"thinking\"}[5m])) * 60",
               "legendFormat": "{{model}}"
             }
           ],
@@ -453,7 +590,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (repo) (rate(nuage_ai_agent_tokens_total[5m])) * 60",
+              "expr": "sum by (repo) (rate(nuage_ai_agent_tokens_total{type!=\"thinking\"}[5m])) * 60",
               "legendFormat": "{{repo}}"
             }
           ],
@@ -490,7 +627,7 @@ data:
         {
           "id": 9,
           "type": "timeseries",
-          "title": "コンテキスト別推移 (Portal vs Autopilot)",
+          "title": "作業フェーズ別推移 (Tokens / 5m by Phase)",
           "gridPos": {
             "h": 8,
             "w": 8,
@@ -508,8 +645,8 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (context) (rate(nuage_ai_agent_tokens_total[5m])) * 60",
-              "legendFormat": "{{context}}"
+              "expr": "sum by (phase) (rate(nuage_ai_agent_tokens_total{type!=\"thinking\"}[5m])) * 60",
+              "legendFormat": "{{phase}}"
             }
           ],
           "fieldConfig": {
@@ -548,7 +685,7 @@ data:
           "title": "モデル別トークン内訳",
           "gridPos": {
             "h": 8,
-            "w": 12,
+            "w": 8,
             "x": 0,
             "y": 12
           },
@@ -563,7 +700,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (model) (increase(nuage_ai_agent_tokens_total[1d]))",
+              "expr": "sum by (model) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d]))",
               "legendFormat": "{{model}}",
               "instant": true
             }
@@ -600,11 +737,11 @@ data:
         {
           "id": 11,
           "type": "piechart",
-          "title": "トークン種別内訳",
+          "title": "作業フェーズ別内訳",
           "gridPos": {
             "h": 8,
-            "w": 12,
-            "x": 12,
+            "w": 8,
+            "x": 8,
             "y": 12
           },
           "datasource": {
@@ -618,8 +755,8 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (type) (increase(nuage_ai_agent_tokens_total[1d]))",
-              "legendFormat": "{{type}}",
+              "expr": "sum by (phase) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d]))",
+              "legendFormat": "{{phase}}",
               "instant": true
             }
           ],
@@ -653,12 +790,72 @@ data:
           }
         },
         {
-          "id": 12,
-          "type": "table",
-          "title": "リポジトリ別・モデル別累積消費テーブル",
+          "id": 15,
+          "type": "bargauge",
+          "title": "ブランチ別推定コストランキング (Top 10)",
           "gridPos": {
             "h": 8,
-            "w": 12,
+            "w": 8,
+            "x": 16,
+            "y": 12
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "sort_desc(topk(10, sum by (branch, repo) (increase(nuage_ai_agent_cost_usd_total[1d])) > 0))",
+              "legendFormat": "{{branch}} ({{repo}})",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyUSD",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "decimals": 2
+            },
+            "overrides": []
+          },
+          "options": {
+            "displayMode": "gradient",
+            "orientation": "horizontal",
+            "showUnfilled": true,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "description": "直近 1 日のブランチ別推定コスト (USD) 上位 10 件。"
+        },
+        {
+          "id": 13,
+          "type": "table",
+          "title": "作業タスク・PR 実行実績テーブル (全期間累計)",
+          "description": "autopilot の全期間累計実行実績（PR・タスク・担当・結果・実行回数）",
+          "gridPos": {
+            "h": 9,
+            "w": 24,
             "x": 0,
             "y": 20
           },
@@ -673,9 +870,37 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (repo, model) (increase(nuage_ai_agent_tokens_total[1d]))",
+              "expr": "sum by (pr, task, branch, repo, impl, result) (nuage_ai_agent_autopilot_runs_total)",
               "format": "table",
               "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "pr": 0,
+                  "task": 1,
+                  "branch": 2,
+                  "repo": 3,
+                  "impl": 4,
+                  "result": 5,
+                  "Value": 6
+                },
+                "renameByName": {
+                  "pr": "PR 番号",
+                  "task": "タスク名",
+                  "branch": "ブランチ",
+                  "repo": "リポジトリ",
+                  "impl": "担当",
+                  "result": "結果",
+                  "Value": "実行回数"
+                }
+              }
             }
           ],
           "fieldConfig": {
@@ -688,7 +913,7 @@ data:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "Value"
+                  "options": "実行回数"
                 },
                 "properties": [
                   {
@@ -698,61 +923,82 @@ data:
                   {
                     "id": "custom.align",
                     "value": "right"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
                   }
                 ]
-              }
-            ]
-          },
-          "options": {
-            "showHeader": true
-          }
-        },
-        {
-          "id": 13,
-          "type": "table",
-          "title": "Autopilot 実行結果サマリテーブル",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 20
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (repo, impl, level, result) (increase(nuage_ai_agent_autopilot_runs_total[1d]))",
-              "format": "table",
-              "instant": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "custom": {
-                "align": "auto"
-              }
-            },
-            "overrides": [
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "Value"
+                  "options": "PR 番号"
                 },
                 "properties": [
                   {
-                    "id": "unit",
-                    "value": "short"
+                    "id": "custom.width",
+                    "value": 90
                   },
                   {
                     "id": "custom.align",
-                    "value": "right"
+                    "value": "center"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "タスク名"
+                },
+                "properties": [
+                  {
+                    "id": "custom.minWidth",
+                    "value": 260
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ブランチ"
+                },
+                "properties": [
+                  {
+                    "id": "custom.minWidth",
+                    "value": 180
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "担当"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "center"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "結果"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 110
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "center"
                   }
                 ]
               }
