@@ -112,7 +112,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_tokens_total[1d]))",
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d]))",
               "instant": true
             }
           ],
@@ -466,7 +466,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (model) (rate(nuage_ai_agent_tokens_total[5m])) * 60",
+              "expr": "sum by (model) (rate(nuage_ai_agent_tokens_total{type!=\"thinking\"}[5m])) * 60",
               "legendFormat": "{{model}}"
             }
           ],
@@ -521,7 +521,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (repo) (rate(nuage_ai_agent_tokens_total[5m])) * 60",
+              "expr": "sum by (repo) (rate(nuage_ai_agent_tokens_total{type!=\"thinking\"}[5m])) * 60",
               "legendFormat": "{{repo}}"
             }
           ],
@@ -576,7 +576,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (phase) (rate(nuage_ai_agent_tokens_total[5m])) * 60",
+              "expr": "sum by (phase) (rate(nuage_ai_agent_tokens_total{type!=\"thinking\"}[5m])) * 60",
               "legendFormat": "{{phase}}"
             }
           ],
@@ -631,7 +631,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (model) (increase(nuage_ai_agent_tokens_total[1d]))",
+              "expr": "sum by (model) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d]))",
               "legendFormat": "{{model}}",
               "instant": true
             }
@@ -686,7 +686,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (phase) (increase(nuage_ai_agent_tokens_total[1d]))",
+              "expr": "sum by (phase) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d]))",
               "legendFormat": "{{phase}}",
               "instant": true
             }
@@ -741,7 +741,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sort_desc(sum by (branch, repo) (increase(nuage_ai_agent_tokens_total[1d])) > 0)",
+              "expr": "sort_desc(sum by (branch, repo) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d])) > 0)",
               "legendFormat": "{{branch}} ({{repo}})",
               "instant": true
             }
@@ -780,7 +780,8 @@ data:
         {
           "id": 13,
           "type": "table",
-          "title": "作業タスク・PR 実行実績テーブル",
+          "title": "作業タスク・PR 実行実績テーブル (全期間累計)",
+          "description": "autopilot の全期間累計実行実績（PR・タスク・担当・結果・実行回数）",
           "gridPos": {
             "h": 9,
             "w": 24,
