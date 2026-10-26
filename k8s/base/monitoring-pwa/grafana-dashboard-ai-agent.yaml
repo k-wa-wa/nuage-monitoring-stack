@@ -29,7 +29,7 @@ data:
           "title": "今日の総推定コスト (USD)",
           "gridPos": {
             "h": 4,
-            "w": 4,
+            "w": 3,
             "x": 0,
             "y": 0
           },
@@ -78,7 +78,76 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "description": "主要商用モデル（Opus, Sonnet, Haiku, Flash, Argon）の概算単価に基づく推定コスト。未算定モデルの消費は「コスト未算定トークン」パネルを参照。"
+        },
+        {
+          "id": 16,
+          "type": "stat",
+          "title": "コスト未算定トークン",
+          "description": "推定コスト式（Opus/Sonnet/Haiku/Flash/Argon）に含まれていないモデルの直近 1 日のトークン量。0 であれば全モデルのコストが計算式に反映されている。",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 3,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\",model!~\".*(opus|sonnet|haiku|flash|argon).*\"}[1d])) or vector(0)",
+              "instant": true
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 100000
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -97,8 +166,8 @@ data:
           "title": "今日の総トークン消費量",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 4,
+            "w": 3,
+            "x": 6,
             "y": 0
           },
           "datasource": {
@@ -137,7 +206,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -157,7 +226,7 @@ data:
           "gridPos": {
             "h": 4,
             "w": 3,
-            "x": 8,
+            "x": 9,
             "y": 0
           },
           "datasource": {
@@ -196,7 +265,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -216,7 +285,7 @@ data:
           "gridPos": {
             "h": 4,
             "w": 3,
-            "x": 11,
+            "x": 12,
             "y": 0
           },
           "datasource": {
@@ -255,7 +324,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -275,7 +344,7 @@ data:
           "gridPos": {
             "h": 4,
             "w": 3,
-            "x": 14,
+            "x": 15,
             "y": 0
           },
           "datasource": {
@@ -314,7 +383,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -334,7 +403,7 @@ data:
           "gridPos": {
             "h": 4,
             "w": 3,
-            "x": 17,
+            "x": 18,
             "y": 0
           },
           "datasource": {
@@ -373,7 +442,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -392,8 +461,8 @@ data:
           "title": "今日の autopilot 完走回数",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 20,
+            "w": 3,
+            "x": 21,
             "y": 0
           },
           "datasource": {
@@ -432,7 +501,7 @@ data:
           },
           "options": {
             "colorMode": "value",
-            "graphMode": "area",
+            "graphMode": "none",
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
@@ -723,7 +792,7 @@ data:
         {
           "id": 15,
           "type": "bargauge",
-          "title": "ブランチ別トークン消費ランキング",
+          "title": "ブランチ別トークン消費ランキング (Top 10)",
           "gridPos": {
             "h": 8,
             "w": 8,
@@ -741,7 +810,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sort_desc(sum by (branch, repo) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d])) > 0)",
+              "expr": "sort_desc(topk(10, sum by (branch, repo) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d])) > 0))",
               "legendFormat": "{{branch}} ({{repo}})",
               "instant": true
             }
