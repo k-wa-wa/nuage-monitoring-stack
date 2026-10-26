@@ -44,7 +44,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "((sum(increase(nuage_ai_agent_tokens_total{model=~\".*opus.*\", type=~\"input|cache_creation\"}[1d])) or vector(0)) * (15 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*opus.*\", type=\"output\"}[1d])) or vector(0)) * (75 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*opus.*\", type=\"cache_read\"}[1d])) or vector(0)) * (1.5 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*sonnet.*\", type=~\"input|cache_creation\"}[1d])) or vector(0)) * (3 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*sonnet.*\", type=\"output\"}[1d])) or vector(0)) * (15 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*sonnet.*\", type=\"cache_read\"}[1d])) or vector(0)) * (0.3 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*haiku.*\", type=~\"input|cache_creation\"}[1d])) or vector(0)) * (0.8 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*haiku.*\", type=\"output\"}[1d])) or vector(0)) * (4 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*haiku.*\", type=\"cache_read\"}[1d])) or vector(0)) * (0.08 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*flash.*\", type=~\"input|cache_creation\"}[1d])) or vector(0)) * (0.1 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*flash.*\", type=\"output\"}[1d])) or vector(0)) * (0.4 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*flash.*\", type=\"cache_read\"}[1d])) or vector(0)) * (0.025 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*argon.*\", type=~\"input|cache_creation\"}[1d])) or vector(0)) * (2 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*argon.*\", type=\"output\"}[1d])) or vector(0)) * (8 / 1e6) + (sum(increase(nuage_ai_agent_tokens_total{model=~\".*argon.*\", type=\"cache_read\"}[1d])) or vector(0)) * (0.5 / 1e6))",
+              "expr": "sum(increase(nuage_ai_agent_cost_usd_total[1d])) or vector(0)",
               "instant": true
             }
           ],
@@ -90,13 +90,13 @@ data:
             },
             "textMode": "auto"
           },
-          "description": "主要商用モデル（Opus, Sonnet, Haiku, Flash, Argon）の概算単価に基づく推定コスト。未算定モデルの消費は「コスト未算定トークン」パネルを参照。"
+          "description": "rates.yaml で定義されたモデル単価に基づく累積推定コスト。"
         },
         {
           "id": 16,
           "type": "stat",
           "title": "コスト未算定トークン",
-          "description": "推定コスト式（Opus/Sonnet/Haiku/Flash/Argon）に含まれていないモデルの直近 1 日のトークン量。0 であれば全モデルのコストが計算式に反映されている。",
+          "description": "rates.yaml に単価が定義されていないモデルの直近 1 日のトークン量。0 であれば全モデルのコストが計算されている。",
           "gridPos": {
             "h": 4,
             "w": 3,
@@ -114,7 +114,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\",model!~\".*(opus|sonnet|haiku|flash|argon).*\"}[1d])) or vector(0)",
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\",model!~\".*(opus|sonnet|haiku|flash|argon|gpt-oss).*\"}[1d])) or vector(0)",
               "instant": true
             }
           ],
@@ -792,7 +792,7 @@ data:
         {
           "id": 15,
           "type": "bargauge",
-          "title": "ブランチ別トークン消費ランキング (Top 10)",
+          "title": "ブランチ別推定コストランキング (Top 10)",
           "gridPos": {
             "h": 8,
             "w": 8,
@@ -810,14 +810,14 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sort_desc(topk(10, sum by (branch, repo) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d])) > 0))",
+              "expr": "sort_desc(topk(10, sum by (branch, repo) (increase(nuage_ai_agent_cost_usd_total[1d])) > 0))",
               "legendFormat": "{{branch}} ({{repo}})",
               "instant": true
             }
           ],
           "fieldConfig": {
             "defaults": {
-              "unit": "short",
+              "unit": "currencyUSD",
               "color": {
                 "mode": "palette-classic"
               },
@@ -829,7 +829,8 @@ data:
                     "value": null
                   }
                 ]
-              }
+              },
+              "decimals": 2
             },
             "overrides": []
           },
@@ -844,7 +845,8 @@ data:
               "fields": "",
               "values": false
             }
-          }
+          },
+          "description": "直近 1 日のブランチ別推定コスト (USD) 上位 10 件。"
         },
         {
           "id": 13,
