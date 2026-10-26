@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - monitoring-pwa.yaml
   - grafana-dashboard-node-health.yaml
+  - grafana-dashboard-ai-agent.yaml

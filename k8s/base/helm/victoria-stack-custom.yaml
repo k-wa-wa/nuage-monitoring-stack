@@ -223,6 +223,12 @@ vmauth:
             - http://vmsingle-vm.nuage-monitoring-stack.svc:8428/
             - http://vmsingle-vm-b.nuage-monitoring-stack.svc:8428/
           load_balancing_policy: first_available
+        # メトリクスの投入。a と b の両方に書く必要があるため vmagent を経由する
+        - src_paths:
+            - /api/v1/import/.*
+            - /api/v1/write
+          url_prefix:
+            - http://vmagent-vm.nuage-monitoring-stack.svc:8429/
         # ログの参照
         - src_paths:
             - /select/.*
