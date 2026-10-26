@@ -645,7 +645,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (phase) (rate(nuage_ai_agent_tokens_total{type!=\"thinking\"}[5m])) * 60",
+              "expr": "sum by (phase) (rate(nuage_ai_agent_tokens_total{type!=\"thinking\", phase!=\"\"}[5m])) * 60",
               "legendFormat": "{{phase}}"
             }
           ],
@@ -755,7 +755,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (phase) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d]))",
+              "expr": "sum by (phase) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\", phase!=\"\"}[1d]))",
               "legendFormat": "{{phase}}",
               "instant": true
             }
@@ -792,7 +792,7 @@ data:
         {
           "id": 15,
           "type": "bargauge",
-          "title": "ブランチ別推定コストランキング (Top 10)",
+          "title": "タスク別推定コストランキング (Top 10)",
           "gridPos": {
             "h": 8,
             "w": 8,
@@ -810,8 +810,8 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sort_desc(topk(10, sum by (branch, repo) (increase(nuage_ai_agent_cost_usd_total[1d])) > 0))",
-              "legendFormat": "{{branch}} ({{repo}})",
+              "expr": "sort_desc(topk(10, sum by (repo, task) (increase(nuage_ai_agent_cost_usd_total{task!=\"\"}[1d])) > 0))",
+              "legendFormat": "{{repo}} ({{task}})",
               "instant": true
             }
           ],
@@ -846,7 +846,7 @@ data:
               "values": false
             }
           },
-          "description": "直近 1 日のブランチ別推定コスト (USD) 上位 10 件。"
+          "description": "直近 1 日のリポジトリ別・タスク別（または portal）の推定コスト (USD) 上位 10 件。"
         },
         {
           "id": 13,
