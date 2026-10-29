@@ -26,7 +26,7 @@ data:
         {
           "id": 14,
           "type": "stat",
-          "title": "今日の総推定コスト (USD)",
+          "title": "総推定コスト (USD)",
           "gridPos": {
             "h": 4,
             "w": 3,
@@ -44,7 +44,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_cost_usd_total[1d])) or vector(0)",
+              "expr": "sum(increase(nuage_ai_agent_cost_usd_total[$__range])) or vector(0)",
               "instant": true
             }
           ],
@@ -96,7 +96,7 @@ data:
           "id": 16,
           "type": "stat",
           "title": "コスト未算定トークン",
-          "description": "rates.yaml に単価が定義されていないモデルの直近 1 日のトークン量。0 であれば全モデルのコストが計算されている。",
+          "description": "rates.yaml に単価が定義されていないモデルの選択期間内のトークン量。0 であれば全モデルのコストが計算されている。",
           "gridPos": {
             "h": 4,
             "w": 3,
@@ -114,7 +114,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\",model!~\".*(opus|sonnet|haiku|flash|argon|gpt-oss).*\"}[1d])) or vector(0)",
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\",model!~\".*(opus|sonnet|haiku|flash|argon|gpt-oss).*\"}[$__range])) or vector(0)",
               "instant": true
             }
           ],
@@ -163,7 +163,7 @@ data:
         {
           "id": 1,
           "type": "stat",
-          "title": "今日の総トークン消費量",
+          "title": "総トークン消費量",
           "gridPos": {
             "h": 4,
             "w": 3,
@@ -181,7 +181,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d]))",
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[$__range]))",
               "instant": true
             }
           ],
@@ -222,7 +222,7 @@ data:
         {
           "id": 2,
           "type": "stat",
-          "title": "今日の入力トークン",
+          "title": "入力トークン",
           "gridPos": {
             "h": 4,
             "w": 3,
@@ -240,7 +240,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_tokens_total{type=\"input\"}[1d]))",
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type=\"input\"}[$__range]))",
               "instant": true
             }
           ],
@@ -281,7 +281,7 @@ data:
         {
           "id": 3,
           "type": "stat",
-          "title": "今日の出力トークン",
+          "title": "出力トークン",
           "gridPos": {
             "h": 4,
             "w": 3,
@@ -299,7 +299,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_tokens_total{type=\"output\"}[1d]))",
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type=\"output\"}[$__range]))",
               "instant": true
             }
           ],
@@ -340,7 +340,7 @@ data:
         {
           "id": 4,
           "type": "stat",
-          "title": "今日のキャッシュ読込",
+          "title": "キャッシュ読込",
           "gridPos": {
             "h": 4,
             "w": 3,
@@ -358,7 +358,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_tokens_total{type=\"cache_read\"}[1d]))",
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type=\"cache_read\"}[$__range]))",
               "instant": true
             }
           ],
@@ -399,7 +399,7 @@ data:
         {
           "id": 5,
           "type": "stat",
-          "title": "今日の総セッション数",
+          "title": "総セッション数",
           "gridPos": {
             "h": 4,
             "w": 3,
@@ -417,7 +417,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_sessions_total[1d]))",
+              "expr": "sum(increase(nuage_ai_agent_sessions_total[$__range]))",
               "instant": true
             }
           ],
@@ -458,7 +458,7 @@ data:
         {
           "id": 6,
           "type": "stat",
-          "title": "今日の autopilot 完走回数",
+          "title": "autopilot 完走回数",
           "gridPos": {
             "h": 4,
             "w": 3,
@@ -476,7 +476,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_autopilot_runs_total{result=\"done\"}[1d]))",
+              "expr": "sum(increase(nuage_ai_agent_autopilot_runs_total{result=\"done\"}[$__range]))",
               "instant": true
             }
           ],
@@ -700,7 +700,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (model) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[1d]))",
+              "expr": "sum by (model) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\"}[$__range]))",
               "legendFormat": "{{model}}",
               "instant": true
             }
@@ -755,7 +755,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum by (phase) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\", phase!=\"\"}[1d]))",
+              "expr": "sum by (phase) (increase(nuage_ai_agent_tokens_total{type!=\"thinking\", phase!=\"\"}[$__range]))",
               "legendFormat": "{{phase}}",
               "instant": true
             }
@@ -810,7 +810,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sort_desc(topk(10, sum by (repo, task) (increase(nuage_ai_agent_cost_usd_total{task!=\"\"}[1d])) > 0))",
+              "expr": "sort_desc(topk(10, sum by (repo, task) (increase(nuage_ai_agent_cost_usd_total{task!=\"\"}[$__range])) > 0))",
               "legendFormat": "{{repo}} ({{task}})",
               "instant": true
             }
@@ -846,7 +846,7 @@ data:
               "values": false
             }
           },
-          "description": "直近 1 日のリポジトリ別・タスク別（または portal）の推定コスト (USD) 上位 10 件。"
+          "description": "選択期間内のリポジトリ別・タスク別（または portal）の推定コスト (USD) 上位 10 件。"
         },
         {
           "id": 13,
