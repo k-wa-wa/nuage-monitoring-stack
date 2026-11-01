@@ -7,6 +7,10 @@ on:
 permissions:
   pull-requests: write
 
+concurrency:
+  group: auto-preview-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   manage-preview-label:
     runs-on: ubuntu-latest
@@ -25,10 +29,19 @@ jobs:
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
 
-            const currentLabels = context.payload.pull_request.labels.map(l => l.name);
-            const hasPreviewLabel = currentLabels.includes('preview');
-
             if (isAuthorTrusted && isActorTrusted) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: issue_number,
+              });
+
+              if (pr.head.sha !== context.payload.pull_request.head.sha) {
+                console.log(`Skipping preview label addition: PR head has moved from ${context.payload.pull_request.head.sha} to ${pr.head.sha}.`);
+                return;
+              }
+
+              const hasPreviewLabel = pr.labels.some(l => l.name === 'preview');
               if (!hasPreviewLabel) {
                 console.log(`Adding preview label (Author: ${prAuthor}, Actor: ${eventActor})`);
                 await github.rest.issues.addLabels({
@@ -41,15 +54,19 @@ jobs:
                 console.log('Preview label already present.');
               }
             } else {
-              if (hasPreviewLabel) {
-                console.log(`Removing preview label due to untrusted activity (Author: ${prAuthor}, Actor: ${eventActor})`);
+              try {
                 await github.rest.issues.removeLabel({
                   owner,
                   repo,
                   issue_number,
                   name: 'preview',
                 });
-              } else {
-                console.log(`Untrusted PR activity (Author: ${prAuthor}, Actor: ${eventActor}). Preview label not added.`);
+                console.log(`Removed preview label due to untrusted activity (Author: ${prAuthor}, Actor: ${eventActor})`);
+              } catch (error) {
+                if (error.status === 404) {
+                  console.log(`Untrusted PR activity (Author: ${prAuthor}, Actor: ${eventActor}). Preview label not present.`);
+                } else {
+                  throw error;
+                }
               }
             }
