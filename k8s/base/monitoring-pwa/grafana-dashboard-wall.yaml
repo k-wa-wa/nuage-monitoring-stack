@@ -1935,7 +1935,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"Critical\"}",
+              "expr": "nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"}",
               "instant": true,
               "range": false
             },
@@ -1945,7 +1945,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "(nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"Critical\"} - nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"Critical\"} offset 1d) >= 0",
+              "expr": "(nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} offset 1d) >= 0",
               "instant": true,
               "range": false
             },
@@ -1955,7 +1955,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "(nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"Critical\"} - nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"Critical\"} offset 1d) < 0",
+              "expr": "(nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} offset 1d) < 0",
               "instant": true,
               "range": false
             },
@@ -1965,7 +1965,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "vector(1) unless on () (nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"Critical\"} - nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"Critical\"} offset 1d)",
+              "expr": "vector(1) unless on () (nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} offset 1d)",
               "instant": true,
               "range": false
             }
@@ -2128,7 +2128,7 @@ data:
             "wideLayout": true,
             "showPercentChange": false
           },
-          "description": "セキュリティ: trivy-operator が見つけた設定不備 (Critical) の件数。終わった Pod (Succeeded / Failed) の分は除いて数える (recording rule nuage:trivy_resource_configaudits:excl_finished_pods)。今は 0 件のため、1 件以上で現在の件数を赤にする。前日比は「現在 − 1 日前」。増えたら赤、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
+          "description": "セキュリティ: trivy-operator が見つけた設定不備 (Critical) の件数。終わった Pod (Succeeded / Failed) と終わった Job の分は除いて数える (recording rule nuage:trivy_resource_configaudits:excl_finished_workloads)。今は 0 件のため、1 件以上で現在の件数を赤にする。前日比は「現在 − 1 日前」。増えたら赤、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
         },
         {
           "id": 22,
@@ -2151,7 +2151,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"High\"}",
+              "expr": "nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"}",
               "instant": true,
               "range": false
             },
@@ -2161,7 +2161,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "(nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"High\"} - nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"High\"} offset 1d) >= 0",
+              "expr": "(nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} offset 1d) >= 0",
               "instant": true,
               "range": false
             },
@@ -2171,7 +2171,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "(nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"High\"} - nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"High\"} offset 1d) < 0",
+              "expr": "(nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} offset 1d) < 0",
               "instant": true,
               "range": false
             },
@@ -2181,7 +2181,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "vector(1) unless on () (nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"High\"} - nuage:trivy_resource_configaudits:excl_finished_pods{severity=\"High\"} offset 1d)",
+              "expr": "vector(1) unless on () (nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} offset 1d)",
               "instant": true,
               "range": false
             }
@@ -2340,7 +2340,7 @@ data:
             "wideLayout": true,
             "showPercentChange": false
           },
-          "description": "セキュリティ: trivy-operator が見つけた設定不備 (High) の件数。終わった Pod (Succeeded / Failed) の分は除いて数える (recording rule nuage:trivy_resource_configaudits:excl_finished_pods)。前日比は「現在 − 1 日前」。増えたら黄、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
+          "description": "セキュリティ: trivy-operator が見つけた設定不備 (High) の件数。終わった Pod (Succeeded / Failed) と終わった Job の分は除いて数える (recording rule nuage:trivy_resource_configaudits:excl_finished_workloads)。前日比は「現在 − 1 日前」。増えたら黄、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
         }
       ]
     }

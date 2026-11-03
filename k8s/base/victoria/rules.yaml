@@ -352,13 +352,15 @@ spec:
         # 設定不備の件数 (severity ごと)。
         # 終わった Pod (Succeeded / Failed で残っている CronJob・Argo Workflows の Pod) のレポートも数えられ、
         # 日ごとに Pod が残るたびに件数が増えるため、kube-state-metrics で終わったとわかる Pod の分を除く。
-        # Pod 以外の kind (Deployment の ReplicaSet・Service など) はそのまま数える。
+        # 終わった Job (完了または失敗) のレポートも同じ理由で除く。
+        # CronJob は実行のたびに Job が増え、履歴が残る間は Job のレポートも残るため、前日比が実態と無関係に動く。
+        # 実行中の Job と、Pod・Job 以外の kind (Deployment の ReplicaSet・Service など) はそのまま数える。
         # trivy-operator のメトリクスの namespace は trivy-operator 自身なので、対象の Namespace は exported_namespace で突き合わせる。
-        - record: nuage:trivy_resource_configaudits:excl_finished_pods
+        - record: nuage:trivy_resource_configaudits:excl_finished_workloads
           alert: ""
           expr: |-
             sum by (severity) (
-              trivy_resource_configaudits{job="trivy-operator",resource_kind!="Pod"}
+              trivy_resource_configaudits{job="trivy-operator",resource_kind!~"Pod|Job"}
               or (
                 trivy_resource_configaudits{job="trivy-operator",resource_kind="Pod"}
                 unless on (exported_namespace, resource_name)
@@ -368,6 +370,19 @@ spec:
                     "exported_namespace", "$1", "namespace", "(.*)"
                   ),
                   "resource_name", "$1", "pod", "(.*)"
+                )
+              )
+              or (
+                trivy_resource_configaudits{job="trivy-operator",resource_kind="Job"}
+                unless on (exported_namespace, resource_name)
+                label_replace(
+                  label_replace(
+                    max by (namespace, job_name) (
+                      {__name__=~"kube_job_complete|kube_job_failed",job="kube-state-metrics",condition="true"} == 1
+                    ),
+                    "exported_namespace", "$1", "namespace", "(.*)"
+                  ),
+                  "resource_name", "$1", "job_name", "(.*)"
                 )
               )
             )
