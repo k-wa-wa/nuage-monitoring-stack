@@ -2,6 +2,7 @@
 # - custom-kubernetes-apps-rules: 既定の KubePodNotReady を置き換えるカスタム版
 # - external-nodes-rules: クラスタ外の NixOS ホスト (job="external-nodes") のディスク・CPU・メモリ・systemd 失敗・MVS バッチジョブ失敗検知
 # - k8s-error-logs: Pod のエラーログ検知およびホスト journald の systemd 失敗検知 (VictoriaLogs)
+# - trivy-summary-rules: 壁掛けダッシュボードで使う trivy-operator の脆弱性・設定不備の件数 (recording rule)
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
@@ -322,3 +323,83 @@ spec:
           annotations:
             summary: "{{ $labels.host }} の {{ $labels.unit }} が失敗した ({{ $labels.result }})"
             description: "ホスト {{ $labels.host }} で systemd ユニット {{ $labels.unit }} が Failed with result '{{ $labels.result }}' を出力した。"
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: trivy-summary-rules
+spec:
+  groups:
+    # 壁掛けダッシュボード (uid nuage-wall) の「セキュリティ」欄で、現在の件数と前日比を出すための件数。
+    # trivy-operator のメトリクスをそのまま合計すると、実態が変わらなくても日々件数が増えて前日比が意味をなさないため、数え直して記録する。
+    # 評価間隔は vmalert の既定 (1m) に任せる。
+    - name: trivy-summary
+      rules:
+        # PR 環境 (Namespace 名が <名前>-pr-<番号>、pechka-pr-84 など) は数えない。
+        # PR の開閉で件数が跳ね (pechka の PR 環境 1 つで設定不備のレポートが約 31 件増える)、前日比が「昨日のこの時刻に PR 環境があったか」で決まってしまうため。
+        # エラーログでも PR 環境は本番と分けている。
+        # 脆弱性の件数 (severity ごと)。
+        # trivy-operator はワークロードごとにレポートを作るため、同じイメージが複数のワークロードで重ねて数えられる
+        # (argoexec ×11、config-reloader ×9 など)。終わった Pod (CronJob・Argo Workflows の Pod) のイメージも数えられ、
+        # 何も変わらなくても日々件数が増える。trivy-operator 側にイメージ単位で数える設定は無いため、
+        # イメージの digest 単位で重複を除いてから合計する。
+        # alert: "" は CRD の既定値。省略すると実機との差分が残って Argo CD が OutOfSync のままになるため明示する
+        - record: nuage:trivy_image_vulnerabilities:dedup_by_image
+          alert: ""
+          expr: |-
+            sum by (severity) (
+              max by (image_registry, image_repository, image_digest, severity) (
+                trivy_image_vulnerabilities{job="trivy-operator",exported_namespace!~".+-pr-[0-9]+"}
+              )
+            )
+        # 設定不備の件数 (severity ごと)。
+        # trivy-operator は同じものを実行ごとに別名で何個もレポートする (Argo CronWorkflow の Pod は実行時刻を名前に含むため日ごとに増える。
+        # Deployment の ReplicaSet はロールアウト中に新旧 2 個になる)。
+        # そこで、実行ごとに変わる名前の部分を取り除いた workload にまとめ、同じ workload・severity は max で 1 つにして合計する。
+        # 特定のジョブ名はルールに書かず、命名規則のパターンだけで判定する。
+        # 「終わった Pod / Job を除く」方式は採らない。trivy は Argo の親リソースを調べないため、
+        # Argo CronWorkflow の Pod は終わった時点で何も残らず検知が消える。
+        # Argo CD の hook などで動く単発の Job も親が無く、終わると同じように検知が消える。
+        # (Kubernetes の CronJob は trivy が CronJob 自体のレポートを作るので、子が消えても検知は残る。)
+        # 名前の加工は該当する kind にだけ適用し、他の kind の名前を誤って削らない。
+        #
+        # まとめられる命名パターン:
+        #   Pod (Argo CronWorkflow) : <名前>-<10 桁の実行時刻>-<ステップ名>-<数字> → <名前>-<ステップ名>
+        #                             ステップ名を持たない <名前>-<10 桁の実行時刻>-<数字> → <名前>
+        #   ReplicaSet              : <Deployment 名>-<pod-template-hash> → <Deployment 名>
+        #   それ以外の kind (Job・Service など) : 名前が固定のものとしてそのまま数える
+        # まとめられないもの:
+        #   - generateName で手動投入した Argo Workflow の Pod (<名前><ランダム 5 文字>-<ステップ>-<数字>)。実行ごとに別名で数えられる
+        #   - generateName を持つ Job
+        #   - kube-system の static pod (kube-apiserver-<ノード名> など)。実際にノードごとに存在するもので、
+        #     実行のたびに増えないため件数は安定する。あえてまとめない
+        # 新しい命名パターンが現れたら、ここに足す。
+        # kube-state-metrics には依存しない。
+        # alert: "" は CRD の既定値。省略すると実機との差分が残って Argo CD が OutOfSync のままになるため明示する
+        - record: nuage:trivy_resource_configaudits:dedup_by_workload
+          alert: ""
+          expr: |-
+            sum by (severity) (
+              max by (exported_namespace, resource_kind, workload, severity) (
+                label_replace(
+                  trivy_resource_configaudits{job="trivy-operator",exported_namespace!~".+-pr-[0-9]+",resource_kind!~"Pod|ReplicaSet"},
+                  "workload", "$1", "resource_name", "(.*)"
+                )
+                or
+                label_replace(
+                  label_replace(
+                    trivy_resource_configaudits{job="trivy-operator",exported_namespace!~".+-pr-[0-9]+",resource_kind="Pod"},
+                    "workload", "$1", "resource_name", "(.*)"
+                  ),
+                  "workload", "$1$2", "resource_name", "(.+)-[0-9]{10}(-.+)?-[0-9]+"
+                )
+                or
+                label_replace(
+                  label_replace(
+                    trivy_resource_configaudits{job="trivy-operator",exported_namespace!~".+-pr-[0-9]+",resource_kind="ReplicaSet"},
+                    "workload", "$1", "resource_name", "(.*)"
+                  ),
+                  "workload", "$1", "resource_name", "(.+)-[bcdfghjklmnpqrstvwxz2456789]{6,10}"
+                )
+              )
+            )
