@@ -7,7 +7,7 @@
 # ログレベルが決まったら「本番のエラー」「PR 環境のエラー」「最新のエラーログ」のクエリを差し替える。
 #
 # 一番下の行の右端は「セキュリティ」欄で、trivy-operator の脆弱性・設定不備 (Critical / High) の現在の件数と前日比を出す。
-# 件数は k8s/base/victoria/rules.yaml の trivy-summary-rules で数え直した値を使う (同じイメージの重複、実行ごとに別名の設定不備をまとめる)。
+# 件数は k8s/base/victoria/rules.yaml の trivy-summary-rules で数え直した値を使う (同じイメージの重複、実行ごとに別名の設定不備をまとめる)。PR 環境 (<名前>-pr-<番号> の Namespace) は含まない。
 #
 # 「最新のエラーログ」では NixOS ホストの journal の PRIORITY 0-3 から sshd と dbus-broker-launch を除いている。
 # TODO:
@@ -1700,7 +1700,7 @@ data:
             "wideLayout": true,
             "showPercentChange": false
           },
-          "description": "セキュリティ: trivy-operator が見つけた脆弱性 (Critical) の件数。同じイメージが複数のワークロードで重ねて数えられないよう、イメージの digest 単位で重複を除いて数える (recording rule nuage:trivy_image_vulnerabilities:dedup_by_image)。前日比は「現在 − 1 日前」。増えたら赤、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
+          "description": "セキュリティ: trivy-operator が見つけた脆弱性 (Critical) の件数。同じイメージが複数のワークロードで重ねて数えられないよう、イメージの digest 単位で重複を除いて数える。PR 環境は含まない (recording rule nuage:trivy_image_vulnerabilities:dedup_by_image)。前日比は「現在 − 1 日前」。増えたら赤、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
         },
         {
           "id": 20,
@@ -1912,7 +1912,7 @@ data:
             "wideLayout": true,
             "showPercentChange": false
           },
-          "description": "セキュリティ: trivy-operator が見つけた脆弱性 (High) の件数。同じイメージが複数のワークロードで重ねて数えられないよう、イメージの digest 単位で重複を除いて数える (recording rule nuage:trivy_image_vulnerabilities:dedup_by_image)。前日比は「現在 − 1 日前」。増えたら黄、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
+          "description": "セキュリティ: trivy-operator が見つけた脆弱性 (High) の件数。同じイメージが複数のワークロードで重ねて数えられないよう、イメージの digest 単位で重複を除いて数える。PR 環境は含まない (recording rule nuage:trivy_image_vulnerabilities:dedup_by_image)。前日比は「現在 − 1 日前」。増えたら黄、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
         },
         {
           "id": 21,
@@ -2128,7 +2128,7 @@ data:
             "wideLayout": true,
             "showPercentChange": false
           },
-          "description": "セキュリティ: trivy-operator が見つけた設定不備 (Critical) の件数。実行ごとに変わる名前 (Argo CronWorkflow の Pod、ReplicaSet のハッシュ) を取り除いて同じ workload を 1 つにまとめて数える (recording rule nuage:trivy_resource_configaudits:dedup_by_workload)。今は 0 件のため、1 件以上で現在の件数を赤にする。前日比は「現在 − 1 日前」。増えたら赤、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
+          "description": "セキュリティ: trivy-operator が見つけた設定不備 (Critical) の件数。実行ごとに変わる名前 (Argo CronWorkflow の Pod、ReplicaSet のハッシュ) を取り除いて同じ workload を 1 つにまとめて数える。PR 環境は含まない (recording rule nuage:trivy_resource_configaudits:dedup_by_workload)。今は 0 件のため、1 件以上で現在の件数を赤にする。前日比は「現在 − 1 日前」。増えたら赤、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
         },
         {
           "id": 22,
@@ -2340,7 +2340,7 @@ data:
             "wideLayout": true,
             "showPercentChange": false
           },
-          "description": "セキュリティ: trivy-operator が見つけた設定不備 (High) の件数。実行ごとに変わる名前 (Argo CronWorkflow の Pod、ReplicaSet のハッシュ) を取り除いて同じ workload を 1 つにまとめて数える (recording rule nuage:trivy_resource_configaudits:dedup_by_workload)。前日比は「現在 − 1 日前」。増えたら黄、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
+          "description": "セキュリティ: trivy-operator が見つけた設定不備 (High) の件数。実行ごとに変わる名前 (Argo CronWorkflow の Pod、ReplicaSet のハッシュ) を取り除いて同じ workload を 1 つにまとめて数える。PR 環境は含まない (recording rule nuage:trivy_resource_configaudits:dedup_by_workload)。前日比は「現在 − 1 日前」。増えたら黄、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
         }
       ]
     }
