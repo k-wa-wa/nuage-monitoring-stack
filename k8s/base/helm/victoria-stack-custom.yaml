@@ -269,6 +269,8 @@ defaultDatasources:
 
 grafana:
   enabled: true
+  image:
+    tag: 13.2.5
   # 描画のたびにランダムなパスワードが生成されて Argo CD で差分が出るのを防ぐため固定する
   adminPassword: prom-operator
   plugins:
@@ -276,6 +278,8 @@ grafana:
     # 壁掛けダッシュボード (monitoring-pwa/grafana-dashboard-wall.yaml) の時計
     - grafana-clock-panel
   sidecar:
+    image:
+      tag: 2.14.3
     datasources:
       label: grafana_datasource
       labelValue: "1"
