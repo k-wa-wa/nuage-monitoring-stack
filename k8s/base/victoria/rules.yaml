@@ -354,6 +354,7 @@ spec:
         # 日ごとに Pod が残るたびに件数が増えるため、kube-state-metrics で終わったとわかる Pod の分を除く。
         # 終わった Job (完了または失敗) のレポートも同じ理由で除く。
         # CronJob は実行のたびに Job が増え、履歴が残る間は Job のレポートも残るため、前日比が実態と無関係に動く。
+        # kube-state-metrics のメトリクスが無いとき (再起動・停止) は、除外が外れて件数が急増し前日比も崩れるため、値を出さない。
         # 実行中の Job と、Pod・Job 以外の kind (Deployment の ReplicaSet・Service など) はそのまま数える。
         # trivy-operator のメトリクスの namespace は trivy-operator 自身なので、対象の Namespace は exported_namespace で突き合わせる。
         - record: nuage:trivy_resource_configaudits:excl_finished_workloads
@@ -386,3 +387,5 @@ spec:
                 )
               )
             )
+            and on ()
+            (count(kube_pod_status_phase{job="kube-state-metrics"}) > 0)
