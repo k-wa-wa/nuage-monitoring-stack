@@ -158,7 +158,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "count(ALERTS{alertstate=\"firing\",severity=\"critical\",alertname!~\"Watchdog|InfoInhibitor\"})\nor (0 * count(ALERTS{alertstate=\"firing\",alertname=\"Watchdog\"}))",
+              "expr": "count(ALERTS{alertstate=\"firing\",severity=\"critical\",alertname!~\"Watchdog|InfoInhibitor\"})\n  and on () (count(ALERTS{alertstate=\"firing\",alertname=\"Watchdog\"}) > 0)\nor (0 * count(ALERTS{alertstate=\"firing\",alertname=\"Watchdog\"}))",
               "instant": true,
               "range": false
             }
@@ -203,7 +203,7 @@ data:
             "wideLayout": true,
             "showPercentChange": false
           },
-          "description": "severity=critical の発火件数 (Watchdog / InfoInhibitor を除く)。Watchdog が届いていないときは値なし。"
+          "description": "severity=critical の発火件数 (Watchdog / InfoInhibitor を除く)。Watchdog が届いていないときは件数を出さず値なし (監視停止) とする。"
         },
         {
           "id": 3,
@@ -226,7 +226,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "count(ALERTS{alertstate=\"firing\",severity=\"warning\",alertname!~\"Watchdog|InfoInhibitor\"})\nor (0 * count(ALERTS{alertstate=\"firing\",alertname=\"Watchdog\"}))",
+              "expr": "count(ALERTS{alertstate=\"firing\",severity=\"warning\",alertname!~\"Watchdog|InfoInhibitor\"})\n  and on () (count(ALERTS{alertstate=\"firing\",alertname=\"Watchdog\"}) > 0)\nor (0 * count(ALERTS{alertstate=\"firing\",alertname=\"Watchdog\"}))",
               "instant": true,
               "range": false
             }
@@ -271,7 +271,7 @@ data:
             "wideLayout": true,
             "showPercentChange": false
           },
-          "description": "severity=warning の発火件数 (Watchdog / InfoInhibitor を除く)。Watchdog が届いていないときは値なし。"
+          "description": "severity=warning の発火件数 (Watchdog / InfoInhibitor を除く)。Watchdog が届いていないときは件数を出さず値なし (監視停止) とする。"
         },
         {
           "id": 4,
