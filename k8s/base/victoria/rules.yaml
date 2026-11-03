@@ -350,19 +350,27 @@ spec:
               )
             )
         # 設定不備の件数 (severity ごと)。
-        # trivy-operator は同じものを実行ごとに別名で何個もレポートする (Argo CronWorkflow の Pod は
-        # tech-feed-daily-ai-<実行時刻>-collect-<数字> のように日ごとに増える。Deployment の ReplicaSet はロールアウト中に新旧 2 個になる)。
+        # trivy-operator は同じものを実行ごとに別名で何個もレポートする (Argo CronWorkflow の Pod は実行時刻を名前に含むため日ごとに増える。
+        # Deployment の ReplicaSet はロールアウト中に新旧 2 個になる)。
         # そこで、実行ごとに変わる名前の部分を取り除いた workload にまとめ、同じ workload・severity は max で 1 つにして合計する。
+        # 特定のジョブ名はルールに書かず、命名規則のパターンだけで判定する。
         # 「終わった Pod / Job を除く」方式は採らない。trivy は Argo の親リソースを調べないため、
         # Argo CronWorkflow の Pod は終わった時点で何も残らず検知が消える。
-        # Argo CD の hook などで動く単発の Job (postgres-migrate など) も親が無く、終わると同じように検知が消える。
+        # Argo CD の hook などで動く単発の Job も親が無く、終わると同じように検知が消える。
         # (Kubernetes の CronJob は trivy が CronJob 自体のレポートを作るので、子が消えても検知は残る。)
         # 名前の加工は該当する kind にだけ適用し、他の kind の名前を誤って削らない。
-        #   Pod        : <名前>-<10 桁の数字>-<ステップ名>-<数字> (Argo CronWorkflow の実行ごとの Pod) → <名前>-<ステップ名>
-        #   ReplicaSet : 末尾の pod-template-hash を除いた Deployment 名
-        #   それ以外   : そのまま
-        # kube-system の static pod (kube-apiserver-<ノード名> など) はまとめない。
-        # 実際にノードごとに存在するもので、実行のたびに増えないため件数は安定する。
+        #
+        # まとめられる命名パターン:
+        #   Pod (Argo CronWorkflow) : <名前>-<10 桁の実行時刻>-<ステップ名>-<数字> → <名前>-<ステップ名>
+        #                             ステップ名を持たない <名前>-<10 桁の実行時刻>-<数字> → <名前>
+        #   ReplicaSet              : <Deployment 名>-<pod-template-hash> → <Deployment 名>
+        #   それ以外の kind (Job・Service など) : 名前が固定のものとしてそのまま数える
+        # まとめられないもの:
+        #   - generateName で手動投入した Argo Workflow の Pod (<名前><ランダム 5 文字>-<ステップ>-<数字>)。実行ごとに別名で数えられる
+        #   - generateName を持つ Job
+        #   - kube-system の static pod (kube-apiserver-<ノード名> など)。実際にノードごとに存在するもので、
+        #     実行のたびに増えないため件数は安定する。あえてまとめない
+        # 新しい命名パターンが現れたら、ここに足す。
         # kube-state-metrics には依存しない。
         # alert: "" は CRD の既定値。省略すると実機との差分が残って Argo CD が OutOfSync のままになるため明示する
         - record: nuage:trivy_resource_configaudits:dedup_by_workload
@@ -380,7 +388,7 @@ spec:
                     trivy_resource_configaudits{job="trivy-operator",resource_kind="Pod"},
                     "workload", "$1", "resource_name", "(.*)"
                   ),
-                  "workload", "$1-$2", "resource_name", "(.+)-[0-9]{10}-(.+)-[0-9]+"
+                  "workload", "$1$2", "resource_name", "(.+)-[0-9]{10}(-.+)?-[0-9]+"
                 )
                 or
                 label_replace(
