@@ -2,7 +2,7 @@
 # - custom-kubernetes-apps-rules: 既定の KubePodNotReady を置き換えるカスタム版
 # - external-nodes-rules: クラスタ外の NixOS ホスト (job="external-nodes") のディスク・CPU・メモリ・systemd 失敗・MVS バッチジョブ失敗検知
 # - k8s-error-logs: Pod のエラーログ検知およびホスト journald の systemd 失敗検知 (VictoriaLogs)
-# - trivy-summary-rules: 壁掛けダッシュボード (uid nuage-wall) と Trivy ダッシュボード (uid trivy-operator) で使う trivy-operator の脆弱性・設定不備の件数 (recording rule)
+# - trivy-summary-rules: 壁掛けダッシュボード (uid nuage-wall) と Trivy ダッシュボード (uid trivy-operator) で使う trivy-operator の脆弱性・設定不備の件数と、Trivy ダッシュボードで使うスキャン対象のワークロード一覧 (recording rule)
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
@@ -332,7 +332,9 @@ spec:
   groups:
     # この recording rule は 2 つのダッシュボードから参照される。
     # - 壁掛けダッシュボード (k8s/base/monitoring-pwa/grafana-dashboard-wall.yaml、uid nuage-wall)
+    #   : nuage:trivy_image_vulnerabilities:dedup_by_image、nuage:trivy_resource_configaudits:dedup_by_workload
     # - Trivy ダッシュボード (k8s/trivy-operator/dashboards/trivy-operator.json、uid trivy-operator)
+    #   : 上の 2 つと nuage:trivy_scan_target:by_workload (Scan Coverage 行)
     # ルール名・ラベル・数え方を変えるときは、両方のダッシュボードを合わせて直す。片方だけ直すと、もう一方のダッシュボードが黙って壊れる。
     # trivy-operator 本体 (k8s/trivy-operator) を更新してメトリクスのラベルが変わったときも、このルールを見直す。
     #
@@ -408,4 +410,28 @@ spec:
                   "workload", "$1", "resource_name", "(.+)-[bcdfghjklmnpqrstvwxz2456789]{6,10}"
                 )
               )
+            )
+        # スキャン対象のワークロード (namespace・resource_kind・resource_name の組) を 1 件 1 系列で記録する。値は 1。
+        # trivy-operator にはスキャンの進み具合を示すメトリクスが無いため、kube-state-metrics から対象を組み立て、
+        # Trivy ダッシュボードの Scan Coverage 行で trivy_image_vulnerabilities の報告と 1 件ずつ突き合わせる。
+        # 対象は vulnerabilityScannerScanOnlyCurrentRevisions: true (k8s/trivy-operator/kustomization.yaml) で trivy がスキャンする単位にそろえる。
+        #   - レプリカ数が 1 以上の ReplicaSet (Deployment の古いリビジョンはスキャンされない)
+        #   - StatefulSet・DaemonSet・CronJob
+        #   - 親リソースの無い Job (owner_kind="<none>")
+        #   - Pod のうち、親の無いもの・static Pod (owner_kind="Node")・Argo の Workflow の Pod (owner_kind="Workflow")
+        # 種類ごとに元のメトリクスの値 (レプリカ数・作成時刻など) が違うため、max ではなく group で値を 1 にそろえる。
+        # trivy-operator の設定や対象の数え方を変えたら、この式も見直す。
+        # PR 環境 (<名前>-pr-<番号> の Namespace) も含める。上の 2 つのルールは件数の前日比を安定させるために PR 環境を除くが、
+        # このルールは trivy-operator がどこまで処理したかを示すためのもので、PR 環境のワークロードもスキャンの対象だからである。
+        # alert: "" は CRD の既定値。省略すると実機との差分が残って Argo CD が OutOfSync のままになるため明示する
+        - record: nuage:trivy_scan_target:by_workload
+          alert: ""
+          expr: |-
+            group by (namespace, resource_kind, resource_name) (
+              label_replace(label_replace(kube_replicaset_spec_replicas > 0, "resource_name", "$1", "replicaset", "(.+)"), "resource_kind", "ReplicaSet", "", "")
+              or label_replace(label_replace(kube_statefulset_created, "resource_name", "$1", "statefulset", "(.+)"), "resource_kind", "StatefulSet", "", "")
+              or label_replace(label_replace(kube_daemonset_created, "resource_name", "$1", "daemonset", "(.+)"), "resource_kind", "DaemonSet", "", "")
+              or label_replace(label_replace(kube_cronjob_created, "resource_name", "$1", "cronjob", "(.+)"), "resource_kind", "CronJob", "", "")
+              or label_replace(label_replace(kube_job_owner{owner_kind="<none>"}, "resource_name", "$1", "job_name", "(.+)"), "resource_kind", "Job", "", "")
+              or label_replace(label_replace(kube_pod_owner{owner_kind=~"<none>|Node|Workflow"}, "resource_name", "$1", "pod", "(.+)"), "resource_kind", "Pod", "", "")
             )

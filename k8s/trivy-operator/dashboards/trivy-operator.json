@@ -38,6 +38,226 @@
         "x": 0,
         "y": 0
       },
+      "id": 31,
+      "title": "Scan Coverage",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境も含む。報告のあるワークロードの割合で、100% 未満は黄色になる。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "yellow"
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "percentunit",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "id": 32,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "9.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "count(nuage:trivy_scan_target:by_workload and on (namespace, resource_kind, resource_name) label_replace(count by (exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities), \"namespace\", \"$1\", \"exported_namespace\", \"(.+)\")) / count(nuage:trivy_scan_target:by_workload)",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Scanned Ratio",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境も含む。報告の無いワークロードの数で、1 以上は黄色になる。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "id": 33,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "9.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "count(nuage:trivy_scan_target:by_workload unless on (namespace, resource_kind, resource_name) label_replace(count by (exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities), \"namespace\", \"$1\", \"exported_namespace\", \"(.+)\")) or vector(0)",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Unscanned Workloads",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境も含む。報告の無いワークロードの一覧。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "displayMode": "auto",
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 1
+      },
+      "id": 34,
+      "options": {
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": []
+      },
+      "pluginVersion": "9.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "nuage:trivy_scan_target:by_workload unless on (namespace, resource_kind, resource_name) label_replace(count by (exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities), \"namespace\", \"$1\", \"exported_namespace\", \"(.+)\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Unscanned Workloads",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true
+            },
+            "indexByName": {
+              "namespace": 0,
+              "resource_kind": 1,
+              "resource_name": 2
+            },
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
       "id": 12,
       "title": "Quick Overview",
       "type": "row"
@@ -146,7 +366,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 1
+        "y": 10
       },
       "id": 21,
       "options": {
@@ -230,7 +450,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 10
+        "y": 19
       },
       "id": 2,
       "title": "Vulnerabilities",
@@ -340,7 +560,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 11
+        "y": 20
       },
       "id": 19,
       "options": {
@@ -493,7 +713,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 29
       },
       "id": 27,
       "options": {
@@ -609,7 +829,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 37
       },
       "id": 23,
       "options": {
@@ -757,7 +977,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 42
+        "y": 51
       },
       "id": 4,
       "title": "Misconfiguration",
@@ -867,7 +1087,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 43
+        "y": 52
       },
       "id": 28,
       "options": {
@@ -951,7 +1171,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 52
+        "y": 61
       },
       "id": 8,
       "title": "RBAC Assessment",
@@ -1061,7 +1281,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 53
+        "y": 62
       },
       "id": 29,
       "options": {
@@ -1159,7 +1379,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 62
+        "y": 71
       },
       "id": 6,
       "title": "Exposed Secrets",
@@ -1226,7 +1446,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 63
+        "y": 72
       },
       "id": 30,
       "options": {
