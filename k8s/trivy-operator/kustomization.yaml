@@ -42,7 +42,8 @@ helmCharts:
           memory: 128Mi
         limits:
           cpu: 500m
-          memory: 512Mi
+          # operator が OOMKilled で CrashLoopBackOff になったため 512Mi から上げた。
+          memory: 1Gi
       trivy:
         offlineScan: true
         resources:
