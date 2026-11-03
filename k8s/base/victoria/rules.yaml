@@ -417,8 +417,11 @@ spec:
         # 対象は vulnerabilityScannerScanOnlyCurrentRevisions: true (k8s/trivy-operator/kustomization.yaml) で trivy がスキャンする単位にそろえる。
         #   - レプリカ数が 1 以上の ReplicaSet (Deployment の古いリビジョンはスキャンされない)
         #   - StatefulSet・DaemonSet・CronJob
-        #   - 親リソースの無い Job (owner_kind="<none>")
-        #   - Pod のうち、親の無いもの・static Pod (owner_kind="Node")・Argo の Workflow の Pod (owner_kind="Workflow")
+        #   - 親リソースの無い Job (owner_kind="")。ただし trivy-operator Namespace の Job は除く
+        #   - Pod のうち、親の無いもの (owner_kind="")・static Pod (owner_kind="Node")・Argo の Workflow の Pod (owner_kind="Workflow")
+        # kube-state-metrics は親の無いリソースに owner_kind ラベルを付けない (空になる)。"<none>" という値は出ないので空文字で一致させる。
+        # trivy-operator Namespace の Job は trivy-operator 自身のスキャン Job (scan-vulnerabilityreport-<ハッシュ>、1 日 100 件以上) で、
+        # 親を持たないが trivy はスキャンしない。含めるとスキャン中は常に未スキャンとして出るため除く。
         # 種類ごとに元のメトリクスの値 (レプリカ数・作成時刻など) が違うため、max ではなく group で値を 1 にそろえる。
         # trivy-operator の設定や対象の数え方を変えたら、この式も見直す。
         # PR 環境 (<名前>-pr-<番号> の Namespace) も含める。上の 2 つのルールは件数の前日比を安定させるために PR 環境を除くが、
@@ -432,6 +435,6 @@ spec:
               or label_replace(label_replace(kube_statefulset_created, "resource_name", "$1", "statefulset", "(.+)"), "resource_kind", "StatefulSet", "", "")
               or label_replace(label_replace(kube_daemonset_created, "resource_name", "$1", "daemonset", "(.+)"), "resource_kind", "DaemonSet", "", "")
               or label_replace(label_replace(kube_cronjob_created, "resource_name", "$1", "cronjob", "(.+)"), "resource_kind", "CronJob", "", "")
-              or label_replace(label_replace(kube_job_owner{owner_kind="<none>"}, "resource_name", "$1", "job_name", "(.+)"), "resource_kind", "Job", "", "")
-              or label_replace(label_replace(kube_pod_owner{owner_kind=~"<none>|Node|Workflow"}, "resource_name", "$1", "pod", "(.+)"), "resource_kind", "Pod", "", "")
+              or label_replace(label_replace(kube_job_owner{owner_kind="",namespace!="trivy-operator"}, "resource_name", "$1", "job_name", "(.+)"), "resource_kind", "Job", "", "")
+              or label_replace(label_replace(kube_pod_owner{owner_kind=~"|Node|Workflow"}, "resource_name", "$1", "pod", "(.+)"), "resource_kind", "Pod", "", "")
             )
