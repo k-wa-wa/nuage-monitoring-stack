@@ -2,6 +2,7 @@
 # - custom-kubernetes-apps-rules: 既定の KubePodNotReady を置き換えるカスタム版
 # - external-nodes-rules: クラスタ外の NixOS ホスト (job="external-nodes") のディスク・CPU・メモリ・systemd 失敗・MVS バッチジョブ失敗検知
 # - k8s-error-logs: Pod のエラーログ検知およびホスト journald の systemd 失敗検知 (VictoriaLogs)
+# - trivy-summary-rules: 壁掛けダッシュボードで使う trivy-operator の脆弱性・設定不備の件数 (recording rule)
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
@@ -322,3 +323,51 @@ spec:
           annotations:
             summary: "{{ $labels.host }} の {{ $labels.unit }} が失敗した ({{ $labels.result }})"
             description: "ホスト {{ $labels.host }} で systemd ユニット {{ $labels.unit }} が Failed with result '{{ $labels.result }}' を出力した。"
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: trivy-summary-rules
+spec:
+  groups:
+    # 壁掛けダッシュボード (uid nuage-wall) の「セキュリティ」欄で、現在の件数と前日比を出すための件数。
+    # trivy-operator のメトリクスをそのまま合計すると、実態が変わらなくても日々件数が増えて前日比が意味をなさないため、数え直して記録する。
+    # 評価間隔は vmalert の既定 (1m) に任せる。
+    - name: trivy-summary
+      rules:
+        # 脆弱性の件数 (severity ごと)。
+        # trivy-operator はワークロードごとにレポートを作るため、同じイメージが複数のワークロードで重ねて数えられる
+        # (argoexec ×11、config-reloader ×9 など)。終わった Pod (CronJob・Argo Workflows の Pod) のイメージも数えられ、
+        # 何も変わらなくても日々件数が増える。trivy-operator 側にイメージ単位で数える設定は無いため、
+        # イメージの digest 単位で重複を除いてから合計する。
+        # alert: "" は CRD の既定値。省略すると実機との差分が残って Argo CD が OutOfSync のままになるため明示する
+        - record: nuage:trivy_image_vulnerabilities:dedup_by_image
+          alert: ""
+          expr: |-
+            sum by (severity) (
+              max by (image_registry, image_repository, image_digest, severity) (
+                trivy_image_vulnerabilities{job="trivy-operator"}
+              )
+            )
+        # 設定不備の件数 (severity ごと)。
+        # 終わった Pod (Succeeded / Failed で残っている CronJob・Argo Workflows の Pod) のレポートも数えられ、
+        # 日ごとに Pod が残るたびに件数が増えるため、kube-state-metrics で終わったとわかる Pod の分を除く。
+        # Pod 以外の kind (Deployment の ReplicaSet・Service など) はそのまま数える。
+        # trivy-operator のメトリクスの namespace は trivy-operator 自身なので、対象の Namespace は exported_namespace で突き合わせる。
+        - record: nuage:trivy_resource_configaudits:excl_finished_pods
+          alert: ""
+          expr: |-
+            sum by (severity) (
+              trivy_resource_configaudits{job="trivy-operator",resource_kind!="Pod"}
+              or (
+                trivy_resource_configaudits{job="trivy-operator",resource_kind="Pod"}
+                unless on (exported_namespace, resource_name)
+                label_replace(
+                  label_replace(
+                    max by (namespace, pod) (kube_pod_status_phase{job="kube-state-metrics",phase=~"Succeeded|Failed"} == 1),
+                    "exported_namespace", "$1", "namespace", "(.*)"
+                  ),
+                  "resource_name", "$1", "pod", "(.*)"
+                )
+              )
+            )
