@@ -44,3 +44,12 @@ patches:
       kind: ConfigMap
       metadata:
         name: grafana-dashboard-ai-agent
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboard-wall
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-wall
