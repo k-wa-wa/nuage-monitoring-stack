@@ -47,7 +47,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境も含む。報告のあるワークロードの割合で、100% 未満は黄色になる。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
+      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境は含まない。報告のあるワークロードの割合で、100% 未満は黄色になる。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -115,7 +115,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境も含む。報告の無いワークロードの数で、1 以上は黄色になる。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
+      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境は含まない。報告の無いワークロードの数で、1 以上は黄色になる。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -182,7 +182,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境も含む。報告の無いワークロードの一覧。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
+      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境は含まない。報告の無いワークロードの一覧。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
       "fieldConfig": {
         "defaults": {
           "custom": {

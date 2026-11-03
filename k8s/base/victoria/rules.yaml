@@ -424,17 +424,18 @@ spec:
         # 親を持たないが trivy はスキャンしない。含めるとスキャン中は常に未スキャンとして出るため除く。
         # 種類ごとに元のメトリクスの値 (レプリカ数・作成時刻など) が違うため、max ではなく group で値を 1 にそろえる。
         # trivy-operator の設定や対象の数え方を変えたら、この式も見直す。
-        # PR 環境 (<名前>-pr-<番号> の Namespace) も含める。上の 2 つのルールは件数の前日比を安定させるために PR 環境を除くが、
-        # このルールは trivy-operator がどこまで処理したかを示すためのもので、PR 環境のワークロードもスキャンの対象だからである。
+        # PR 環境 (<名前>-pr-<番号> の Namespace) は対象から外す。含めると PR 環境ができるたびに未スキャンが増え、割合が下がって stat が黄色になる。
+        # 同じダッシュボードの脆弱性・設定不備の件数 (上の 2 つのルール) も PR 環境を外して数えている。
+        # 割合も同じ範囲で数えれば、「表示されている件数のうち、スキャンの済んでいないものがどれだけあるか」を示す数字になる。
         # alert: "" は CRD の既定値。省略すると実機との差分が残って Argo CD が OutOfSync のままになるため明示する
         - record: nuage:trivy_scan_target:by_workload
           alert: ""
           expr: |-
             group by (namespace, resource_kind, resource_name) (
-              label_replace(label_replace(kube_replicaset_spec_replicas > 0, "resource_name", "$1", "replicaset", "(.+)"), "resource_kind", "ReplicaSet", "", "")
-              or label_replace(label_replace(kube_statefulset_created, "resource_name", "$1", "statefulset", "(.+)"), "resource_kind", "StatefulSet", "", "")
-              or label_replace(label_replace(kube_daemonset_created, "resource_name", "$1", "daemonset", "(.+)"), "resource_kind", "DaemonSet", "", "")
-              or label_replace(label_replace(kube_cronjob_created, "resource_name", "$1", "cronjob", "(.+)"), "resource_kind", "CronJob", "", "")
-              or label_replace(label_replace(kube_job_owner{owner_kind="",namespace!="trivy-operator"}, "resource_name", "$1", "job_name", "(.+)"), "resource_kind", "Job", "", "")
-              or label_replace(label_replace(kube_pod_owner{owner_kind=~"|Node|Workflow"}, "resource_name", "$1", "pod", "(.+)"), "resource_kind", "Pod", "", "")
+              label_replace(label_replace(kube_replicaset_spec_replicas{namespace!~".+-pr-[0-9]+"} > 0, "resource_name", "$1", "replicaset", "(.+)"), "resource_kind", "ReplicaSet", "", "")
+              or label_replace(label_replace(kube_statefulset_created{namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "statefulset", "(.+)"), "resource_kind", "StatefulSet", "", "")
+              or label_replace(label_replace(kube_daemonset_created{namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "daemonset", "(.+)"), "resource_kind", "DaemonSet", "", "")
+              or label_replace(label_replace(kube_cronjob_created{namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "cronjob", "(.+)"), "resource_kind", "CronJob", "", "")
+              or label_replace(label_replace(kube_job_owner{owner_kind="",namespace!="trivy-operator",namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "job_name", "(.+)"), "resource_kind", "Job", "", "")
+              or label_replace(label_replace(kube_pod_owner{owner_kind=~"|Node|Workflow",namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "pod", "(.+)"), "resource_kind", "Pod", "", "")
             )
