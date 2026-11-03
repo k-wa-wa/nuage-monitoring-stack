@@ -168,7 +168,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "count(nuage:trivy_scan_target:by_workload unless on (namespace, resource_kind, resource_name) label_replace(count by (exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities), \"namespace\", \"$1\", \"exported_namespace\", \"(.+)\")) or vector(0)",
+          "expr": "count(nuage:trivy_scan_target:by_workload unless on (namespace, resource_kind, resource_name) label_replace(count by (exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities), \"namespace\", \"$1\", \"exported_namespace\", \"(.+)\")) or (0 * count(nuage:trivy_scan_target:by_workload))",
           "instant": true,
           "range": false,
           "refId": "A"

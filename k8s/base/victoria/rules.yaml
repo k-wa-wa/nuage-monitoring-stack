@@ -416,7 +416,8 @@ spec:
         # Trivy ダッシュボードの Scan Coverage 行で trivy_image_vulnerabilities の報告と 1 件ずつ突き合わせる。
         # 対象は vulnerabilityScannerScanOnlyCurrentRevisions: true (k8s/trivy-operator/kustomization.yaml) で trivy がスキャンする単位にそろえる。
         #   - レプリカ数が 1 以上の ReplicaSet (Deployment の古いリビジョンはスキャンされない)
-        #   - StatefulSet・DaemonSet・CronJob
+        #   - レプリカ数が 1 以上の StatefulSet (0 レプリカには Pod が無くスキャンされない)
+        #   - DaemonSet・CronJob
         #   - 親リソースの無い Job (owner_kind="")。ただし trivy-operator Namespace の Job は除く
         #   - Pod のうち、親の無いもの (owner_kind="")・static Pod (owner_kind="Node")・Argo の Workflow の Pod (owner_kind="Workflow")
         # kube-state-metrics は親の無いリソースに owner_kind ラベルを付けない (空になる)。"<none>" という値は出ないので空文字で一致させる。
@@ -433,7 +434,7 @@ spec:
           expr: |-
             group by (namespace, resource_kind, resource_name) (
               label_replace(label_replace(kube_replicaset_spec_replicas{namespace!~".+-pr-[0-9]+"} > 0, "resource_name", "$1", "replicaset", "(.+)"), "resource_kind", "ReplicaSet", "", "")
-              or label_replace(label_replace(kube_statefulset_created{namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "statefulset", "(.+)"), "resource_kind", "StatefulSet", "", "")
+              or label_replace(label_replace(kube_statefulset_replicas{namespace!~".+-pr-[0-9]+"} > 0, "resource_name", "$1", "statefulset", "(.+)"), "resource_kind", "StatefulSet", "", "")
               or label_replace(label_replace(kube_daemonset_created{namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "daemonset", "(.+)"), "resource_kind", "DaemonSet", "", "")
               or label_replace(label_replace(kube_cronjob_created{namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "cronjob", "(.+)"), "resource_kind", "CronJob", "", "")
               or label_replace(label_replace(kube_job_owner{owner_kind="",namespace!="trivy-operator",namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "job_name", "(.+)"), "resource_kind", "Job", "", "")
