@@ -1541,7 +1541,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "vector(1) unless on () (nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Critical\"} - nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Critical\"} offset 1d)",
+              "expr": "vector(1) and on () nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Critical\"} unless on () (nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Critical\"} - nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Critical\"} offset 1d)",
               "instant": true,
               "range": false
             }
@@ -1753,7 +1753,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "vector(1) unless on () (nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"High\"} - nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"High\"} offset 1d)",
+              "expr": "vector(1) and on () nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"High\"} unless on () (nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"High\"} - nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"High\"} offset 1d)",
               "instant": true,
               "range": false
             }
@@ -1965,7 +1965,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "vector(1) unless on () (nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"} - nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"} offset 1d)",
+              "expr": "vector(1) and on () nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"} unless on () (nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"} - nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"} offset 1d)",
               "instant": true,
               "range": false
             }
@@ -2181,7 +2181,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "vector(1) unless on () (nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"} - nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"} offset 1d)",
+              "expr": "vector(1) and on () nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"} unless on () (nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"} - nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"} offset 1d)",
               "instant": true,
               "range": false
             }
