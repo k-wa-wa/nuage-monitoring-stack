@@ -58,6 +58,7 @@ configMapGenerator:
   # このダッシュボードは k8s/base/victoria/rules.yaml の VMRule trivy-summary-rules (recording rule) に依存する。
   #   - nuage:trivy_image_vulnerabilities:dedup_by_image (脆弱性をイメージの digest 単位で重複を除いた件数)
   #   - nuage:trivy_resource_configaudits:dedup_by_workload (設定不備を workload 単位にまとめた件数)
+  #   - nuage:trivy_scan_target:by_workload (スキャン対象のワークロード一覧。Scan Coverage 行で使う)
   # ルール名や数え方を変えるときは、このダッシュボードのクエリもあわせて直す。
   # Grafana の sidecar は全 Namespace を見る (searchNamespace: ALL) ため、trivy-operator Namespace に置いても読み込まれる。
   - name: trivy-operator-dashboard
