@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: chaos-monitor-grafana
+  namespace: nuage-monitoring-stack
 spec:
   ports:
   - protocol: TCP
@@ -12,6 +13,7 @@ apiVersion: discovery.k8s.io/v1
 kind: EndpointSlice
 metadata:
   name: chaos-monitor-grafana-slice
+  namespace: nuage-monitoring-stack
   labels:
     kubernetes.io/service-name: chaos-monitor-grafana
 addressType: IPv4

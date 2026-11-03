@@ -1,6 +1,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# 監視スタック本体の Namespace。prod overlay は trivy-operator (別 Namespace) も含むため、overlay ではなくここで指定する
+namespace: nuage-monitoring-stack
+
 resources:
   - namespace.yaml
   - monitoring-pwa
