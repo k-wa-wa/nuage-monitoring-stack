@@ -273,6 +273,8 @@ grafana:
   adminPassword: prom-operator
   plugins:
     - victoriametrics-logs-datasource
+    # 壁掛けダッシュボード (monitoring-pwa/grafana-dashboard-wall.yaml) の時計
+    - grafana-clock-panel
   sidecar:
     datasources:
       label: grafana_datasource

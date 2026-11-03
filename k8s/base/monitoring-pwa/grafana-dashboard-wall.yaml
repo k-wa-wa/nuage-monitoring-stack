@@ -1,0 +1,1491 @@
+# 家の常設モニターにずっと表示しておく壁掛けダッシュボード。
+# 約 3m 離れて見ても、リソースの使用状況とアラートの状態が色で「正常か異常か」わかることを狙う。
+# しきい値の判断はアラートに任せ、細かい数字は出さない。
+# 1920x1080 の横置き・kiosk モード (?kiosk&theme=dark) で縦スクロールが出ないよう、grid は 27 行に収める。
+#
+# エラーログの判定は、アプリのログレベルが未定義のため当面「"error" を含む行 (大文字小文字無視)」とする。
+# ログレベルが決まったら「本番のエラー」「PR 環境のエラー」「最新のエラーログ」のクエリを差し替える。
+#
+# 「最新のエラーログ」では NixOS ホストの journal の PRIORITY 0-3 から sshd と dbus-broker-launch を除いている。
+# TODO:
+# - sshd / dbus-broker-launch のエラーが本当に無害かを調査する
+# - bluray-extractor の agetty が 1 日 8000 件以上のエラーを出している原因を調査する
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-wall
+  labels:
+    grafana_dashboard: "1"
+data:
+  wall.json: |
+    {
+      "title": "壁掛けモニター",
+      "uid": "nuage-wall",
+      "tags": [
+        "nuage",
+        "wall"
+      ],
+      "timezone": "Asia/Tokyo",
+      "editable": true,
+      "graphTooltip": 0,
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "全体の状態",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 3
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "max(\n    (ALERTS{alertstate=\"firing\",severity=\"critical\",alertname!~\"Watchdog|InfoInhibitor\"} * 0 + 3)\n  or (ALERTS{alertstate=\"firing\",severity=\"warning\",alertname!~\"Watchdog|InfoInhibitor\"} * 0 + 2)\n  or vector(1)\n) and on () (count(ALERTS{alertstate=\"firing\",alertname=\"Watchdog\"}) > 0)\nor vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#6e6e6e",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 2
+                  },
+                  {
+                    "color": "red",
+                    "value": 3
+                  }
+                ]
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "監視停止",
+                      "color": "#6e6e6e",
+                      "index": 0
+                    },
+                    "1": {
+                      "text": "正常",
+                      "color": "green",
+                      "index": 1
+                    },
+                    "2": {
+                      "text": "警告",
+                      "color": "yellow",
+                      "index": 2
+                    },
+                    "3": {
+                      "text": "危険",
+                      "color": "red",
+                      "index": 3
+                    }
+                  }
+                }
+              ],
+              "noValue": "監視停止"
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "description": "発火中アラートの最も重い重要度 (Watchdog / InfoInhibitor を除く。info は正常扱い)。Watchdog が firing で届いていないときは vmalert が止まっているとみなし「監視停止」とする。"
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "危険 (critical)",
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 4,
+            "h": 3
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "count(ALERTS{alertstate=\"firing\",severity=\"critical\",alertname!~\"Watchdog|InfoInhibitor\"})\nor (0 * count(ALERTS{alertstate=\"firing\",alertname=\"Watchdog\"}))",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "監視停止"
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "description": "severity=critical の発火件数 (Watchdog / InfoInhibitor を除く)。Watchdog が届いていないときは値なし。"
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "警告 (warning)",
+          "gridPos": {
+            "x": 16,
+            "y": 0,
+            "w": 4,
+            "h": 3
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "count(ALERTS{alertstate=\"firing\",severity=\"warning\",alertname!~\"Watchdog|InfoInhibitor\"})\nor (0 * count(ALERTS{alertstate=\"firing\",alertname=\"Watchdog\"}))",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "監視停止"
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "description": "severity=warning の発火件数 (Watchdog / InfoInhibitor を除く)。Watchdog が届いていないときは値なし。"
+        },
+        {
+          "id": 4,
+          "type": "grafana-clock-panel",
+          "title": "",
+          "gridPos": {
+            "x": 20,
+            "y": 0,
+            "w": 4,
+            "h": 3
+          },
+          "transparent": true,
+          "options": {
+            "mode": "time",
+            "clockType": "24 hour",
+            "refresh": "sec",
+            "timezone": "Asia/Tokyo",
+            "fontMono": true,
+            "timeSettings": {
+              "fontSize": "44px",
+              "fontWeight": "bold"
+            },
+            "dateSettings": {
+              "showDate": true,
+              "dateFormat": "YYYY-MM-DD (ddd)",
+              "locale": "ja",
+              "fontSize": "18px",
+              "fontWeight": "normal"
+            },
+            "timezoneSettings": {
+              "showTimezone": false,
+              "zoneFormat": "offsetAbbv",
+              "fontSize": "12px",
+              "fontWeight": "normal"
+            }
+          }
+        },
+        {
+          "id": 5,
+          "type": "table",
+          "title": "発火中のアラート",
+          "description": "重い順。経過時間は ALERTS_FOR_STATE (アラートが active になった時刻) から算出する。",
+          "gridPos": {
+            "x": 0,
+            "y": 3,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "WITH (\n  firing = ALERTS{alertstate=\"firing\",alertname!~\"Watchdog|InfoInhibitor\"},\n  elapsed = time() - (ALERTS_FOR_STATE and ignoring (alertstate) firing),\n  joined = label_join(elapsed, \"target\", \"/\", \"namespace\", \"pod\", \"host\", \"node\", \"instance\", \"name\", \"job_name\"),\n  target = label_replace(label_transform(joined, \"target\", \"/{2,}\", \"/\"), \"target\", \"$1\", \"target\", \"/*(.*?)/*\"),\n  ranked = label_replace(label_replace(label_replace(target,\n    \"rank\", \"1\", \"severity\", \"critical\"),\n    \"rank\", \"2\", \"severity\", \"warning\"),\n    \"rank\", \"3\", \"severity\", \"info\")\n)\nranked",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "sortBy",
+              "options": {
+                "fields": {},
+                "sort": [
+                  {
+                    "field": "rank"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "filterFieldsByName",
+              "options": {
+                "include": {
+                  "names": [
+                    "severity",
+                    "alertname",
+                    "target",
+                    "Value",
+                    "Value #A"
+                  ]
+                }
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "indexByName": {
+                  "severity": 0,
+                  "alertname": 1,
+                  "target": 2,
+                  "Value": 3,
+                  "Value #A": 3
+                },
+                "renameByName": {
+                  "severity": "重要度",
+                  "alertname": "アラート",
+                  "target": "対象",
+                  "Value": "経過",
+                  "Value #A": "経過"
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "発火中のアラートはない",
+              "custom": {
+                "align": "left",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "重要度"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "basic"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "center"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "critical": {
+                            "text": "危険",
+                            "color": "red",
+                            "index": 0
+                          },
+                          "warning": {
+                            "text": "警告",
+                            "color": "yellow",
+                            "index": 1
+                          },
+                          "info": {
+                            "text": "情報",
+                            "color": "blue",
+                            "index": 2
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "経過"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dtdurations"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "fields": ""
+            }
+          }
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Node Ready (k8s)",
+          "gridPos": {
+            "x": 12,
+            "y": 3,
+            "w": 4,
+            "h": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "sum(kube_node_status_condition{condition=\"Ready\",status=\"true\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 6
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "取得不可"
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "description": "Ready の k8s ノード数。6 台未満で赤。"
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "異常 Pod",
+          "gridPos": {
+            "x": 16,
+            "y": 3,
+            "w": 4,
+            "h": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "count(\n     (max by (namespace, pod) (kube_pod_status_phase{phase=~\"Pending|Unknown|Failed\"} == 1)\n        and on (namespace, pod) max by (namespace, pod) (kube_pod_owner{owner_kind!~\"Job|Workflow\"}))\n  or max by (namespace, pod) (kube_pod_container_status_waiting_reason{reason=~\"CrashLoopBackOff|ImagePullBackOff|ErrImagePull|CreateContainerConfigError\"} == 1)\n)\nor (0 * max(up{job=\"kube-state-metrics\"} == 1))",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "取得不可"
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "description": "Pending / Unknown / Failed (Job・Workflow の Pod を除く) と、CrashLoopBackOff などで待機中の Pod の数。"
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "CPU (全ノード平均)",
+          "gridPos": {
+            "x": 20,
+            "y": 3,
+            "w": 4,
+            "h": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "avg(100 - avg by (instance) (rate(node_cpu_seconds_total{job=~\"node-exporter|external-nodes\",mode=\"idle\"}[5m])) * 100)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "取得不可",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "description": "17 ノードの CPU 使用率の平均。"
+        },
+        {
+          "id": 9,
+          "type": "stat",
+          "title": "メモリ (全ノード平均)",
+          "gridPos": {
+            "x": 12,
+            "y": 7,
+            "w": 4,
+            "h": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "avg(100 * (1 - node_memory_MemAvailable_bytes{job=~\"node-exporter|external-nodes\"} / node_memory_MemTotal_bytes{job=~\"node-exporter|external-nodes\"}))",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "取得不可",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "description": "17 ノードのメモリ使用率の平均。"
+        },
+        {
+          "id": 10,
+          "type": "stat",
+          "title": "VM 保存先 a の空き",
+          "gridPos": {
+            "x": 16,
+            "y": 7,
+            "w": 4,
+            "h": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "max(vm_free_disk_space_bytes{job=\"vmsingle-vm\",path=\"/victoria-metrics-data\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "decbytes",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 25000000000.0
+                  },
+                  {
+                    "color": "green",
+                    "value": 30000000000.0
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "取得不可",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "description": "storage.minFreeDiskSpaceBytes (20GB) を下回ると書き込みが止まる。25GB 未満で赤。"
+        },
+        {
+          "id": 11,
+          "type": "stat",
+          "title": "VM 保存先 b の空き",
+          "gridPos": {
+            "x": 20,
+            "y": 7,
+            "w": 4,
+            "h": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "max(vm_free_disk_space_bytes{job=\"vmsingle-vm-b\",path=\"/victoria-metrics-data\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "decbytes",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 25000000000.0
+                  },
+                  {
+                    "color": "green",
+                    "value": 30000000000.0
+                  }
+                ]
+              },
+              "mappings": [],
+              "noValue": "取得不可",
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "description": "storage.minFreeDiskSpaceBytes (20GB) を下回ると書き込みが止まる。25GB 未満で赤。"
+        },
+        {
+          "id": 12,
+          "type": "stat",
+          "title": "ノード",
+          "gridPos": {
+            "x": 0,
+            "y": 11,
+            "w": 24,
+            "h": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "WITH (\n  sev = (ALERTS{alertstate=\"firing\",severity=\"critical\",alertname!~\"Watchdog|InfoInhibitor\"} * 3)\n     or (ALERTS{alertstate=\"firing\",severity=\"warning\",alertname!~\"Watchdog|InfoInhibitor\"} * 2),\n  k8smap = max by (node, instance) (label_replace(kube_node_info, \"instance\", \"$1:9100\", \"internal_ip\", \"(.+)\")),\n  hostmap = max by (host, instance) (label_replace(node_uname_info{job=\"external-nodes\"}, \"host\", \"$1\", \"nodename\", \"(.+)\")),\n  alertsev = max by (instance) (\n       label_set(max by (instance) (label_match(sev, \"instance\", \".+:9100\")), \"via\", \"instance\")\n    or label_set(max by (instance) (max by (node) (sev) * on (node) group_left (instance) k8smap), \"via\", \"node\")\n    or label_set(max by (instance) (max by (host) (sev) * on (host) group_left (instance) hostmap), \"via\", \"host\")\n  ),\n  upi = max by (instance) (up{job=~\"node-exporter|external-nodes\"}),\n  state = (alertsev and on (instance) (upi == 1))\n       or on (instance) ((upi == 1) * 0 + 1)\n       or on (instance) (upi * 0),\n  named = (state * on (instance) group_left (nodename) max by (instance, nodename) (node_uname_info{job=~\"node-exporter|external-nodes\"}))\n       or on (instance) label_replace(state, \"nodename\", \"$1\", \"instance\", \"(.+):9100\")\n)\nsort_by_label(\n  label_replace(label_replace(label_replace(label_replace(label_replace(label_replace(named,\n    \"nodename\", \"control-plane-1\", \"instance\", \"10\\\\.20\\\\.1\\\\.11:9100\"),\n    \"nodename\", \"control-plane-2\", \"instance\", \"10\\\\.20\\\\.1\\\\.12:9100\"),\n    \"nodename\", \"control-plane-3\", \"instance\", \"10\\\\.20\\\\.1\\\\.13:9100\"),\n    \"nodename\", \"worker-1\", \"instance\", \"10\\\\.20\\\\.1\\\\.16:9100\"),\n    \"nodename\", \"worker-2\", \"instance\", \"10\\\\.20\\\\.1\\\\.17:9100\"),\n    \"nodename\", \"worker-3\", \"instance\", \"10\\\\.20\\\\.1\\\\.18:9100\"),\n  \"instance\")",
+              "instant": true,
+              "range": false,
+              "legendFormat": "{{nodename}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#6e6e6e",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 2
+                  },
+                  {
+                    "color": "red",
+                    "value": 3
+                  }
+                ]
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "データなし",
+                      "color": "#6e6e6e",
+                      "index": 0
+                    },
+                    "1": {
+                      "text": "正常",
+                      "color": "green",
+                      "index": 1
+                    },
+                    "2": {
+                      "text": "警告",
+                      "color": "yellow",
+                      "index": 2
+                    },
+                    "3": {
+                      "text": "危険",
+                      "color": "red",
+                      "index": 3
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "name",
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "description": "灰: node-exporter から取れていない (up=0)。黄 / 赤: そのノードの warning / critical アラートが発火中 (instance・node・host ラベルでノードに対応付ける)。緑: それ以外。"
+        },
+        {
+          "id": 13,
+          "type": "bargauge",
+          "title": "本番のエラー (1h)",
+          "description": "直近 1 時間のエラーログ行数。対象: pechka / bare-web-proxy / nuage-home / monitoring-pwa (nuage-monitoring-stack の monitoring-pwa の backend / frontend コンテナのみ)。エラーの判定は当面「error を含む行 (大文字小文字無視)」とする。アプリのログレベルが決まったら差し替える。",
+          "gridPos": {
+            "x": 0,
+            "y": 15,
+            "w": 6,
+            "h": 7
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "VictoriaLogs"
+              },
+              "expr": "_time:1h ~\"(?i)error\"\n  (kubernetes.pod_namespace:in(\"pechka\", \"bare-web-proxy\", \"nuage-home\")\n   or (kubernetes.pod_namespace:=\"nuage-monitoring-stack\" kubernetes.pod_name:~\"^monitoring-pwa-\" kubernetes.container_name:in(\"backend\", \"frontend\")))\n| stats\n    count() if (kubernetes.pod_namespace:=\"pechka\") as \"pechka\",\n    count() if (kubernetes.pod_namespace:=\"bare-web-proxy\") as \"bare-web-proxy\",\n    count() if (kubernetes.pod_namespace:=\"nuage-home\") as \"nuage-home\",\n    count() if (kubernetes.pod_namespace:=\"nuage-monitoring-stack\") as \"monitoring-pwa\"",
+              "queryType": "stats",
+              "editorMode": "code",
+              "legendFormat": "{{__name__}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "min": 0,
+              "noValue": "0",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "color",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizHeight": 16,
+            "minVizWidth": 8
+          }
+        },
+        {
+          "id": 14,
+          "type": "bargauge",
+          "title": "PR 環境のエラー (1h)",
+          "description": "直近 1 時間のエラーログ行数を、PR 環境 (namespace が -pr-<数字> で終わるもの) ごとに出す。エラーの判定は当面「error を含む行 (大文字小文字無視)」とする。アプリのログレベルが決まったら差し替える。",
+          "gridPos": {
+            "x": 6,
+            "y": 15,
+            "w": 6,
+            "h": 7
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "VictoriaLogs"
+              },
+              "expr": "_time:1h kubernetes.pod_namespace:~\"-pr-[0-9]+$\"\n| rename kubernetes.pod_namespace as namespace\n| stats by (namespace) count() if (~\"(?i)error\") as errors",
+              "queryType": "stats",
+              "editorMode": "code",
+              "legendFormat": "{{namespace}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "min": 0,
+              "noValue": "PR 環境なし",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "color",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizHeight": 16,
+            "minVizWidth": 8
+          }
+        },
+        {
+          "id": 15,
+          "type": "logs",
+          "title": "最新のエラーログ",
+          "description": "本番のエラー (左の集計と同じ対象・判定) と、NixOS ホストの journal の PRIORITY 0-3 (sshd・dbus-broker-launch は除く)。PR 環境は混ぜない。エラーの判定は当面「error を含む行 (大文字小文字無視)」とする。アプリのログレベルが決まったら差し替える。",
+          "gridPos": {
+            "x": 12,
+            "y": 15,
+            "w": 12,
+            "h": 7
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "VictoriaLogs"
+              },
+              "expr": "_time:1h (\n  (~\"(?i)error\"\n    (kubernetes.pod_namespace:in(\"pechka\", \"bare-web-proxy\", \"nuage-home\")\n     or (kubernetes.pod_namespace:=\"nuage-monitoring-stack\" kubernetes.pod_name:~\"^monitoring-pwa-\" kubernetes.container_name:in(\"backend\", \"frontend\"))))\n  or (PRIORITY:in(0, 1, 2, 3) NOT SYSLOG_IDENTIFIER:in(\"sshd\", \"dbus-broker-launch\"))\n)\n| format if (kubernetes.pod_namespace:*) \"<kubernetes.pod_namespace>/<kubernetes.container_name>\" as source\n| format if (_HOSTNAME:*) \"<_HOSTNAME>/<SYSLOG_IDENTIFIER>\" as source\n| format \"[<source>] <_msg>\" as _msg\n| fields _time, _msg\n| sort by (_time desc)\n| limit 100",
+              "queryType": "instant",
+              "editorMode": "code",
+              "maxLines": 100
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": false,
+            "prettifyLogMessage": false,
+            "enableLogDetails": false,
+            "enableInfiniteScrolling": false,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          }
+        },
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "CPU 使用率 (6h)",
+          "gridPos": {
+            "x": 0,
+            "y": 22,
+            "w": 8,
+            "h": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "avg(100 - avg by (instance) (rate(node_cpu_seconds_total{job=~\"node-exporter|external-nodes\",mode=\"idle\"}[$__rate_interval])) * 100)",
+              "instant": false,
+              "range": true,
+              "legendFormat": "平均"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "max(100 - avg by (instance) (rate(node_cpu_seconds_total{job=~\"node-exporter|external-nodes\",mode=\"idle\"}[$__rate_interval])) * 100)",
+              "instant": false,
+              "range": true,
+              "legendFormat": "最大"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisPlacement": "auto"
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "min": 0,
+              "max": 100
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "平均"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "green"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "最大"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "orange"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "description": "全 17 ノードの CPU 使用率の平均と最大。"
+        },
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "メモリ使用率 (6h)",
+          "gridPos": {
+            "x": 8,
+            "y": 22,
+            "w": 8,
+            "h": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "avg(100 * (1 - node_memory_MemAvailable_bytes{job=~\"node-exporter|external-nodes\"} / node_memory_MemTotal_bytes{job=~\"node-exporter|external-nodes\"}))",
+              "instant": false,
+              "range": true,
+              "legendFormat": "平均"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "max(100 * (1 - node_memory_MemAvailable_bytes{job=~\"node-exporter|external-nodes\"} / node_memory_MemTotal_bytes{job=~\"node-exporter|external-nodes\"}))",
+              "instant": false,
+              "range": true,
+              "legendFormat": "最大"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisPlacement": "auto"
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "min": 0,
+              "max": 100
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "平均"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "green"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "最大"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "orange"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "description": "全 17 ノードのメモリ使用率の平均と最大。"
+        },
+        {
+          "id": 18,
+          "type": "timeseries",
+          "title": "ネットワーク (6h)",
+          "gridPos": {
+            "x": 16,
+            "y": 22,
+            "w": 8,
+            "h": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "sum(rate(node_network_receive_bytes_total{job=~\"node-exporter|external-nodes\",device=~\"eth[0-9]+\"}[$__rate_interval])) * 8",
+              "instant": false,
+              "range": true,
+              "legendFormat": "受信"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "expr": "sum(rate(node_network_transmit_bytes_total{job=~\"node-exporter|external-nodes\",device=~\"eth[0-9]+\"}[$__rate_interval])) * 8",
+              "instant": false,
+              "range": true,
+              "legendFormat": "送信"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bps",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10,
+                "showPoints": "never",
+                "spanNulls": true,
+                "axisPlacement": "auto"
+              },
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "受信"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "blue"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "送信"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "purple"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "right",
+              "calcs": []
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "description": "全 17 ノードの物理 NIC (eth*) の送受信の合計。"
+        }
+      ]
+    }
