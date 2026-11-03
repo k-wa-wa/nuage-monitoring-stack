@@ -278,7 +278,8 @@ grafana:
       label: grafana_datasource
       labelValue: "1"
     dashboards:
-      # monitoring-pwa の node-health ダッシュボード (label grafana_dashboard) も読み込む
+      # 全 Namespace の ConfigMap (label grafana_dashboard: "1") を監視して自動ロードする
+      searchNamespace: ALL
       label: grafana_dashboard
       labelValue: "1"
   grafana.ini:
