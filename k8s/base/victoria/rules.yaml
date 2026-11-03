@@ -2,7 +2,7 @@
 # - custom-kubernetes-apps-rules: 既定の KubePodNotReady を置き換えるカスタム版
 # - external-nodes-rules: クラスタ外の NixOS ホスト (job="external-nodes") のディスク・CPU・メモリ・systemd 失敗・MVS バッチジョブ失敗検知
 # - k8s-error-logs: Pod のエラーログ検知およびホスト journald の systemd 失敗検知 (VictoriaLogs)
-# - trivy-summary-rules: 壁掛けダッシュボード (uid nuage-wall) と nuage-cluster の Trivy ダッシュボード (uid trivy-operator) で使う trivy-operator の脆弱性・設定不備の件数 (recording rule)
+# - trivy-summary-rules: 壁掛けダッシュボード (uid nuage-wall) と Trivy ダッシュボード (uid trivy-operator) で使う trivy-operator の脆弱性・設定不備の件数 (recording rule)
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
@@ -331,10 +331,10 @@ metadata:
 spec:
   groups:
     # この recording rule は 2 つのダッシュボードから参照される。
-    # - このリポジトリの壁掛けダッシュボード (uid nuage-wall)
-    # - nuage-cluster の Trivy ダッシュボード (manifests/apps/trivy-operator/base/dashboards/trivy-operator.json、uid trivy-operator)
-    # ルール名・ラベル・数え方を変えるときは、両方のダッシュボードを合わせて直す。片方だけ直すと、もう一方のリポジトリのダッシュボードが黙って壊れる。
-    # Trivy ダッシュボードと recording rule をどちらのリポジトリに寄せるかは未決 (nuage-cluster の TODO.md に記載)。
+    # - 壁掛けダッシュボード (k8s/base/monitoring-pwa/grafana-dashboard-wall.yaml、uid nuage-wall)
+    # - Trivy ダッシュボード (k8s/trivy-operator/dashboards/trivy-operator.json、uid trivy-operator)
+    # ルール名・ラベル・数え方を変えるときは、両方のダッシュボードを合わせて直す。片方だけ直すと、もう一方のダッシュボードが黙って壊れる。
+    # trivy-operator 本体 (k8s/trivy-operator) を更新してメトリクスのラベルが変わったときも、このルールを見直す。
     #
     # 壁掛けダッシュボード (uid nuage-wall) の「セキュリティ」欄で、現在の件数と前日比を出すための件数。
     # trivy-operator のメトリクスをそのまま合計すると、実態が変わらなくても日々件数が増えて前日比が意味をなさないため、数え直して記録する。

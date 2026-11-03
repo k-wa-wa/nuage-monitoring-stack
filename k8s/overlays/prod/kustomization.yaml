@@ -1,10 +1,14 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: nuage-monitoring-stack
+# この overlay は namespace を指定しない。
+# 監視スタック本体は nuage-monitoring-stack、trivy-operator 一式は trivy-operator と、Namespace が 2 つあるため、
+# それぞれの kustomization (../../base、../../trivy-operator) で指定する。
+# この overlay に直接置くリソースは、metadata.namespace を各ファイルに書く。
 
 resources:
   - ../../base
   - ingress.yaml
   - chaos-monitor-grafana.yaml
   - secrets/secrets.yaml
+  - ../../trivy-operator
