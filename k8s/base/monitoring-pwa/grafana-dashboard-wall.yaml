@@ -7,7 +7,7 @@
 # ログレベルが決まったら「本番のエラー」「PR 環境のエラー」「最新のエラーログ」のクエリを差し替える。
 #
 # 一番下の行の右端は「セキュリティ」欄で、trivy-operator の脆弱性・設定不備 (Critical / High) の現在の件数と前日比を出す。
-# 件数は k8s/base/victoria/rules.yaml の trivy-summary-rules で数え直した値を使う (同じイメージの重複・終わった Pod を除く)。
+# 件数は k8s/base/victoria/rules.yaml の trivy-summary-rules で数え直した値を使う (同じイメージの重複、実行ごとに別名の設定不備をまとめる)。
 #
 # 「最新のエラーログ」では NixOS ホストの journal の PRIORITY 0-3 から sshd と dbus-broker-launch を除いている。
 # TODO:
@@ -1935,7 +1935,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"}",
+              "expr": "nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"}",
               "instant": true,
               "range": false
             },
@@ -1945,7 +1945,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "(nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} offset 1d) >= 0",
+              "expr": "(nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"} - nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"} offset 1d) >= 0",
               "instant": true,
               "range": false
             },
@@ -1955,7 +1955,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "(nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} offset 1d) < 0",
+              "expr": "(nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"} - nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"} offset 1d) < 0",
               "instant": true,
               "range": false
             },
@@ -1965,7 +1965,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "vector(1) unless on () (nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"Critical\"} offset 1d)",
+              "expr": "vector(1) unless on () (nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"} - nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"} offset 1d)",
               "instant": true,
               "range": false
             }
@@ -2128,7 +2128,7 @@ data:
             "wideLayout": true,
             "showPercentChange": false
           },
-          "description": "セキュリティ: trivy-operator が見つけた設定不備 (Critical) の件数。終わった Pod (Succeeded / Failed) と終わった Job の分は除いて数える (recording rule nuage:trivy_resource_configaudits:excl_finished_workloads)。今は 0 件のため、1 件以上で現在の件数を赤にする。前日比は「現在 − 1 日前」。増えたら赤、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
+          "description": "セキュリティ: trivy-operator が見つけた設定不備 (Critical) の件数。実行ごとに変わる名前 (Argo CronWorkflow の Pod、ReplicaSet のハッシュ) を取り除いて同じ workload を 1 つにまとめて数える (recording rule nuage:trivy_resource_configaudits:dedup_by_workload)。今は 0 件のため、1 件以上で現在の件数を赤にする。前日比は「現在 − 1 日前」。増えたら赤、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
         },
         {
           "id": 22,
@@ -2151,7 +2151,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"}",
+              "expr": "nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"}",
               "instant": true,
               "range": false
             },
@@ -2161,7 +2161,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "(nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} offset 1d) >= 0",
+              "expr": "(nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"} - nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"} offset 1d) >= 0",
               "instant": true,
               "range": false
             },
@@ -2171,7 +2171,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "(nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} offset 1d) < 0",
+              "expr": "(nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"} - nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"} offset 1d) < 0",
               "instant": true,
               "range": false
             },
@@ -2181,7 +2181,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "vector(1) unless on () (nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} - nuage:trivy_resource_configaudits:excl_finished_workloads{severity=\"High\"} offset 1d)",
+              "expr": "vector(1) unless on () (nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"} - nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"} offset 1d)",
               "instant": true,
               "range": false
             }
@@ -2340,7 +2340,7 @@ data:
             "wideLayout": true,
             "showPercentChange": false
           },
-          "description": "セキュリティ: trivy-operator が見つけた設定不備 (High) の件数。終わった Pod (Succeeded / Failed) と終わった Job の分は除いて数える (recording rule nuage:trivy_resource_configaudits:excl_finished_workloads)。前日比は「現在 − 1 日前」。増えたら黄、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
+          "description": "セキュリティ: trivy-operator が見つけた設定不備 (High) の件数。実行ごとに変わる名前 (Argo CronWorkflow の Pod、ReplicaSet のハッシュ) を取り除いて同じ workload を 1 つにまとめて数える (recording rule nuage:trivy_resource_configaudits:dedup_by_workload)。前日比は「現在 − 1 日前」。増えたら黄、変化なし・減ったら緑。1 日前の値が無い間 (recording rule が 1 日分たまるまで) は「—」と出す。"
         }
       ]
     }
