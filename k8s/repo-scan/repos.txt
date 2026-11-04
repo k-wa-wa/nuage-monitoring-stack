@@ -1,0 +1,15 @@
+# スキャンするリポジトリの一覧。1 行に 1 つ、<owner>/<repo> の形で書く。既定のブランチをスキャンする。
+# 対象を足す・外すときは、この一覧だけを変えればよい (ConfigMap repo-scan-targets になる)。
+# GitHub からトークン無しでクローンするため、公開リポジトリに限る。
+# メトリクスとログの repo ラベルには <repo> の部分を使うため、<repo> の部分が重ならないようにする。
+# 空行と # で始まる行は読み飛ばす。
+k-wa-wa/nuage-workspace
+k-wa-wa/nuage-cluster
+k-wa-wa/nuage-monitoring-stack
+k-wa-wa/pechka
+k-wa-wa/bare-web-proxy
+k-wa-wa/nuage-usage-ledger
+k-wa-wa/cicerone3270
+k-wa-wa/nuage-autopilot5
+k-wa-wa/nix-config
+k-wa-wa/nuage-dr
