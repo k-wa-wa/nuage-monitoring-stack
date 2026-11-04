@@ -17,9 +17,22 @@ spec:
       labels:
         app: monitoring-pwa-backend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backend
           image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-backend:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           ports:
             - containerPort: 8080
           env:
@@ -48,6 +61,8 @@ spec:
           volumeMounts:
             - name: db-volume
               mountPath: /data
+            - name: tmp
+              mountPath: /tmp
           livenessProbe:
             httpGet:
               path: /health
@@ -71,6 +86,8 @@ spec:
         - name: db-volume
           persistentVolumeClaim:
             claimName: monitoring-pwa-db
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -114,11 +131,30 @@ spec:
       labels:
         app: monitoring-pwa-frontend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
           image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-frontend:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           ports:
-            - containerPort: 80
+            - containerPort: 8080
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
           resources:
             requests:
               cpu: 20m
@@ -126,6 +162,13 @@ spec:
             limits:
               cpu: 100m
               memory: 32Mi
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -136,4 +179,4 @@ spec:
     app: monitoring-pwa-frontend
   ports:
     - port: 80
-      targetPort: 80
+      targetPort: 8080
