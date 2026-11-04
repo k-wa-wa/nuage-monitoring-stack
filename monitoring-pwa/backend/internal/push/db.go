@@ -2,6 +2,7 @@ package push
 
 import (
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -58,6 +59,11 @@ func InitDB(path string) (*DB, error) {
 	if err := db.migrate(); err != nil {
 		conn.Close()
 		return nil, err
+	}
+
+	if err := db.checkWritable(); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("database is not writable: %w", err)
 	}
 
 	return db, nil
@@ -409,4 +415,26 @@ func scanAlerts(rows *sql.Rows) ([]Alert, error) {
 	}
 	return alerts, nil
 }
+
+// checkWritable はデータベースが書き込み可能であるかを検査する。
+// SQLite が読み取り専用モードで開かれた場合にサイレントに起動して後続の更新が失敗するのを防ぐ。
+func (db *DB) checkWritable() error {
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// 実際に書き込みを行って物理ファイルへの書き込み権限を検証する。
+	if _, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS _permission_check (id INTEGER PRIMARY KEY);
+		INSERT OR REPLACE INTO _permission_check (id) VALUES (1);
+		DELETE FROM _permission_check WHERE id = 1;
+	`); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 
