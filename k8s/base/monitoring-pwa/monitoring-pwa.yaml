@@ -24,35 +24,6 @@ spec:
         fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
-      initContainers:
-        - name: fix-db-permissions
-          image: busybox:1.37
-          command:
-            - sh
-            - -c
-            - "chown -R 65532:65532 /data"
-          securityContext:
-            runAsNonRoot: false
-            runAsUser: 0
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop:
-                - ALL
-              add:
-                - CHOWN
-                - FOWNER
-                - DAC_OVERRIDE
-          resources:
-            requests:
-              cpu: 10m
-              memory: 8Mi
-            limits:
-              cpu: 100m
-              memory: 32Mi
-          volumeMounts:
-            - name: db-volume
-              mountPath: /data
       containers:
         - name: backend
           image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-backend:latest
