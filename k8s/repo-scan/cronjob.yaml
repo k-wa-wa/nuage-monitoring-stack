@@ -31,6 +31,8 @@ spec:
       # 送り直すと、失敗が続く原因 (GitHub の障害など) のたびに同じ失敗を重ねるだけのため。
       backoffLimit: 0
       # 10 個のリポジトリで、手元では trivy・semgrep ともに 1 つ 10 秒前後。DB とルールの取得を含めても十分な余裕を取る
+      # 1 つのリポジトリで通信が止まってもこれを使い切らないよう、各手順に 1 リポジトリあたりの上限を設けている
+      # (clone 120 秒・trivy 600 秒・semgrep 600 秒。scripts/ の CLONE_TIMEOUT・SCAN_TIMEOUT)。超えたものは失敗として記録して次に進む
       activeDeadlineSeconds: 3600
       template:
         metadata:

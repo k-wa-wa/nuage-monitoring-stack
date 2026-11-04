@@ -6,6 +6,11 @@
 # aggregate.py が失敗として扱う。脆弱性 DB と設定チェックは最初のリポジトリで取得し、/work/cache/trivy を使い回す。
 set -u
 
+# 1 つのリポジトリのスキャンにかける時間の上限 (秒)。DB・チェックの取得で通信が止まったまま 1 つで Job の締め切り
+# (activeDeadlineSeconds) を使い切り、残りのリポジトリと結果の送信まで止まるのを防ぐ。超えたら失敗として記録して次に進む。
+# trivy 自身の --timeout (スキャンの上限) はこれより短くし、trivy のエラーとして理由が残るようにする。
+SCAN_TIMEOUT=${SCAN_TIMEOUT:-600}
+
 WORK=${WORK:-/work}
 
 for status in "$WORK"/status/*/; do
@@ -15,10 +20,10 @@ for status in "$WORK"/status/*/; do
     continue
   fi
   mkdir -p "$WORK/out/$name"
-  trivy fs \
+  timeout "$SCAN_TIMEOUT" trivy fs \
     --quiet \
     --cache-dir "$WORK/cache/trivy" \
-    --timeout 15m \
+    --timeout 9m \
     --scanners vuln,misconfig,secret \
     --format json \
     --output "$WORK/out/$name/trivy.json" \

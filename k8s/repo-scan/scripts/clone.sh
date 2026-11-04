@@ -7,6 +7,11 @@
 # 対象の一覧そのものが読めない・形が正しくないときは、ここで止める (以降のスキャンは意味が無いため)。
 set -u
 
+# 1 つのリポジトリのクローンにかける時間の上限 (秒)。通信が止まったまま 1 つで Job の締め切り
+# (activeDeadlineSeconds) を使い切り、残りのリポジトリと結果の送信まで止まるのを防ぐ。
+# 浅いクローンは手元で 1 つ数秒のため、十分な余裕を取る。超えたら失敗として記録して次に進む。
+CLONE_TIMEOUT=${CLONE_TIMEOUT:-120}
+
 TARGETS=${TARGETS:-/etc/repo-scan/targets/repos.txt}
 WORK=${WORK:-/work}
 
@@ -27,7 +32,7 @@ for full in $targets; do
   name=${full#*/}
   status=$WORK/status/$name
   mkdir -p "$status"
-  git clone --quiet --depth 1 --no-tags "https://github.com/$full.git" "$WORK/repos/$name" 2>"$status/clone.log"
+  timeout "$CLONE_TIMEOUT" git clone --quiet --depth 1 --no-tags "https://github.com/$full.git" "$WORK/repos/$name" 2>"$status/clone.log"
   code=$?
   if [ "$code" -eq 0 ]; then
     git -C "$WORK/repos/$name" rev-parse HEAD >"$status/commit" 2>>"$status/clone.log"

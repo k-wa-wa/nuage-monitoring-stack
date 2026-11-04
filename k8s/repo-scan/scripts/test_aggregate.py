@@ -103,6 +103,19 @@ class TrivyTest(unittest.TestCase):
         self.assertEqual(misconf["line"], 21)
         self.assertTrue(misconf["url"].endswith("/k8s/base/monitoring-pwa/monitoring-pwa.yaml#L21"))
 
+    def test_absolute_target_is_made_relative(self):
+        # trivy 0.76.1 は相対パスで出すが、版が変わって Target が絶対パスや ./ 付きで来ても URL を壊さない
+        doc = load("trivy.json")
+        doc["Results"][0]["Target"] = "/work/repos/" + REPO + "/monitoring-pwa/backend/go.mod"
+        doc["Results"][1]["Target"] = "./k8s/base/monitoring-pwa/monitoring-pwa.yaml"
+        findings = aggregate.trivy_findings(doc, OWNER, REPO, COMMIT, "/work/repos/" + REPO)
+        files = {f["file"] for f in findings}
+        self.assertIn("monitoring-pwa/backend/go.mod", files)
+        self.assertIn("k8s/base/monitoring-pwa/monitoring-pwa.yaml", files)
+        for f in findings:
+            self.assertNotIn("/work/", f["url"])
+            self.assertNotIn(f"{COMMIT}//", f["url"])
+
     def test_secret_fields_only(self):
         secret = self.by_category("secret")[0]
         self.assertEqual(secret["rule_id"], "aws-access-key-id")
@@ -168,6 +181,17 @@ class SemgrepTest(unittest.TestCase):
         self.assertEqual(len(secrets), 2)
         for finding in secrets:
             self.assertEqual(finding["title"], finding["rule_id"].rsplit(".", 1)[-1])
+
+
+class GithubUrlTest(unittest.TestCase):
+    def test_url(self):
+        base = f"https://github.com/{OWNER}/{REPO}/blob/{COMMIT}/"
+        self.assertEqual(aggregate.github_url(OWNER, REPO, COMMIT, "a/b.go", 3), base + "a/b.go#L3")
+        self.assertEqual(aggregate.github_url(OWNER, REPO, COMMIT, "a/b.go", None), base + "a/b.go")
+        # 先頭の / で blob/<sha>//... にならない
+        self.assertEqual(aggregate.github_url(OWNER, REPO, COMMIT, "/a/b.go", 3), base + "a/b.go#L3")
+        # 空白などは URL 用に符号化する
+        self.assertEqual(aggregate.github_url(OWNER, REPO, COMMIT, "a b/c#d.md", 1), base + "a%20b/c%23d.md#L1")
 
 
 class NoSecretValueTest(unittest.TestCase):

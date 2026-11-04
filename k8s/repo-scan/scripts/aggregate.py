@@ -105,7 +105,7 @@ def load_targets(path):
 def github_url(owner, repo, commit, path, line):
     """GitHub の該当行への URL。行が分からないときはファイルへの URL にする。"""
     url = "https://github.com/{}/{}/blob/{}/{}".format(
-        owner, repo, commit, urllib.parse.quote(path, safe="/")
+        owner, repo, commit, urllib.parse.quote(path.lstrip("/"), safe="/")
     )
     if line:
         url += f"#L{line}"
@@ -148,11 +148,15 @@ def _finding(owner, repo, commit, scanner, category, severity, rule_id, title, p
     return record
 
 
-def trivy_findings(doc, owner, repo, commit):
-    """trivy fs --format json の結果から指摘を取り出す。"""
+def trivy_findings(doc, owner, repo, commit, repo_dir=None):
+    """trivy fs --format json の結果から指摘を取り出す。
+
+    trivy 0.76.1 は対象を絶対パスで渡しても Target をリポジトリからの相対パスで出すが (手元で確かめた)、
+    版によって変わっても GitHub の URL が壊れないよう、semgrep と同じく相対パスにそろえる。
+    """
     findings = []
     for result in doc.get("Results") or []:
-        target = result.get("Target") or ""
+        target = _relative_path(result.get("Target") or "", repo_dir)
         for vuln in result.get("Vulnerabilities") or []:
             # trivy fs の脆弱性には行番号が無い (依存を書いたロックファイルなどへのリンクにする)
             findings.append(
@@ -200,7 +204,7 @@ def trivy_findings(doc, owner, repo, commit):
 
 
 def _relative_path(path, repo_dir):
-    """semgrep のパスをリポジトリからの相対パスにそろえる。"""
+    """trivy・semgrep のパスをリポジトリからの相対パスにそろえる。"""
     if repo_dir and os.path.isabs(path):
         path = os.path.relpath(path, repo_dir)
     while path.startswith("./"):
@@ -311,7 +315,9 @@ def collect(targets, work_dir):
             continue
 
         parsers = {
-            "trivy": lambda doc: trivy_findings(doc, owner, name, repo["commit"]),
+            "trivy": lambda doc: trivy_findings(
+                doc, owner, name, repo["commit"], os.path.join(work_dir, "repos", name)
+            ),
             "semgrep": lambda doc: semgrep_findings(
                 doc, owner, name, repo["commit"], os.path.join(work_dir, "repos", name)
             ),
