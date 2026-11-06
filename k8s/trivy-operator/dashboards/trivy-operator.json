@@ -31,7 +31,7 @@
   "liveNow": false,
   "panels": [
     {
-      "collapsed": false,
+      "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -39,7 +39,483 @@
         "y": 0
       },
       "id": 31,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "コンテナイメージのスキャン (trivy-operator)。スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境は含まない。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。trivy-operator は 24 時間ごとにレポートを作り直すため、その間は一時的に割合が下がる。 報告のあるワークロードの割合で、100% 未満は黄色になる。",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "yellow"
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "percentunit",
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 1
+          },
+          "id": 32,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "9.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "count(nuage:trivy_scan_target:by_workload and on (namespace, resource_kind, resource_name) label_replace(count by (exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities), \"namespace\", \"$1\", \"exported_namespace\", \"(.+)\")) / count(nuage:trivy_scan_target:by_workload)",
+              "instant": true,
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "Containers: Scanned Ratio",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "コンテナイメージのスキャン (trivy-operator)。スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境は含まない。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。trivy-operator は 24 時間ごとにレポートを作り直すため、その間は一時的に割合が下がる。 報告の無いワークロードの数。",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 6,
+            "y": 1
+          },
+          "id": 33,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "9.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "count(nuage:trivy_scan_target:by_workload unless on (namespace, resource_kind, resource_name) label_replace(count by (exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities), \"namespace\", \"$1\", \"exported_namespace\", \"(.+)\")) or (0 * count(nuage:trivy_scan_target:by_workload))",
+              "instant": true,
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "Containers: Unscanned",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "リポジトリのスキャン (k8s/repo-scan の CronJob、毎日 日本時間 4:00。trivy fs と semgrep)。対象のリポジトリ (nuage_repo_scan_target) のうち、クローンと両方のスキャンが、右上で選んだ期間の中で成功したもの (nuage_repo_scan_last_success_timestamp_seconds) を数える。スキャンは 1 日 1 回なので、期間が 24 時間より短いと成功していないと出る。期間とは別に、36 時間成功していないとアラート RepoScanNotSucceeded が鳴る。 成功したリポジトリの割合で、100% 未満は黄色になる。",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "yellow",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "percentunit",
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 1
+          },
+          "id": 40,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "9.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "count(max by (repo) (last_over_time(nuage_repo_scan_target[$__range])) and on (repo) (time() - max by (repo) (last_over_time(nuage_repo_scan_last_success_timestamp_seconds[$__range])) < $__range_s)) / count(max by (repo) (last_over_time(nuage_repo_scan_target[$__range])))",
+              "instant": true,
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "Repositories: Scanned Ratio",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "リポジトリのスキャン (k8s/repo-scan の CronJob、毎日 日本時間 4:00。trivy fs と semgrep)。対象のリポジトリ (nuage_repo_scan_target) のうち、クローンと両方のスキャンが、右上で選んだ期間の中で成功したもの (nuage_repo_scan_last_success_timestamp_seconds) を数える。スキャンは 1 日 1 回なので、期間が 24 時間より短いと成功していないと出る。期間とは別に、36 時間成功していないとアラート RepoScanNotSucceeded が鳴る。 期間の中で成功していないリポジトリの数。",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 18,
+            "y": 1
+          },
+          "id": 41,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "9.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "count(max by (repo) (last_over_time(nuage_repo_scan_target[$__range])) unless on (repo) (time() - max by (repo) (last_over_time(nuage_repo_scan_last_success_timestamp_seconds[$__range])) < $__range_s)) or (0 * count(max by (repo) (last_over_time(nuage_repo_scan_target[$__range]))))",
+              "instant": true,
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "Repositories: Unscanned",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "コンテナイメージのスキャン (trivy-operator)。スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境は含まない。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。trivy-operator は 24 時間ごとにレポートを作り直すため、その間は一時的に割合が下がる。 報告の無いワークロードの一覧。",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "displayMode": "auto",
+                "filterable": true,
+                "inspect": false
+              },
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 6
+          },
+          "id": 34,
+          "options": {
+            "footer": {
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true,
+            "sortBy": []
+          },
+          "pluginVersion": "9.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "nuage:trivy_scan_target:by_workload unless on (namespace, resource_kind, resource_name) label_replace(count by (exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities), \"namespace\", \"$1\", \"exported_namespace\", \"(.+)\")",
+              "format": "table",
+              "instant": true,
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "Containers: Unscanned Workloads",
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true,
+                  "__name__": true
+                },
+                "indexByName": {
+                  "namespace": 0,
+                  "resource_kind": 1,
+                  "resource_name": 2
+                },
+                "renameByName": {
+                  "namespace": "Namespace",
+                  "resource_kind": "Kind",
+                  "resource_name": "Workload"
+                }
+              }
+            }
+          ],
+          "type": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "リポジトリのスキャン (k8s/repo-scan の CronJob、毎日 日本時間 4:00。trivy fs と semgrep)。対象のリポジトリ (nuage_repo_scan_target) のうち、クローンと両方のスキャンが、右上で選んだ期間の中で成功したもの (nuage_repo_scan_last_success_timestamp_seconds) を数える。スキャンは 1 日 1 回なので、期間が 24 時間より短いと成功していないと出る。期間とは別に、36 時間成功していないとアラート RepoScanNotSucceeded が鳴る。 期間の中で成功していないリポジトリと、最後に成功した時刻 (30 日より前、または一度も成功していなければ「なし」)。原因は kubectl -n repo-scan get jobs と、VictoriaLogs の kubernetes.pod_namespace:=\"repo-scan\" event:=\"repo_status\" のログで確かめる。",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": true,
+                "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Last Success"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeAsLocal"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "なし",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 6
+          },
+          "id": 42,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": true,
+              "fields": "",
+              "reducer": [
+                "count"
+              ],
+              "show": false
+            },
+            "showHeader": true,
+            "sortBy": []
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "exemplar": false,
+              "expr": "((max by (repo) (last_over_time(nuage_repo_scan_last_success_timestamp_seconds[30d])) * 1000) or on (repo) (0 * max by (repo) (last_over_time(nuage_repo_scan_target[$__range])))) and on (repo) (max by (repo) (last_over_time(nuage_repo_scan_target[$__range])) unless on (repo) (time() - max by (repo) (last_over_time(nuage_repo_scan_last_success_timestamp_seconds[$__range])) < $__range_s))",
+              "instant": true,
+              "range": false,
+              "refId": "A",
+              "format": "table"
+            }
+          ],
+          "title": "Repositories: Unscanned Repositories",
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "repo": 0,
+                  "Value": 1
+                },
+                "renameByName": {
+                  "repo": "Repository",
+                  "Value": "Last Success"
+                }
+              }
+            }
+          ],
+          "type": "table"
+        }
+      ],
       "title": "Scan Coverage",
+      "type": "row"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "id": 50,
+      "panels": [],
+      "title": "Overview",
       "type": "row"
     },
     {
@@ -47,81 +523,20 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境は含まない。報告のあるワークロードの割合で、100% 未満は黄色になる。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
+      "description": "コンテナイメージの脆弱性 (trivy-operator)。イメージの digest 単位で重複を除いた件数 (recording rule nuage:trivy_image_vulnerabilities:dedup_by_image) で、同じイメージを複数のワークロードで使っていても 1 回だけ数える。PR 環境は含まない。壁掛けダッシュボードと同じ数字になる。",
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "yellow"
-              },
-              {
-                "color": "green",
-                "value": 1
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "-",
+                  "index": 0
+                }
               }
-            ]
-          },
-          "unit": "percentunit",
-          "decimals": 1
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 0,
-        "y": 1
-      },
-      "id": 32,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
+            }
           ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "9.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "count(nuage:trivy_scan_target:by_workload and on (namespace, resource_kind, resource_name) label_replace(count by (exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities), \"namespace\", \"$1\", \"exported_namespace\", \"(.+)\")) / count(nuage:trivy_scan_target:by_workload)",
-          "instant": true,
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Scanned Ratio",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境は含まない。報告の無いワークロードの数で、1 以上は黄色になる。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -129,22 +544,97 @@
                 "color": "green"
               },
               {
-                "color": "yellow",
-                "value": 1
+                "color": "red",
+                "value": 80
               }
             ]
           },
           "unit": "none"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "High"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Medium"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Low"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unknown"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 6,
-        "y": 1
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 2
       },
-      "id": 33,
+      "id": 51,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
@@ -168,13 +658,66 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "count(nuage:trivy_scan_target:by_workload unless on (namespace, resource_kind, resource_name) label_replace(count by (exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities), \"namespace\", \"$1\", \"exported_namespace\", \"(.+)\")) or (0 * count(nuage:trivy_scan_target:by_workload))",
+          "expr": "sum(nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Critical\"})",
           "instant": true,
           "range": false,
-          "refId": "A"
+          "refId": "A",
+          "legendFormat": "Critical"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"High\"})",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "legendFormat": "High"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Medium\"})",
+          "instant": true,
+          "range": false,
+          "refId": "C",
+          "legendFormat": "Medium"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Low\"})",
+          "instant": true,
+          "range": false,
+          "refId": "D",
+          "legendFormat": "Low"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Unknown\"}) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "E",
+          "legendFormat": "Unknown"
         }
       ],
-      "title": "Unscanned Workloads",
+      "title": "Containers: Vulnerabilities",
       "type": "stat"
     },
     {
@@ -182,36 +725,131 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "スキャン対象のワークロード (recording rule nuage:trivy_scan_target:by_workload) のうち、trivy-operator の脆弱性レポート (trivy_image_vulnerabilities) があるかを namespace・kind・名前で 1 件ずつ突き合わせる。PR 環境は含まない。報告の無いワークロードの一覧。Argo の Workflow の Pod はすぐ終わるので、スキャンが間に合う前の数分だけ未スキャンとして出ることがある。",
+      "description": "Kubernetes のリソースの設定不備 (trivy-operator)。実行ごとに名前が変わるものを workload にまとめた件数 (recording rule nuage:trivy_resource_configaudits:dedup_by_workload)。PR 環境は含まない。壁掛けダッシュボードと同じ数字になる。設定不備には Unknown の重要度が無いため「-」と出る。",
       "fieldConfig": {
         "defaults": {
-          "custom": {
-            "align": "left",
-            "displayMode": "auto",
-            "filterable": true,
-            "inspect": false
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "-",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
           },
-          "mappings": []
+          "unit": "none"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "High"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Medium"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Low"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unknown"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 12,
-        "y": 1
+        "y": 2
       },
-      "id": 34,
+      "id": 52,
       "options": {
-        "footer": {
-          "fields": "",
-          "reducer": [
-            "sum"
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
           ],
-          "show": false
+          "fields": "",
+          "values": false
         },
-        "showHeader": true,
-        "sortBy": []
+        "textMode": "auto"
       },
       "pluginVersion": "9.3.1",
       "targets": [
@@ -222,29 +860,825 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "nuage:trivy_scan_target:by_workload unless on (namespace, resource_kind, resource_name) label_replace(count by (exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities), \"namespace\", \"$1\", \"exported_namespace\", \"(.+)\")",
-          "format": "table",
+          "expr": "sum(nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"})",
           "instant": true,
           "range": false,
-          "refId": "A"
+          "refId": "A",
+          "legendFormat": "Critical"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"})",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "legendFormat": "High"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Medium\"})",
+          "instant": true,
+          "range": false,
+          "refId": "C",
+          "legendFormat": "Medium"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Low\"})",
+          "instant": true,
+          "range": false,
+          "refId": "D",
+          "legendFormat": "Low"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Unknown\"}) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "E",
+          "legendFormat": "Unknown"
         }
       ],
-      "title": "Unscanned Workloads",
+      "title": "Kubernetes: Misconfiguration",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Role と ClusterRole の権限の問題 (trivy-operator)。PR 環境は含まない。RBAC には Unknown の重要度が無いため「-」と出る。",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "-",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "High"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Medium"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Low"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unknown"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 53,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "9.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(sum(trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Critical\"}) + sum(trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"}))",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "legendFormat": "Critical"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(sum(trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"High\"}) + sum(trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"High\"}))",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "legendFormat": "High"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(sum(trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Medium\"}) + sum(trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Medium\"}))",
+          "instant": true,
+          "range": false,
+          "refId": "C",
+          "legendFormat": "Medium"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(sum(trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Low\"}) + sum(trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Low\"}))",
+          "instant": true,
+          "range": false,
+          "refId": "D",
+          "legendFormat": "Low"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(sum(trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Unknown\"}) + sum(trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Unknown\"})) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "E",
+          "legendFormat": "Unknown"
+        }
+      ],
+      "title": "Kubernetes: RBAC Assessment",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "自分のリポジトリのスキャン (trivy fs と semgrep) の、最新の 1 回の件数。脆弱性・設定ミス・秘密情報・静的解析の合計。",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "-",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "High"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Medium"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Low"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unknown"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 54,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "9.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_repo_scan_findings{severity=\"Critical\"}[36h]))",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "legendFormat": "Critical"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_repo_scan_findings{severity=\"High\"}[36h]))",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "legendFormat": "High"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_repo_scan_findings{severity=\"Medium\"}[36h]))",
+          "instant": true,
+          "range": false,
+          "refId": "C",
+          "legendFormat": "Medium"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_repo_scan_findings{severity=\"Low\"}[36h]))",
+          "instant": true,
+          "range": false,
+          "refId": "D",
+          "legendFormat": "Low"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_repo_scan_findings{severity=\"Unknown\"}[36h])) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "E",
+          "legendFormat": "Unknown"
+        }
+      ],
+      "title": "Repositories",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "id": 2,
+      "panels": [],
+      "title": "Containers: Vulnerabilities",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "ワークロード × コンテナごとの、コンテナイメージの脆弱性の件数 (trivy-operator)。今いるワークロードだけを出し、PR 環境は含まない。Deployment の ReplicaSet は Deployment の名前に、Argo CronWorkflow の Pod は実行時刻を除いた名前にまとめる。同じイメージを複数のワークロードで使っていると、それぞれの行に出る (Overview の件数はイメージ単位で 1 回だけ数えるので、この表の合計とは合わない)。見出しで絞り込み・並べ替えができる。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "High"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Medium"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Low"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "blue",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unknown"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "text",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "id": 23,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": true,
+          "fields": "",
+          "reducer": [
+            "count"
+          ],
+          "show": true
+        },
+        "showHeader": true,
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "max by (exported_namespace, resource_kind, workload, container_name, image) (label_join(label_join(label_replace(label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"ReplicaSet\",severity=\"Critical\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.+)-[bcdfghjklmnpqrstvwxz2456789]{6,10}\"), \"resource_kind\", \"Deployment\", \"resource_kind\", \"ReplicaSet\") or label_replace(label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"Pod\",severity=\"Critical\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.*)\"), \"workload\", \"$1$2\", \"resource_name\", \"(.+)-[0-9]{10}(-.+)?-[0-9]+\") or label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind!~\"ReplicaSet|Pod\",severity=\"Critical\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.*)\"), \"image\", \"/\", \"image_registry\", \"image_repository\"), \"image\", \":\", \"image\", \"image_tag\"))",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "max by (exported_namespace, resource_kind, workload, container_name, image) (label_join(label_join(label_replace(label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"ReplicaSet\",severity=\"High\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.+)-[bcdfghjklmnpqrstvwxz2456789]{6,10}\"), \"resource_kind\", \"Deployment\", \"resource_kind\", \"ReplicaSet\") or label_replace(label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"Pod\",severity=\"High\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.*)\"), \"workload\", \"$1$2\", \"resource_name\", \"(.+)-[0-9]{10}(-.+)?-[0-9]+\") or label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind!~\"ReplicaSet|Pod\",severity=\"High\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.*)\"), \"image\", \"/\", \"image_registry\", \"image_repository\"), \"image\", \":\", \"image\", \"image_tag\"))",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "max by (exported_namespace, resource_kind, workload, container_name, image) (label_join(label_join(label_replace(label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"ReplicaSet\",severity=\"Medium\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.+)-[bcdfghjklmnpqrstvwxz2456789]{6,10}\"), \"resource_kind\", \"Deployment\", \"resource_kind\", \"ReplicaSet\") or label_replace(label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"Pod\",severity=\"Medium\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.*)\"), \"workload\", \"$1$2\", \"resource_name\", \"(.+)-[0-9]{10}(-.+)?-[0-9]+\") or label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind!~\"ReplicaSet|Pod\",severity=\"Medium\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.*)\"), \"image\", \"/\", \"image_registry\", \"image_repository\"), \"image\", \":\", \"image\", \"image_tag\"))",
+          "instant": true,
+          "range": false,
+          "refId": "C",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "max by (exported_namespace, resource_kind, workload, container_name, image) (label_join(label_join(label_replace(label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"ReplicaSet\",severity=\"Low\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.+)-[bcdfghjklmnpqrstvwxz2456789]{6,10}\"), \"resource_kind\", \"Deployment\", \"resource_kind\", \"ReplicaSet\") or label_replace(label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"Pod\",severity=\"Low\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.*)\"), \"workload\", \"$1$2\", \"resource_name\", \"(.+)-[0-9]{10}(-.+)?-[0-9]+\") or label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind!~\"ReplicaSet|Pod\",severity=\"Low\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.*)\"), \"image\", \"/\", \"image_registry\", \"image_repository\"), \"image\", \":\", \"image\", \"image_tag\"))",
+          "instant": true,
+          "range": false,
+          "refId": "D",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "max by (exported_namespace, resource_kind, workload, container_name, image) (label_join(label_join(label_replace(label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"ReplicaSet\",severity=\"Unknown\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.+)-[bcdfghjklmnpqrstvwxz2456789]{6,10}\"), \"resource_kind\", \"Deployment\", \"resource_kind\", \"ReplicaSet\") or label_replace(label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"Pod\",severity=\"Unknown\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.*)\"), \"workload\", \"$1$2\", \"resource_name\", \"(.+)-[0-9]{10}(-.+)?-[0-9]+\") or label_replace((trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind!~\"ReplicaSet|Pod\",severity=\"Unknown\"} and on (exported_namespace, resource_kind, resource_name) label_replace(nuage:trivy_scan_target:by_workload, \"exported_namespace\", \"$1\", \"namespace\", \"(.+)\")), \"workload\", \"$1\", \"resource_name\", \"(.*)\"), \"image\", \"/\", \"image_registry\", \"image_repository\"), \"image\", \":\", \"image\", \"image_tag\"))",
+          "instant": true,
+          "range": false,
+          "refId": "E",
+          "format": "table"
+        }
+      ],
+      "title": "Vulnerabilities by Workload",
       "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true,
-              "Value": true,
-              "__name__": true
+              "Time": true
             },
             "indexByName": {
-              "namespace": 0,
+              "exported_namespace": 0,
               "resource_kind": 1,
-              "resource_name": 2
+              "workload": 2,
+              "container_name": 3,
+              "image": 4,
+              "Value #A": 5,
+              "Value #B": 6,
+              "Value #C": 7,
+              "Value #D": 8,
+              "Value #E": 9
             },
-            "renameByName": {}
+            "renameByName": {
+              "exported_namespace": "Namespace",
+              "resource_kind": "Kind",
+              "workload": "Workload",
+              "container_name": "Container",
+              "image": "Image",
+              "Value #A": "Critical",
+              "Value #B": "High",
+              "Value #C": "Medium",
+              "Value #D": "Low",
+              "Value #E": "Unknown"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Namespace"
+              },
+              {
+                "field": "Workload"
+              },
+              {
+                "field": "Container"
+              }
+            ]
           }
         }
       ],
@@ -256,507 +1690,26 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
-      },
-      "id": 12,
-      "title": "Quick Overview",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "脆弱性と設定不備は壁掛けダッシュボード (uid nuage-wall) と同じ数え方である。脆弱性はイメージの digest 単位で重複を除き (recording rule nuage:trivy_image_vulnerabilities:dedup_by_image)、設定不備は実行ごとに変わる名前を取り除いた workload 単位にまとめる (recording rule nuage:trivy_resource_configaudits:dedup_by_workload)。どちらも PR 環境は含まない。Exposed Secrets・RBAC Assessment は trivy-operator のメトリクスをそのまま合計する。",
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Critical"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "High"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Medium"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "dark-yellow",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Low"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Unknown"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 10
-      },
-      "id": 21,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "9.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(nuage:trivy_image_vulnerabilities:dedup_by_image)",
-          "instant": true,
-          "legendFormat": "Vulnerabilities",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(nuage:trivy_resource_configaudits:dedup_by_workload)",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "Misconfiguration",
-          "range": false,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(trivy_image_exposedsecrets)",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "Exposed Secrets",
-          "range": false,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(trivy_clusterrole_clusterrbacassessments)",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "RBAC Assessment",
-          "range": false,
-          "refId": "D"
-        }
-      ],
-      "title": "Number and Type of Security Issues",
-      "type": "stat"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 19
-      },
-      "id": 2,
-      "title": "Vulnerabilities",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "イメージの digest 単位で重複を除いた脆弱性の件数 (recording rule nuage:trivy_image_vulnerabilities:dedup_by_image)。同じイメージを複数のワークロードで使っていても 1 回だけ数える。PR 環境は含まない。壁掛けダッシュボードと同じ数字になる。",
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Critical"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "High"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Medium"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "dark-yellow",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Low"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Unknown"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 20
-      },
-      "id": 19,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "9.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Critical\"}",
-          "instant": true,
-          "legendFormat": "Critical",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"High\"}",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "High",
-          "range": false,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Medium\"}",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "Medium",
-          "range": false,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Low\"}",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "Low",
-          "range": false,
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "nuage:trivy_image_vulnerabilities:dedup_by_image{severity=\"Unknown\"}",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "Unknown",
-          "range": false,
-          "refId": "E"
-        }
-      ],
-      "title": "Severity Breakdown of all Vulnerabilities",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "Namespace ごとの脆弱性の件数。対象リソースの Namespace (exported_namespace) で集計する (namespace ラベルは trivy-operator 自身を指す)。Namespace の中で同じイメージ (digest) は 1 回だけ数える。複数の Namespace で使うイメージはそれぞれで数えるため、合計は全体の件数より大きくなる。PR 環境は含まない。",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 3,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
         "y": 29
       },
-      "id": 27,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "sum by (exported_namespace) (max by (exported_namespace, image_registry, image_repository, image_digest, severity) (trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\"}))",
-          "legendFormat": "{{exported_namespace}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Number of Vulnerabilities by namespace",
-      "type": "timeseries"
+      "id": 4,
+      "panels": [],
+      "title": "Kubernetes: Misconfiguration",
+      "type": "row"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
+      "description": "Namespace ごとの、Kubernetes のリソースの設定不備の件数 (trivy-operator の configaudit)。PR 環境は含まない。実行ごとに名前が変わるもの (Argo CronWorkflow の Pod、Deployment の ReplicaSet) は 1 つの workload にまとめて数える (数え方は recording rule nuage:trivy_resource_configaudits:dedup_by_workload と同じで、全 Namespace の合計はそれに一致する)。",
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
           "custom": {
-            "align": "left",
-            "displayMode": "color-text",
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
             "filterable": true,
             "inspect": false
           },
@@ -765,19 +1718,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
-              },
-              {
-                "color": "super-light-yellow",
-                "value": 1
-              },
-              {
-                "color": "orange",
-                "value": 100
-              },
-              {
-                "color": "red",
-                "value": 500
+                "color": "text",
+                "value": null
               }
             ]
           }
@@ -786,66 +1728,166 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Image"
+              "options": "Critical"
             },
             "properties": [
               {
-                "id": "custom.displayMode",
-                "value": "json-view"
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
               },
               {
                 "id": "custom.width",
-                "value": 350
+                "value": 90
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "image_tag"
+              "options": "High"
             },
             "properties": [
               {
-                "id": "custom.displayMode",
-                "value": "json-view"
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "Workloads"
+              "options": "Medium"
             },
             "properties": [
               {
-                "id": "custom.displayMode",
-                "value": "auto"
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Low"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "blue",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
               }
             ]
           }
         ]
       },
       "gridPos": {
-        "h": 14,
+        "h": 10,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 30
       },
-      "id": 23,
+      "id": 28,
       "options": {
+        "cellHeight": "sm",
         "footer": {
-          "enablePagination": true,
+          "countRows": true,
           "fields": "",
           "reducer": [
-            "sum"
+            "count"
           ],
           "show": false
         },
-        "frameIndex": 0,
         "showHeader": true,
-        "sortBy": []
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "High"
+          }
+        ]
       },
-      "pluginVersion": "9.3.1",
       "targets": [
         {
           "datasource": {
@@ -854,11 +1896,11 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "max by (image_registry, image_repository, image_tag, image_digest) (trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Critical\"})",
-          "format": "table",
+          "expr": "sum by (exported_namespace) (\n  max by (exported_namespace, resource_kind, workload, severity) (\n    label_replace(\n      trivy_resource_configaudits{severity=\"Critical\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind!~\"Pod|ReplicaSet\"},\n      \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n    )\n    or\n    label_replace(\n      label_replace(\n        trivy_resource_configaudits{severity=\"Critical\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"Pod\"},\n        \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n      ),\n      \"workload\", \"$1$2\", \"resource_name\", \"(.+)-[0-9]{10}(-.+)?-[0-9]+\"\n    )\n    or\n    label_replace(\n      label_replace(\n        trivy_resource_configaudits{severity=\"Critical\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"ReplicaSet\"},\n        \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n      ),\n      \"workload\", \"$1\", \"resource_name\", \"(.+)-[bcdfghjklmnpqrstvwxz2456789]{6,10}\"\n    )\n  )\n)",
           "instant": true,
           "range": false,
-          "refId": "A"
+          "refId": "A",
+          "format": "table"
         },
         {
           "datasource": {
@@ -867,12 +1909,11 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "max by (image_registry, image_repository, image_tag, image_digest) (trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"High\"})",
-          "format": "table",
-          "hide": false,
+          "expr": "sum by (exported_namespace) (\n  max by (exported_namespace, resource_kind, workload, severity) (\n    label_replace(\n      trivy_resource_configaudits{severity=\"High\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind!~\"Pod|ReplicaSet\"},\n      \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n    )\n    or\n    label_replace(\n      label_replace(\n        trivy_resource_configaudits{severity=\"High\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"Pod\"},\n        \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n      ),\n      \"workload\", \"$1$2\", \"resource_name\", \"(.+)-[0-9]{10}(-.+)?-[0-9]+\"\n    )\n    or\n    label_replace(\n      label_replace(\n        trivy_resource_configaudits{severity=\"High\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"ReplicaSet\"},\n        \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n      ),\n      \"workload\", \"$1\", \"resource_name\", \"(.+)-[bcdfghjklmnpqrstvwxz2456789]{6,10}\"\n    )\n  )\n)",
           "instant": true,
           "range": false,
-          "refId": "B"
+          "refId": "B",
+          "format": "table"
         },
         {
           "datasource": {
@@ -881,12 +1922,11 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "max by (image_registry, image_repository, image_tag, image_digest) (trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Medium\"})",
-          "format": "table",
-          "hide": false,
+          "expr": "sum by (exported_namespace) (\n  max by (exported_namespace, resource_kind, workload, severity) (\n    label_replace(\n      trivy_resource_configaudits{severity=\"Medium\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind!~\"Pod|ReplicaSet\"},\n      \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n    )\n    or\n    label_replace(\n      label_replace(\n        trivy_resource_configaudits{severity=\"Medium\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"Pod\"},\n        \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n      ),\n      \"workload\", \"$1$2\", \"resource_name\", \"(.+)-[0-9]{10}(-.+)?-[0-9]+\"\n    )\n    or\n    label_replace(\n      label_replace(\n        trivy_resource_configaudits{severity=\"Medium\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"ReplicaSet\"},\n        \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n      ),\n      \"workload\", \"$1\", \"resource_name\", \"(.+)-[bcdfghjklmnpqrstvwxz2456789]{6,10}\"\n    )\n  )\n)",
           "instant": true,
           "range": false,
-          "refId": "C"
+          "refId": "C",
+          "format": "table"
         },
         {
           "datasource": {
@@ -895,43 +1935,14 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "max by (image_registry, image_repository, image_tag, image_digest) (trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Low\"})",
-          "format": "table",
-          "hide": false,
+          "expr": "sum by (exported_namespace) (\n  max by (exported_namespace, resource_kind, workload, severity) (\n    label_replace(\n      trivy_resource_configaudits{severity=\"Low\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind!~\"Pod|ReplicaSet\"},\n      \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n    )\n    or\n    label_replace(\n      label_replace(\n        trivy_resource_configaudits{severity=\"Low\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"Pod\"},\n        \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n      ),\n      \"workload\", \"$1$2\", \"resource_name\", \"(.+)-[0-9]{10}(-.+)?-[0-9]+\"\n    )\n    or\n    label_replace(\n      label_replace(\n        trivy_resource_configaudits{severity=\"Low\",job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",resource_kind=\"ReplicaSet\"},\n        \"workload\", \"$1\", \"resource_name\", \"(.*)\"\n      ),\n      \"workload\", \"$1\", \"resource_name\", \"(.+)-[bcdfghjklmnpqrstvwxz2456789]{6,10}\"\n    )\n  )\n)",
           "instant": true,
           "range": false,
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "max by (image_registry, image_repository, image_tag, image_digest) (trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Unknown\"})",
-          "format": "table",
-          "hide": false,
-          "instant": true,
-          "range": false,
-          "refId": "E"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "count by (image_registry, image_repository, image_tag, image_digest) (count by (image_registry, image_repository, image_tag, image_digest, exported_namespace, resource_kind, resource_name) (trivy_image_vulnerabilities{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\"}))",
-          "format": "table",
-          "hide": false,
-          "instant": true,
-          "range": false,
-          "refId": "F"
+          "refId": "D",
+          "format": "table"
         }
       ],
-      "title": "Vulnerability by Image",
+      "title": "Misconfiguration by Namespace",
       "transformations": [
         {
           "id": "merge",
@@ -941,35 +1952,315 @@
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true,
-              "image_registry": true,
-              "image_digest": true
+              "Time": true
             },
             "indexByName": {
-              "image_repository": 0,
-              "image_tag": 1,
-              "Value #A": 2,
-              "Value #B": 3,
-              "Value #C": 4,
-              "Value #D": 5,
-              "Value #E": 6,
-              "Value #F": 7
+              "exported_namespace": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4
             },
             "renameByName": {
+              "exported_namespace": "Namespace",
               "Value #A": "Critical",
               "Value #B": "High",
               "Value #C": "Medium",
-              "Value #D": "Low",
-              "Value #E": "Unknown",
-              "Value #F": "Workloads",
-              "image_repository": "Image",
-              "image_tag": "Tag"
+              "Value #D": "Low"
             }
           }
         }
       ],
-      "type": "table",
-      "description": "イメージごとの脆弱性の件数。ワークロードごとの足し算はせず、イメージ (digest) ごとの実際の件数を出す。Workloads はそのイメージを使っているワークロード (Namespace・kind・名前の組) の数で、終わった Pod (Argo Workflows の実行ごとの Pod など) も trivy のレポートが残っている間は数える。PR 環境は含まない。"
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "id": 8,
+      "panels": [],
+      "title": "Kubernetes: RBAC Assessment",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Namespace ごとの、Role の権限の問題の件数 (trivy-operator の rbacassessment)。PR 環境は含まない。ClusterRole (Namespace に属さない) の分は「(cluster-wide)」の 1 行にまとめる。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Critical"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "High"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Medium"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Low"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "blue",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "id": 29,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": true,
+          "fields": "",
+          "reducer": [
+            "count"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Critical"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (exported_namespace) (trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Critical\"}) or label_replace(sum(trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"}), \"exported_namespace\", \"(cluster-wide)\", \"\", \"\")",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (exported_namespace) (trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"High\"}) or label_replace(sum(trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"High\"}), \"exported_namespace\", \"(cluster-wide)\", \"\", \"\")",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (exported_namespace) (trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Medium\"}) or label_replace(sum(trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Medium\"}), \"exported_namespace\", \"(cluster-wide)\", \"\", \"\")",
+          "instant": true,
+          "range": false,
+          "refId": "C",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (exported_namespace) (trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Low\"}) or label_replace(sum(trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Low\"}), \"exported_namespace\", \"(cluster-wide)\", \"\", \"\")",
+          "instant": true,
+          "range": false,
+          "refId": "D",
+          "format": "table"
+        }
+      ],
+      "title": "RBAC Issues by Namespace",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "exported_namespace": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4
+            },
+            "renameByName": {
+              "exported_namespace": "Namespace",
+              "Value #A": "Critical",
+              "Value #B": "High",
+              "Value #C": "Medium",
+              "Value #D": "Low"
+            }
+          }
+        }
+      ],
+      "type": "table"
     },
     {
       "collapsed": false,
@@ -979,513 +2270,8 @@
         "x": 0,
         "y": 51
       },
-      "id": 4,
-      "title": "Misconfiguration",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "実行ごとに変わる名前 (Argo CronWorkflow の Pod の実行時刻、ReplicaSet の hash) を取り除き、workload 単位にまとめた設定不備の件数 (recording rule nuage:trivy_resource_configaudits:dedup_by_workload)。PR 環境は含まない。壁掛けダッシュボードと同じ数字になる。",
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Critical"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "High"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Medium"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "dark-yellow",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Low"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Unknown"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 52
-      },
-      "id": 28,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "9.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Critical\"}",
-          "instant": true,
-          "legendFormat": "Critical",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"High\"}",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "High",
-          "range": false,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Medium\"}",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "Medium",
-          "range": false,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "nuage:trivy_resource_configaudits:dedup_by_workload{severity=\"Low\"}",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "Low",
-          "range": false,
-          "refId": "D"
-        }
-      ],
-      "title": "Severity Breakdown of all Misconfiguration",
-      "type": "stat"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 61
-      },
-      "id": 8,
-      "title": "RBAC Assessment",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Critical"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "High"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Medium"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "dark-yellow",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Low"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Unknown"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 62
-      },
-      "id": 29,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "9.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(trivy_role_rbacassessments{severity=\"Critical\"})",
-          "instant": true,
-          "legendFormat": "Critical",
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(trivy_role_rbacassessments{severity=\"High\"})",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "High",
-          "range": false,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(trivy_role_rbacassessments{severity=\"Medium\"})",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "Medium",
-          "range": false,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(trivy_role_rbacassessments{severity=\"Low\"})",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "Low",
-          "range": false,
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(trivy_role_rbacassessments{severity=\"UNKNOWN\"})",
-          "hide": false,
-          "instant": true,
-          "legendFormat": "Unknown",
-          "range": false,
-          "refId": "E"
-        }
-      ],
-      "title": "Severity Breakdown of RBAC Security Issues",
-      "type": "stat"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 71
-      },
-      "id": 6,
-      "title": "Exposed Secrets",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 3,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 72
-      },
-      "id": 30,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "sum(trivy_image_exposedsecrets) by (namespace)",
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Exposed Secrets per namespace",
-      "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 80
-      },
       "id": 35,
+      "panels": [],
       "title": "Repositories",
       "type": "row"
     },
@@ -1494,7 +2280,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "リポジトリのスキャン (k8s/repo-scan の CronJob、毎日 日本時間 4:00。trivy fs と semgrep) で見つかった Critical / High の件数を、リポジトリ × category ごとに出す。category は vulnerability (依存ライブラリの脆弱性)・misconfiguration (IaC の設定ミス)・secret (秘密情報の混入)・code (semgrep の静的解析)。semgrep の重要度は ERROR→High、WARNING→Medium、INFO→Low に寄せている。件数は 1 日 1 回しか来ないため last_over_time(...[36h]) で最新の値を取る。「vs 1d」は前日比 (現在 − 1 日前)。増えたら赤、変化なし・減ったら緑。1 日前の値が無いとき (スキャンを始めて 1 日たつまで、対象を足した直後) は「—」と出す (式の中で目印の値 1e18 を返し、値の対応付けで「—」にしている)。上の repo・category で絞れる。",
+      "description": "リポジトリのスキャン (k8s/repo-scan の CronJob、毎日 日本時間 4:00。trivy fs と semgrep) で見つかった Critical / High の件数を、リポジトリ × category ごとに出す。category は vulnerability (依存ライブラリの脆弱性)・misconfiguration (IaC の設定ミス)・secret (秘密情報の混入)・code (semgrep の静的解析)。semgrep の重要度は ERROR→High、WARNING→Medium、INFO→Low に寄せている。件数は 1 日 1 回しか来ないため last_over_time(...[36h]) で最新の値を取る。「vs 1d」は前日比 (現在 − 1 日前)。増えたら赤、変化なし・減ったら緑。1 日前の値が無いとき (スキャンを始めて 1 日たつまで、対象を足した直後) は「—」と出す (式の中で目印の値 1e18 を返し、値の対応付けで「—」にしている)。見出しで repo・category を絞れる。",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -1713,10 +2499,10 @@
         ]
       },
       "gridPos": {
-        "h": 12,
-        "w": 14,
+        "h": 10,
+        "w": 24,
         "x": 0,
-        "y": 81
+        "y": 52
       },
       "id": 36,
       "options": {
@@ -1744,7 +2530,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (repo, category) (last_over_time(nuage_repo_scan_findings{repo=~\"$repo\",category=~\"$category\",severity=\"Critical\"}[36h]))",
+          "expr": "sum by (repo, category) (last_over_time(nuage_repo_scan_findings{severity=\"Critical\"}[36h]))",
           "format": "table",
           "instant": true,
           "range": false,
@@ -1757,7 +2543,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (repo, category) (last_over_time(nuage_repo_scan_findings{repo=~\"$repo\",category=~\"$category\",severity=\"High\"}[36h]))",
+          "expr": "sum by (repo, category) (last_over_time(nuage_repo_scan_findings{severity=\"High\"}[36h]))",
           "format": "table",
           "instant": true,
           "range": false,
@@ -1770,7 +2556,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "(sum by (repo, category) (last_over_time(nuage_repo_scan_findings{repo=~\"$repo\",category=~\"$category\",severity=\"Critical\"}[36h])) - sum by (repo, category) (last_over_time(nuage_repo_scan_findings{repo=~\"$repo\",category=~\"$category\",severity=\"Critical\"}[36h] offset 1d))) or on (repo, category) (sum by (repo, category) (last_over_time(nuage_repo_scan_findings{repo=~\"$repo\",category=~\"$category\",severity=\"Critical\"}[36h])) * 0 + 1e18)",
+          "expr": "(sum by (repo, category) (last_over_time(nuage_repo_scan_findings{severity=\"Critical\"}[36h])) - sum by (repo, category) (last_over_time(nuage_repo_scan_findings{severity=\"Critical\"}[36h] offset 1d))) or on (repo, category) (sum by (repo, category) (last_over_time(nuage_repo_scan_findings{severity=\"Critical\"}[36h])) * 0 + 1e18)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -1783,7 +2569,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "(sum by (repo, category) (last_over_time(nuage_repo_scan_findings{repo=~\"$repo\",category=~\"$category\",severity=\"High\"}[36h])) - sum by (repo, category) (last_over_time(nuage_repo_scan_findings{repo=~\"$repo\",category=~\"$category\",severity=\"High\"}[36h] offset 1d))) or on (repo, category) (sum by (repo, category) (last_over_time(nuage_repo_scan_findings{repo=~\"$repo\",category=~\"$category\",severity=\"High\"}[36h])) * 0 + 1e18)",
+          "expr": "(sum by (repo, category) (last_over_time(nuage_repo_scan_findings{severity=\"High\"}[36h])) - sum by (repo, category) (last_over_time(nuage_repo_scan_findings{severity=\"High\"}[36h] offset 1d))) or on (repo, category) (sum by (repo, category) (last_over_time(nuage_repo_scan_findings{severity=\"High\"}[36h])) * 0 + 1e18)",
           "format": "table",
           "instant": true,
           "range": false,
@@ -1820,481 +2606,6 @@
         }
       ],
       "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "各リポジトリについて、クローンと trivy・semgrep の両方が最後に成功した時刻 (nuage_repo_scan_last_success_timestamp_seconds) と、そこからの経過時間。対象 (直近 7 日に CronJob が対象として送ってきたリポジトリ) だけを出す。36 時間を超えると赤になり、アラート RepoScanNotSucceeded (k8s/base/victoria/rules.yaml の repo-scan-rules) も鳴る。一度も成功していないリポジトリは「never」と出す。",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "filterable": false,
-            "inspect": false
-          },
-          "mappings": [
-            {
-              "type": "special",
-              "options": {
-                "match": "null+nan",
-                "result": {
-                  "text": "never",
-                  "color": "red",
-                  "index": 0
-                }
-              }
-            }
-          ],
-          "noValue": "never",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Last Success"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "dateTimeAsIso"
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Age"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "s"
-              },
-              {
-                "id": "decimals",
-                "value": 1
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "red",
-                      "value": 129600
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 12,
-        "w": 10,
-        "x": 14,
-        "y": 81
-      },
-      "id": 37,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "Age"
-          }
-        ]
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "max by (repo) (last_over_time(nuage_repo_scan_last_success_timestamp_seconds{repo=~\"$repo\"}[30d])) * 1000 and on (repo) max by (repo) (last_over_time(nuage_repo_scan_target{repo=~\"$repo\"}[7d]))",
-          "format": "table",
-          "instant": true,
-          "range": false,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "time() - max by (repo) (last_over_time(nuage_repo_scan_last_success_timestamp_seconds{repo=~\"$repo\"}[30d])) and on (repo) max by (repo) (last_over_time(nuage_repo_scan_target{repo=~\"$repo\"}[7d]))",
-          "format": "table",
-          "instant": true,
-          "range": false,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "max by (repo) (last_over_time(nuage_repo_scan_target{repo=~\"$repo\"}[7d]))",
-          "format": "table",
-          "instant": true,
-          "range": false,
-          "refId": "C"
-        }
-      ],
-      "title": "Last Successful Scan",
-      "transformations": [
-        {
-          "id": "merge",
-          "options": {}
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "Value #C": true
-            },
-            "indexByName": {
-              "repo": 0,
-              "Value #A": 1,
-              "Value #B": 2
-            },
-            "renameByName": {
-              "Value #A": "Last Success",
-              "Value #B": "Age"
-            }
-          }
-        }
-      ],
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "リポジトリごとの指摘の件数の推移。上の repo・category・severity で絞った件数を合計する。件数は 1 日 1 回しか来ないため last_over_time(...[36h]) で最新の値を取り、階段状になる。",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "stepAfter",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "decimals": 0,
-          "min": 0,
-          "unit": "none",
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 93
-      },
-      "id": 38,
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum by (repo) (last_over_time(nuage_repo_scan_findings{repo=~\"$repo\",category=~\"$category\",severity=~\"$severity\"}[36h]))",
-          "format": "time_series",
-          "instant": false,
-          "range": true,
-          "refId": "A",
-          "legendFormat": "{{repo}}"
-        }
-      ],
-      "title": "Findings over Time",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "victoriametrics-logs-datasource",
-        "uid": "VictoriaLogs"
-      },
-      "description": "リポジトリのスキャンで見つかった指摘の一覧 (VictoriaLogs。CronJob の標準出力の 1 件 1 行の JSON で、event=finding の行)。リポジトリ・スキャナ (trivy / semgrep) ごとに最新の実行 (run_id が最大のもの) の指摘だけを出す。指摘が 0 件になった実行も event=scan_done の行で最新として数えるため、直した指摘は消える。直近 36 時間の実行から選ぶ。file を押すと GitHub の該当行 (スキャンしたコミット) を開く。脆弱性は行番号が無いため、依存を書いたファイルを開く。秘密情報 (secret) は値を出さず、ルール ID・ファイル・行だけを出す。上の repo・category・severity で絞れる。",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "filterable": true,
-            "inspect": false
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "file"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "targetBlank": true,
-                    "title": "GitHub で開く",
-                    "url": "${__data.fields.url}"
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "url"
-            },
-            "properties": [
-              {
-                "id": "custom.hidden",
-                "value": true
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "severity"
-            },
-            "properties": [
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "Critical": {
-                        "color": "red",
-                        "index": 0
-                      },
-                      "High": {
-                        "color": "orange",
-                        "index": 1
-                      },
-                      "Medium": {
-                        "color": "yellow",
-                        "index": 2
-                      },
-                      "Low": {
-                        "color": "blue",
-                        "index": 3
-                      },
-                      "Unknown": {
-                        "color": "text",
-                        "index": 4
-                      }
-                    }
-                  }
-                ]
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "title"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 420
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 16,
-        "w": 24,
-        "x": 0,
-        "y": 101
-      },
-      "id": 39,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": true,
-          "fields": "",
-          "reducer": [
-            "count"
-          ],
-          "show": true
-        },
-        "showHeader": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "victoriametrics-logs-datasource",
-            "uid": "VictoriaLogs"
-          },
-          "editorMode": "code",
-          "expr": "kubernetes.pod_namespace:=\"repo-scan\" event:in(\"finding\", \"scan_done\") repo:in(${repo:doublequote})\n| total_stats by (repo, scanner) max(run_id) as latest_run\n| filter run_id:eq_field(latest_run) event:=\"finding\" category:in(${category:doublequote}) severity:in(${severity:doublequote})\n| fields _time, repo, category, severity, rule_id, title, file, line, pkg_name, installed_version, fixed_version, url\n| sort by (repo, category, severity, file, line)",
-          "maxLines": 5000,
-          "queryType": "instant",
-          "refId": "A"
-        }
-      ],
-      "timeFrom": "36h",
-      "title": "Findings",
-      "transformations": [
-        {
-          "id": "extractFields",
-          "options": {
-            "source": "labels",
-            "format": "json",
-            "replace": true,
-            "keepTime": false
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "Line": true,
-              "_time": true
-            },
-            "indexByName": {
-              "repo": 0,
-              "category": 1,
-              "severity": 2,
-              "rule_id": 3,
-              "title": 4,
-              "file": 5,
-              "line": 6,
-              "pkg_name": 7,
-              "installed_version": 8,
-              "fixed_version": 9,
-              "url": 10
-            },
-            "renameByName": {}
-          }
-        }
-      ],
-      "type": "table"
     }
   ],
   "refresh": "1m",
@@ -2306,143 +2617,10 @@
     "security",
     "security scanning",
     "vulnerabilities",
-    "exposed secrets",
     "misconfiguration"
   ],
   "templating": {
-    "list": [
-      {
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "VictoriaMetrics"
-        },
-        "definition": "query_result(max by (repo) (last_over_time(nuage_repo_scan_target[36h])))",
-        "description": "Repositories 行 (リポジトリのスキャン) で使う。対象のリポジトリ (直近 36 時間に CronJob が送ってきたもの)。",
-        "hide": 0,
-        "includeAll": true,
-        "label": "Repository",
-        "multi": true,
-        "name": "repo",
-        "options": [],
-        "query": {
-          "query": "query_result(max by (repo) (last_over_time(nuage_repo_scan_target[36h])))",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 2,
-        "regex": "/repo=\"([^\"]+)\"/",
-        "skipUrlSync": false,
-        "sort": 1,
-        "type": "query"
-      },
-      {
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "hide": 0,
-        "includeAll": true,
-        "label": "Category",
-        "multi": true,
-        "name": "category",
-        "options": [
-          {
-            "selected": true,
-            "text": "All",
-            "value": "$__all"
-          },
-          {
-            "selected": false,
-            "text": "vulnerability",
-            "value": "vulnerability"
-          },
-          {
-            "selected": false,
-            "text": "misconfiguration",
-            "value": "misconfiguration"
-          },
-          {
-            "selected": false,
-            "text": "secret",
-            "value": "secret"
-          },
-          {
-            "selected": false,
-            "text": "code",
-            "value": "code"
-          }
-        ],
-        "query": "vulnerability,misconfiguration,secret,code",
-        "skipUrlSync": false,
-        "type": "custom",
-        "description": "Repositories 行 (リポジトリのスキャン) で使う。"
-      },
-      {
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "hide": 0,
-        "includeAll": true,
-        "label": "Severity",
-        "multi": true,
-        "name": "severity",
-        "options": [
-          {
-            "selected": true,
-            "text": "All",
-            "value": "$__all"
-          },
-          {
-            "selected": false,
-            "text": "Critical",
-            "value": "Critical"
-          },
-          {
-            "selected": false,
-            "text": "High",
-            "value": "High"
-          },
-          {
-            "selected": false,
-            "text": "Medium",
-            "value": "Medium"
-          },
-          {
-            "selected": false,
-            "text": "Low",
-            "value": "Low"
-          },
-          {
-            "selected": false,
-            "text": "Unknown",
-            "value": "Unknown"
-          }
-        ],
-        "query": "Critical,High,Medium,Low,Unknown",
-        "skipUrlSync": false,
-        "type": "custom",
-        "description": "Repositories 行 (リポジトリのスキャン) で使う。Critical / High の表には効かない。"
-      }
-    ]
+    "list": []
   },
   "time": {
     "from": "now-24h",

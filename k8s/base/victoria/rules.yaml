@@ -335,7 +335,11 @@ spec:
     # - 壁掛けダッシュボード (k8s/base/monitoring-pwa/grafana-dashboard-wall.yaml、uid nuage-wall)
     #   : nuage:trivy_image_vulnerabilities:dedup_by_image、nuage:trivy_resource_configaudits:dedup_by_workload
     # - Trivy ダッシュボード (k8s/trivy-operator/dashboards/trivy-operator.json、uid trivy-operator)
-    #   : 上の 2 つと nuage:trivy_scan_target:by_workload (Scan Coverage 行)
+    #   : 上の 2 つと nuage:trivy_scan_target:by_workload (Scan Coverage 行・Vulnerabilities by Workload)。
+    #     さらに Misconfiguration by Namespace の表は、nuage:trivy_resource_configaudits:dedup_by_workload の式を写し、
+    #     Namespace ごとに分けて数えている (合計がこのルールと一致するように)。Vulnerabilities by Workload の表も、
+    #     ReplicaSet の名前から pod-template-hash を除く正規表現と Argo CronWorkflow の Pod の命名パターンを写している。
+    #     このルールの数え方や命名パターンを変えるときは、ダッシュボードの式も同じように直す。
     # ルール名・ラベル・数え方を変えるときは、両方のダッシュボードを合わせて直す。片方だけ直すと、もう一方のダッシュボードが黙って壊れる。
     # trivy-operator 本体 (k8s/trivy-operator) を更新してメトリクスのラベルが変わったときも、このルールを見直す。
     #
