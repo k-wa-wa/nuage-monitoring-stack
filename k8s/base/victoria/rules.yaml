@@ -473,7 +473,7 @@ spec:
     #   レポート名が clusterrole-<ハッシュ> になる。ハッシュは ClusterRole の名前だけから決まる (trivy-operator の kube.ComputeHash) ので変わらない。
     # 載せていないもの (件数に残す):
     #   - vm-grafana-clusterrole・vm-kube-state-metrics (どちらも KSV-0041)。設定で Secret の権限を外せる見込みで、別に直す
-    #   - High 以下の重要度
+    #   - High 以下の重要度 (載せるときは、ダッシュボードの式も直す。どの式も severity="Critical" に絞っている)
     #
     # 一覧の直し方:
     #   - 件数が増えた (新しい指摘): Overview の RBAC の Critical に出る。中身を確かめ、受け入れるならこの一覧の値と checks を直す

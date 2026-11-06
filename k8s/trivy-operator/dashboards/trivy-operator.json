@@ -2267,7 +2267,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "確認済み (accepted) として件数から除いている ClusterRole の指摘の一覧 (k8s/base/victoria/rules.yaml の nuage:trivy_clusterrbac_accepted_findings)。1 件ごとの出どころ・要る理由・残る危険は、ルールのコメントに書いてある。Accepted は受け入れた件数、Current は今の件数 (trivy_clusterrole_clusterrbacassessments。レポートのチェック ID の種類数)、Report は trivy-operator のレポート名。Current が Accepted より多い分は、新しい指摘として Overview の件数に出る。Current が空ならレポートが無い。チェックが 1 つ消えて別の 1 つが増えた (件数が同じ) 入れ替わりは、件数では見分けられない。",
+      "description": "確認済み (accepted) として件数から除いている ClusterRole の指摘の一覧 (k8s/base/victoria/rules.yaml の nuage:trivy_clusterrbac_accepted_findings)。1 件ごとの出どころ・要る理由・残る危険は、ルールのコメントに書いてある。Accepted は受け入れた件数、Current は今の件数 (trivy_clusterrole_clusterrbacassessments の Critical。一覧は Critical だけを持つ。レポートのチェック ID の種類数)、Report は trivy-operator のレポート名。Current が Accepted より多い分は、新しい指摘として Overview の件数に出る。Current が空ならレポートが無い。チェックが 1 つ消えて別の 1 つが増えた (件数が同じ) 入れ替わりは、件数では見分けられない。",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -2362,7 +2362,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\"}) and on (name, severity) nuage:trivy_clusterrbac_accepted_findings",
+          "expr": "sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"}) and on (name, severity) nuage:trivy_clusterrbac_accepted_findings",
           "instant": true,
           "range": false,
           "refId": "B",
@@ -2490,7 +2490,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "(nuage:trivy_clusterrbac_accepted_findings > on (name, severity) group_left sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\"})) or (nuage:trivy_clusterrbac_accepted_findings unless on (name, severity) sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\"}))",
+          "expr": "(nuage:trivy_clusterrbac_accepted_findings > on (name, severity) group_left sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"})) or (nuage:trivy_clusterrbac_accepted_findings unless on (name, severity) sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"}))",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -2503,7 +2503,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\"}) < on (name, severity) sum by (name, severity) (nuage:trivy_clusterrbac_accepted_findings)",
+          "expr": "sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"}) < on (name, severity) sum by (name, severity) (nuage:trivy_clusterrbac_accepted_findings)",
           "instant": true,
           "range": false,
           "refId": "B",
