@@ -2,8 +2,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # この overlay は namespace を指定しない。
-# 監視スタック本体は nuage-monitoring-stack、trivy-operator 一式は trivy-operator と、Namespace が 2 つあるため、
-# それぞれの kustomization (../../base、../../trivy-operator) で指定する。
+# 監視スタック本体は nuage-monitoring-stack、trivy-operator 一式は trivy-operator、リポジトリのスキャンは repo-scan と、Namespace が複数あるため、
+# それぞれの kustomization (../../base、../../trivy-operator、../../repo-scan) で指定する。
 # この overlay に直接置くリソースは、metadata.namespace を各ファイルに書く。
 
 resources:
@@ -12,3 +12,4 @@ resources:
   - chaos-monitor-grafana.yaml
   - secrets/secrets.yaml
   - ../../trivy-operator
+  - ../../repo-scan

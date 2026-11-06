@@ -1,0 +1,784 @@
+{
+  "SchemaVersion": 2,
+  "CreatedAt": "2026-11-04T21:58:23.510441639+09:00",
+  "ArtifactName": "/tmp/rs/e2e/work/repos/nuage-monitoring-stack",
+  "ArtifactType": "repository",
+  "Metadata": {
+    "RepoURL": "https://github.com/k-wa-wa/nuage-monitoring-stack.git",
+    "Branch": "master",
+    "Commit": "df2faa55f55d10ef2754ef7e26fa3e3a497a50e6"
+  },
+  "Results": [
+    {
+      "Target": "monitoring-pwa/backend/go.mod",
+      "Class": "lang-pkgs",
+      "Type": "gomod",
+      "Packages": [
+        {
+          "ID": "github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend",
+          "Name": "github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend",
+            "UID": "9e26c647fc24a693"
+          },
+          "Relationship": "root",
+          "DependsOn": [
+            "github.com/SherClockHolmes/webpush-go@v1.4.0",
+            "github.com/labstack/echo/v4@v4.15.4",
+            "modernc.org/sqlite@v1.54.0",
+            "github.com/dustin/go-humanize@v1.0.1",
+            "github.com/golang-jwt/jwt/v5@v5.2.1",
+            "github.com/google/uuid@v1.6.0",
+            "github.com/labstack/gommon@v0.5.0",
+            "github.com/mattn/go-colorable@v0.1.15",
+            "github.com/mattn/go-isatty@v0.0.22",
+            "github.com/ncruces/go-strftime@v1.0.0",
+            "github.com/remyoudompheng/bigfft@v0.0.0-20230129092748-24d4a6f8daec",
+            "github.com/valyala/bytebufferpool@v1.0.0",
+            "github.com/valyala/fasttemplate@v1.2.2",
+            "golang.org/x/crypto@v0.53.0",
+            "golang.org/x/net@v0.56.0",
+            "golang.org/x/sys@v0.46.0",
+            "golang.org/x/text@v0.38.0",
+            "golang.org/x/time@v0.15.0",
+            "modernc.org/libc@v1.74.1",
+            "modernc.org/mathutil@v1.7.1",
+            "modernc.org/memory@v1.11.0"
+          ],
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/SherClockHolmes/webpush-go@v1.4.0",
+          "Name": "github.com/SherClockHolmes/webpush-go",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/sherclockholmes/webpush-go@v1.4.0",
+            "UID": "cfe58ab71f3195bf"
+          },
+          "Version": "v1.4.0",
+          "Relationship": "direct",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/labstack/echo/v4@v4.15.4",
+          "Name": "github.com/labstack/echo/v4",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/labstack/echo/v4@v4.15.4",
+            "UID": "e6f1d728f92ed788"
+          },
+          "Version": "v4.15.4",
+          "Relationship": "direct",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "modernc.org/sqlite@v1.54.0",
+          "Name": "modernc.org/sqlite",
+          "Identifier": {
+            "PURL": "pkg:golang/modernc.org/sqlite@v1.54.0",
+            "UID": "a7c3aa725ebd286b"
+          },
+          "Version": "v1.54.0",
+          "Relationship": "direct",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/dustin/go-humanize@v1.0.1",
+          "Name": "github.com/dustin/go-humanize",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/dustin/go-humanize@v1.0.1",
+            "UID": "372098447d561d1e"
+          },
+          "Version": "v1.0.1",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/golang-jwt/jwt/v5@v5.2.1",
+          "Name": "github.com/golang-jwt/jwt/v5",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/golang-jwt/jwt/v5@v5.2.1",
+            "UID": "d2d94313cc29f482"
+          },
+          "Version": "v5.2.1",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/google/uuid@v1.6.0",
+          "Name": "github.com/google/uuid",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/google/uuid@v1.6.0",
+            "UID": "533e5453395bbdf6"
+          },
+          "Version": "v1.6.0",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/labstack/gommon@v0.5.0",
+          "Name": "github.com/labstack/gommon",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/labstack/gommon@v0.5.0",
+            "UID": "ada923d143ba26ba"
+          },
+          "Version": "v0.5.0",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/mattn/go-colorable@v0.1.15",
+          "Name": "github.com/mattn/go-colorable",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/mattn/go-colorable@v0.1.15",
+            "UID": "dfcb534586ee9aef"
+          },
+          "Version": "v0.1.15",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/mattn/go-isatty@v0.0.22",
+          "Name": "github.com/mattn/go-isatty",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/mattn/go-isatty@v0.0.22",
+            "UID": "fe07845743857492"
+          },
+          "Version": "v0.0.22",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/ncruces/go-strftime@v1.0.0",
+          "Name": "github.com/ncruces/go-strftime",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/ncruces/go-strftime@v1.0.0",
+            "UID": "e9cc21da22ea30c0"
+          },
+          "Version": "v1.0.0",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/remyoudompheng/bigfft@v0.0.0-20230129092748-24d4a6f8daec",
+          "Name": "github.com/remyoudompheng/bigfft",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/remyoudompheng/bigfft@v0.0.0-20230129092748-24d4a6f8daec",
+            "UID": "d5ee85a291b4078a"
+          },
+          "Version": "v0.0.0-20230129092748-24d4a6f8daec",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/valyala/bytebufferpool@v1.0.0",
+          "Name": "github.com/valyala/bytebufferpool",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/valyala/bytebufferpool@v1.0.0",
+            "UID": "cafab9e262d4a26b"
+          },
+          "Version": "v1.0.0",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "github.com/valyala/fasttemplate@v1.2.2",
+          "Name": "github.com/valyala/fasttemplate",
+          "Identifier": {
+            "PURL": "pkg:golang/github.com/valyala/fasttemplate@v1.2.2",
+            "UID": "ffbb1666d32e2627"
+          },
+          "Version": "v1.2.2",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "golang.org/x/crypto@v0.53.0",
+          "Name": "golang.org/x/crypto",
+          "Identifier": {
+            "PURL": "pkg:golang/golang.org/x/crypto@v0.53.0",
+            "UID": "2573f3896121d11b"
+          },
+          "Version": "v0.53.0",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "golang.org/x/net@v0.56.0",
+          "Name": "golang.org/x/net",
+          "Identifier": {
+            "PURL": "pkg:golang/golang.org/x/net@v0.56.0",
+            "UID": "8e44bef2ccaf5878"
+          },
+          "Version": "v0.56.0",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "golang.org/x/sys@v0.46.0",
+          "Name": "golang.org/x/sys",
+          "Identifier": {
+            "PURL": "pkg:golang/golang.org/x/sys@v0.46.0",
+            "UID": "f828b92448325c75"
+          },
+          "Version": "v0.46.0",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "golang.org/x/text@v0.38.0",
+          "Name": "golang.org/x/text",
+          "Identifier": {
+            "PURL": "pkg:golang/golang.org/x/text@v0.38.0",
+            "UID": "b805a5d057af140a"
+          },
+          "Version": "v0.38.0",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "golang.org/x/time@v0.15.0",
+          "Name": "golang.org/x/time",
+          "Identifier": {
+            "PURL": "pkg:golang/golang.org/x/time@v0.15.0",
+            "UID": "eefb926263960778"
+          },
+          "Version": "v0.15.0",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "modernc.org/libc@v1.74.1",
+          "Name": "modernc.org/libc",
+          "Identifier": {
+            "PURL": "pkg:golang/modernc.org/libc@v1.74.1",
+            "UID": "b15adfda461adef4"
+          },
+          "Version": "v1.74.1",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "modernc.org/mathutil@v1.7.1",
+          "Name": "modernc.org/mathutil",
+          "Identifier": {
+            "PURL": "pkg:golang/modernc.org/mathutil@v1.7.1",
+            "UID": "30dcd7875665272c"
+          },
+          "Version": "v1.7.1",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        },
+        {
+          "ID": "modernc.org/memory@v1.11.0",
+          "Name": "modernc.org/memory",
+          "Identifier": {
+            "PURL": "pkg:golang/modernc.org/memory@v1.11.0",
+            "UID": "8dbc2025583a847f"
+          },
+          "Version": "v1.11.0",
+          "Indirect": true,
+          "Relationship": "indirect",
+          "AnalyzedBy": "gomod"
+        }
+      ],
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2025-30204",
+          "VendorIDs": [
+            "GHSA-mh63-6h87-95cp"
+          ],
+          "PkgID": "github.com/golang-jwt/jwt/v5@v5.2.1",
+          "PkgName": "github.com/golang-jwt/jwt/v5",
+          "PkgIdentifier": {
+            "PURL": "pkg:golang/github.com/golang-jwt/jwt/v5@v5.2.1",
+            "UID": "d2d94313cc29f482"
+          },
+          "InstalledVersion": "v5.2.1",
+          "FixedVersion": "5.2.2",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-30204",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory Go",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Ago"
+          },
+          "Fingerprint": "sha256:dc6e1eef06615f3884bf775bfb301980311426a21078fa1a1f0c4c0cab07bf21",
+          "Title": "golang-jwt/jwt: jwt-go allows excessive memory allocation during header parsing",
+          "Description": "golang-jwt is a Go implementation of JSON Web Tokens. Starting in version 3.2.0 and prior to versions 5.2.2 and 4.5.2, the function parse.ParseUnverified splits (via a call to strings.Split) its argument (which is untrusted data) on periods. As a result, in the face of a malicious request whose Authorization header consists of Bearer  followed by many period characters, a call to that function incurs allocations to the tune of O(n) bytes (where n stands for the length of the function's argument), with a constant factor of about 16. This issue is fixed in 5.2.2 and 4.5.2.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-405"
+          ],
+          "VendorSeverity": {
+            "alma": 3,
+            "amazon": 3,
+            "azure": 2,
+            "cbl-mariner": 2,
+            "ghsa": 3,
+            "oracle-oval": 3,
+            "redhat": 3,
+            "rocky": 3
+          },
+          "PublishedDate": "2025-03-21T22:15:26.42Z",
+          "LastModifiedDate": "2026-06-17T09:08:21.1Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-118264",
+          "VendorIDs": [
+            "GHSA-cxf3-9h37-7rr8"
+          ],
+          "PkgID": "github.com/labstack/echo/v4@v4.15.4",
+          "PkgName": "github.com/labstack/echo/v4",
+          "PkgIdentifier": {
+            "PURL": "pkg:golang/github.com/labstack/echo/v4@v4.15.4",
+            "UID": "e6f1d728f92ed788"
+          },
+          "InstalledVersion": "v4.15.4",
+          "FixedVersion": "4.16.1",
+          "Status": "fixed",
+          "SeveritySource": "ghsa",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-118264",
+          "DataSource": {
+            "ID": "ghsa",
+            "Name": "GitHub Security Advisory Go",
+            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Ago"
+          },
+          "Fingerprint": "sha256:06f20e8bbe0c92829f1b07238e67dca2800e8f71ea8c3e9eab056d36e737caf4",
+          "Title": "Echo is a Go web framework. From 4.0.0 until 4.16.1 and 5.4.1, Echo's  ...",
+          "Description": "Echo is a Go web framework. From 4.0.0 until 4.16.1 and 5.4.1, Echo's Proxy middleware selects a raw tunnel from a client WebSocket upgrade request before verifying that the configured upstream accepted the upgrade. If the upstream rejects the upgrade with an ordinary keep-alive response, later HTTP requests on the connection are sent directly to that upstream without passing through Echo's router or route-specific middleware. This can bypass authentication or authorization enforced only by Echo routes, but requires an accessible proxy route, a cooperating rejected-upgrade response, and a target without independent upstream authorization. This issue is fixed in 4.16.1 and 5.4.1.",
+          "Severity": "CRITICAL",
+          "CweIDs": [
+            "CWE-444",
+            "CWE-863"
+          ],
+          "VendorSeverity": {
+            "ghsa": 4
+          },
+          "PublishedDate": "2026-10-28T19:17:31.237Z",
+          "LastModifiedDate": "2026-10-30T20:17:05.9Z"
+        }
+      ]
+    },
+    {
+      "Target": "k8s/base/monitoring-pwa/monitoring-pwa.yaml",
+      "Class": "config",
+      "Type": "kubernetes",
+      "MisconfSummary": {
+        "Successes": 101,
+        "Failures": 31
+      },
+      "Misconfigurations": [
+        {
+          "Type": "Kubernetes Security Check",
+          "ID": "KSV-0001",
+          "Title": "Can elevate its own privileges",
+          "Description": "A program inside the container can elevate its own privileges and run as root, which might give the program control over the container and node.",
+          "Message": "Container 'backend' of Deployment 'monitoring-pwa-backend' should set 'securityContext.allowPrivilegeEscalation' to false",
+          "Namespace": "builtin.kubernetes.KSV001",
+          "Query": "data.builtin.kubernetes.KSV001.deny",
+          "Resolution": "Set 'set containers[].securityContext.allowPrivilegeEscalation' to 'false'.",
+          "Severity": "MEDIUM",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/ksv-0001",
+          "References": [
+            "https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted",
+            "https://avd.aquasec.com/misconfig/ksv-0001"
+          ],
+          "Status": "FAIL",
+          "CauseMetadata": {
+            "Provider": "Kubernetes",
+            "Service": "general",
+            "StartLine": 21,
+            "EndLine": 69,
+            "Code": {
+              "Lines": [
+                {
+                  "Number": 21,
+                  "Content": "        - name: backend",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "        - \u001b[38;5;33mname\u001b[0m: backend",
+                  "FirstCause": true,
+                  "LastCause": false
+                },
+                {
+                  "Number": 22,
+                  "Content": "          image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-backend:latest",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "          \u001b[38;5;33mimage\u001b[0m: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-backend:latest",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 23,
+                  "Content": "          ports:",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "          \u001b[38;5;33mports\u001b[0m:",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 24,
+                  "Content": "            - containerPort: 8080",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "            - \u001b[38;5;33mcontainerPort\u001b[0m: \u001b[38;5;37m8080",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 25,
+                  "Content": "          env:",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "\u001b[0m          \u001b[38;5;33menv\u001b[0m:",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 26,
+                  "Content": "            - name: PORT",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "            - \u001b[38;5;33mname\u001b[0m: PORT",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 27,
+                  "Content": "              value: \"8080\"",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "              \u001b[38;5;33mvalue\u001b[0m: \u001b[38;5;37m\"8080\"",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 28,
+                  "Content": "            - name: DB_PATH",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "\u001b[0m            - \u001b[38;5;33mname\u001b[0m: DB_PATH",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 29,
+                  "Content": "              value: \"/data/monitoring-pwa.db\"",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "              \u001b[38;5;33mvalue\u001b[0m: \u001b[38;5;37m\"/data/monitoring-pwa.db\"",
+                  "FirstCause": false,
+                  "LastCause": true
+                },
+                {
+                  "Number": 30,
+                  "Content": "",
+                  "IsCause": false,
+                  "Annotation": "",
+                  "Truncated": true,
+                  "FirstCause": false,
+                  "LastCause": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "Type": "Kubernetes Security Check",
+          "ID": "KSV-0001",
+          "Title": "Can elevate its own privileges",
+          "Description": "A program inside the container can elevate its own privileges and run as root, which might give the program control over the container and node.",
+          "Message": "Container 'frontend' of Deployment 'monitoring-pwa-frontend' should set 'securityContext.allowPrivilegeEscalation' to false",
+          "Namespace": "builtin.kubernetes.KSV001",
+          "Query": "data.builtin.kubernetes.KSV001.deny",
+          "Resolution": "Set 'set containers[].securityContext.allowPrivilegeEscalation' to 'false'.",
+          "Severity": "MEDIUM",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/ksv-0001",
+          "References": [
+            "https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted",
+            "https://avd.aquasec.com/misconfig/ksv-0001"
+          ],
+          "Status": "FAIL",
+          "CauseMetadata": {
+            "Provider": "Kubernetes",
+            "Service": "general",
+            "StartLine": 118,
+            "EndLine": 128,
+            "Code": {
+              "Lines": [
+                {
+                  "Number": 118,
+                  "Content": "        - name: frontend",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "        - \u001b[38;5;33mname\u001b[0m: frontend",
+                  "FirstCause": true,
+                  "LastCause": false
+                },
+                {
+                  "Number": 119,
+                  "Content": "          image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-frontend:latest",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "          \u001b[38;5;33mimage\u001b[0m: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-frontend:latest",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 120,
+                  "Content": "          ports:",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "          \u001b[38;5;33mports\u001b[0m:",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 121,
+                  "Content": "            - containerPort: 80",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "            - \u001b[38;5;33mcontainerPort\u001b[0m: \u001b[38;5;37m80",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 122,
+                  "Content": "          resources:",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "\u001b[0m          \u001b[38;5;33mresources\u001b[0m:",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 123,
+                  "Content": "            requests:",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "            \u001b[38;5;33mrequests\u001b[0m:",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 124,
+                  "Content": "              cpu: 20m",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "              \u001b[38;5;33mcpu\u001b[0m: 20m",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 125,
+                  "Content": "              memory: 16Mi",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "              \u001b[38;5;33mmemory\u001b[0m: 16Mi",
+                  "FirstCause": false,
+                  "LastCause": false
+                },
+                {
+                  "Number": 126,
+                  "Content": "            limits:",
+                  "IsCause": true,
+                  "Annotation": "",
+                  "Truncated": false,
+                  "Highlighted": "            \u001b[38;5;33mlimits\u001b[0m:",
+                  "FirstCause": false,
+                  "LastCause": true
+                },
+                {
+                  "Number": 127,
+                  "Content": "",
+                  "IsCause": false,
+                  "Annotation": "",
+                  "Truncated": true,
+                  "FirstCause": false,
+                  "LastCause": false
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Target": "creds.ini",
+      "Class": "secret",
+      "Secrets": [
+        {
+          "RuleID": "aws-access-key-id",
+          "Category": "AWS",
+          "Severity": "CRITICAL",
+          "Title": "AWS Access Key ID",
+          "StartLine": 1,
+          "EndLine": 1,
+          "Code": {
+            "Lines": [
+              {
+                "Number": 1,
+                "Content": "aws_access_key_id = ********************",
+                "IsCause": true,
+                "Annotation": "",
+                "Truncated": false,
+                "Highlighted": "aws_access_key_id = ********************",
+                "FirstCause": true,
+                "LastCause": true
+              },
+              {
+                "Number": 2,
+                "Content": "aws_secret_access_key = ****************************************",
+                "IsCause": false,
+                "Annotation": "",
+                "Truncated": false,
+                "Highlighted": "aws_secret_access_key = ****************************************",
+                "FirstCause": false,
+                "LastCause": false
+              }
+            ]
+          },
+          "Match": "aws_access_key_id = ********************",
+          "Offset": 20
+        },
+        {
+          "RuleID": "aws-secret-access-key",
+          "Category": "AWS",
+          "Severity": "CRITICAL",
+          "Title": "AWS Secret Access Key",
+          "StartLine": 2,
+          "EndLine": 2,
+          "Code": {
+            "Lines": [
+              {
+                "Number": 1,
+                "Content": "aws_access_key_id = ********************",
+                "IsCause": false,
+                "Annotation": "",
+                "Truncated": false,
+                "Highlighted": "aws_access_key_id = ********************",
+                "FirstCause": false,
+                "LastCause": false
+              },
+              {
+                "Number": 2,
+                "Content": "aws_secret_access_key = ****************************************",
+                "IsCause": true,
+                "Annotation": "",
+                "Truncated": false,
+                "Highlighted": "aws_secret_access_key = ****************************************",
+                "FirstCause": true,
+                "LastCause": true
+              },
+              {
+                "Number": 3,
+                "Content": "",
+                "IsCause": false,
+                "Annotation": "",
+                "Truncated": false,
+                "FirstCause": false,
+                "LastCause": false
+              }
+            ]
+          },
+          "Match": "aws_secret_access_key = ****************************************",
+          "Offset": 65
+        }
+      ]
+    },
+    {
+      "Target": "main.go",
+      "Class": "secret",
+      "Secrets": [
+        {
+          "RuleID": "github-pat",
+          "Category": "GitHub",
+          "Severity": "CRITICAL",
+          "Title": "GitHub Personal Access Token",
+          "StartLine": 3,
+          "EndLine": 3,
+          "Code": {
+            "Lines": [
+              {
+                "Number": 1,
+                "Content": "package main",
+                "IsCause": false,
+                "Annotation": "",
+                "Truncated": false,
+                "Highlighted": "package main",
+                "FirstCause": false,
+                "LastCause": false
+              },
+              {
+                "Number": 2,
+                "Content": "",
+                "IsCause": false,
+                "Annotation": "",
+                "Truncated": false,
+                "FirstCause": false,
+                "LastCause": false
+              },
+              {
+                "Number": 3,
+                "Content": "const tok = \"****************************************Q\"",
+                "IsCause": true,
+                "Annotation": "",
+                "Truncated": false,
+                "Highlighted": "const tok = \"****************************************Q\"",
+                "FirstCause": true,
+                "LastCause": true
+              },
+              {
+                "Number": 4,
+                "Content": "",
+                "IsCause": false,
+                "Annotation": "",
+                "Truncated": false,
+                "FirstCause": false,
+                "LastCause": false
+              }
+            ]
+          },
+          "Match": "const tok = \"****************************************Q\"",
+          "Offset": 27
+        }
+      ]
+    }
+  ]
+}

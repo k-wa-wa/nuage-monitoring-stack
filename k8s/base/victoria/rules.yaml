@@ -3,6 +3,7 @@
 # - external-nodes-rules: クラスタ外の NixOS ホスト (job="external-nodes") のディスク・CPU・メモリ・systemd 失敗・MVS バッチジョブ失敗検知
 # - k8s-error-logs: Pod のエラーログ検知およびホスト journald の systemd 失敗検知 (VictoriaLogs)
 # - trivy-summary-rules: 壁掛けダッシュボード (uid nuage-wall) と Trivy ダッシュボード (uid trivy-operator) で使う trivy-operator の脆弱性・設定不備の件数と、Trivy ダッシュボードで使うスキャン対象のワークロード一覧 (recording rule)
+# - repo-scan-rules: リポジトリのスキャン (k8s/repo-scan の CronJob) が 36 時間以上成功していないリポジトリの検知
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
@@ -440,3 +441,39 @@ spec:
               or label_replace(label_replace(kube_job_owner{owner_kind="",namespace!="trivy-operator",namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "job_name", "(.+)"), "resource_kind", "Job", "", "")
               or label_replace(label_replace(kube_pod_owner{owner_kind=~"|Node|Workflow",namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "pod", "(.+)"), "resource_kind", "Pod", "", "")
             )
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: repo-scan-rules
+spec:
+  groups:
+    - name: repo-scan
+      rules:
+        # リポジトリのスキャン (k8s/repo-scan の CronJob、毎日 日本時間 4:00) は、リポジトリごとに
+        #   - nuage_repo_scan_target{repo}: 対象であること (実行のたびにすべての対象について 1 を送る)
+        #   - nuage_repo_scan_last_success_timestamp_seconds{repo}: クローンと trivy・semgrep の両方が成功した時刻 (成功したときだけ送る)
+        # を vmagent に送る。1 日 1 回しか値が来ないため、last_over_time で最新の値を取る。
+        # 次のどちらかで鳴らす。
+        #   1. 対象なのに、成功時刻が 36 時間より古い、または一度も成功していない (成功時刻の値が無い) リポジトリがある。
+        #      対象から外したリポジトリは nuage_repo_scan_target が来なくなり、36 時間で鳴らなくなる
+        #   2. CronJob が 36 時間 1 度も送ってきていない (動いていない・送信に失敗している)。repo ラベルは付かない
+        # 36 時間は、毎日の実行が 1 回失敗しても次の実行までに直れば鳴らない長さ (24 時間 + 余裕)。
+        # for: 1h は、マージ直後に初回の実行 (手動で 1 回動かす) を済ませるまでの間に 2 が鳴らないようにするため。
+        # record: "" は CRD の既定値。省略すると実機との差分が残って Argo CD が OutOfSync のままになるため明示する
+        - alert: RepoScanNotSucceeded
+          record: ""
+          annotations:
+            summary: "リポジトリのスキャンが 36 時間以上成功していない ({{ $labels.repo }})"
+            description: "repo-scan Namespace の CronJob repo-scan で、リポジトリ {{ $labels.repo }} のクローンまたはスキャン (trivy・semgrep) が 36 時間以上成功していない (repo が空なら、CronJob が 36 時間 1 度も件数を送っていない)。kubectl -n repo-scan get jobs と、VictoriaLogs の kubernetes.pod_namespace:=\"repo-scan\" event:=\"repo_status\" のログで原因を確かめること。"
+          expr: |-
+            (
+              max by (repo) (last_over_time(nuage_repo_scan_target[36h]))
+              unless on (repo)
+              (time() - max by (repo) (last_over_time(nuage_repo_scan_last_success_timestamp_seconds[36h])) < 36 * 3600)
+            )
+            or
+            absent_over_time(nuage_repo_scan_target[36h])
+          for: 1h
+          labels:
+            severity: warning

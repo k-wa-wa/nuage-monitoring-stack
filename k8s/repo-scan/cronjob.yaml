@@ -1,0 +1,207 @@
+# 自分のリポジトリのコードを毎日スキャンする。
+# trivy-operator はクラスタで動いているイメージしか見ないため、リポジトリ (依存ライブラリの脆弱性・IaC の設定ミス・
+# 秘密情報の混入・コードの静的解析) はこの CronJob で見る。結果は Security ダッシュボード (uid trivy-operator) の Repositories 行に出る。
+#
+# 1 回の実行の流れ。initContainers は順に動き、全部が終わってから最後のコンテナが動く。
+#   1. clone        : 対象 (ConfigMap repo-scan-targets) の各リポジトリを git clone --depth 1 する (トークン無し)
+#   2. trivy        : trivy fs --scanners vuln,misconfig,secret
+#   3. semgrep      : semgrep scan --config p/default
+#   4. aggregate    : 結果をまとめ、件数を vmagent に送り、指摘の一覧を標準出力に出す (vlagent が VictoriaLogs に入れる)
+# 1 つのリポジトリが失敗しても他は続ける。失敗したリポジトリは成功時刻を更新せず、最後のコンテナが失敗で終わって Job も失敗になる。
+# 手順の中身は scripts/ にあり、ConfigMap repo-scan-scripts として載せる。
+#
+# 手動で動かすとき: kubectl -n repo-scan create job --from=cronjob/repo-scan repo-scan-manual-$(date +%s)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: repo-scan
+  namespace: repo-scan
+spec:
+  # 毎日 日本時間 4:00
+  schedule: "0 4 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  # ノードの停止などで時刻を逃したとき、2 時間以内なら遅れて動かす
+  startingDeadlineSeconds: 7200
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # 失敗したら同じ日には送り直さない (翌日の実行と、成功時刻が古くなったアラートで気づく)。
+      # 送り直すと、失敗が続く原因 (GitHub の障害など) のたびに同じ失敗を重ねるだけのため。
+      backoffLimit: 0
+      # 10 個のリポジトリで、手元では trivy・semgrep ともに 1 つ 10 秒前後。DB とルールの取得を含めても十分な余裕を取る
+      # 1 つのリポジトリで通信が止まってもこれを使い切らないよう、各手順に 1 リポジトリあたりの上限を設けている
+      # (clone 120 秒・trivy 600 秒・semgrep 600 秒。scripts/ の CLONE_TIMEOUT・SCAN_TIMEOUT)。超えたものは失敗として記録して次に進む
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: repo-scan
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: clone
+              # alpine/git v2.54.0
+              image: alpine/git:v2.54.0@sha256:ac6c828f15d82775d204d3d75112e1d34af8945da80ccf922713c9891ba68e7a
+              command: ["sh", "/scripts/clone.sh"]
+              env:
+                - name: HOME
+                  value: /work
+                # 認証を聞かれる場面 (リポジトリが消えた・非公開になった) で止まらずに失敗させる
+                - name: GIT_TERMINAL_PROMPT
+                  value: "0"
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: tmp
+                  mountPath: /tmp
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: targets
+                  mountPath: /etc/repo-scan/targets
+                  readOnly: true
+            - name: trivy
+              # trivy-operator (k8s/trivy-operator) が使う trivy と同じ版
+              image: mirror.gcr.io/aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+              command: ["sh", "/scripts/scan-trivy.sh"]
+              env:
+                - name: HOME
+                  value: /work
+                - name: TMPDIR
+                  value: /tmp
+              resources:
+                # 手元で pechka (いちばん大きいリポジトリ) にかけたときの最大メモリは約 400MB
+                requests:
+                  cpu: 200m
+                  memory: 512Mi
+                limits:
+                  cpu: "1"
+                  memory: 2Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: tmp
+                  mountPath: /tmp
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: targets
+                  mountPath: /etc/repo-scan/targets
+                  readOnly: true
+            - name: semgrep
+              # semgrep 1.183.0 (非 root の版)
+              image: semgrep/semgrep:1.183.0-nonroot@sha256:dcfa61350e835a172f6a719d96a078ff9739fa75bba14f4d8ca44a7ad64722e9
+              command: ["sh", "/scripts/scan-semgrep.sh"]
+              env:
+                # semgrep は設定とログを $HOME/.semgrep に書く (ルートのファイルシステムは読み取り専用のため /work にする)
+                - name: HOME
+                  value: /work
+                - name: TMPDIR
+                  value: /tmp
+                - name: SEMGREP_SEND_METRICS
+                  value: "off"
+              resources:
+                # 手元で pechka にかけたときの最大メモリは約 400MB
+                requests:
+                  cpu: 200m
+                  memory: 512Mi
+                limits:
+                  cpu: "1"
+                  memory: 2Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: tmp
+                  mountPath: /tmp
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: targets
+                  mountPath: /etc/repo-scan/targets
+                  readOnly: true
+          containers:
+            - name: aggregate
+              # python 3.14.10-slim
+              image: python:3.14.10-slim@sha256:930e1abba7c4e8f96ed93e8012c35d174d7732752731bbd5e8e757d7ec6f3966
+              command:
+                - python3
+                - /scripts/aggregate.py
+                - --targets=/etc/repo-scan/targets/repos.txt
+                - --work=/work
+                # vmagent が 2 台の VMSingle (vm と vm-b) に同じものを書く
+                - --push-url=http://vmagent-vm.nuage-monitoring-stack.svc:8429/api/v1/import/prometheus
+              env:
+                - name: HOME
+                  value: /work
+                - name: PYTHONDONTWRITEBYTECODE
+                  value: "1"
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: tmp
+                  mountPath: /tmp
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: targets
+                  mountPath: /etc/repo-scan/targets
+                  readOnly: true
+          volumes:
+            # クローンしたリポジトリ・trivy の DB・結果の JSON。実行ごとに捨てる (DB は毎回取得する)
+            - name: work
+              emptyDir:
+                sizeLimit: 5Gi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 1Gi
+            - name: scripts
+              configMap:
+                name: repo-scan-scripts
+            - name: targets
+              configMap:
+                name: repo-scan-targets

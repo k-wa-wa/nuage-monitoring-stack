@@ -60,6 +60,12 @@ configMapGenerator:
   #   - nuage:trivy_resource_configaudits:dedup_by_workload (設定不備を workload 単位にまとめた件数)
   #   - nuage:trivy_scan_target:by_workload (スキャン対象のワークロード一覧。Scan Coverage 行で使う)
   # ルール名や数え方を変えるときは、このダッシュボードのクエリもあわせて直す。
+  # Repositories 行 (リポジトリのスキャン) は、k8s/repo-scan の CronJob が送る次のメトリクスとログに依存する。
+  #   - nuage_repo_scan_findings{repo, category, severity} (指摘の件数)
+  #   - nuage_repo_scan_last_success_timestamp_seconds{repo} (最後に成功した時刻)
+  #   - nuage_repo_scan_target{repo} (対象のリポジトリ。変数 repo の選択肢)
+  #   - VictoriaLogs の kubernetes.pod_namespace="repo-scan" の JSON 行 (event=finding・scan_done。指摘の一覧)
+  # メトリクス名・ラベル・ログのフィールドを変えるとき (k8s/repo-scan/scripts/aggregate.py) は、このダッシュボードのクエリもあわせて直す。
   # Grafana の sidecar は全 Namespace を見る (searchNamespace: ALL) ため、trivy-operator Namespace に置いても読み込まれる。
   - name: trivy-operator-dashboard
     files:

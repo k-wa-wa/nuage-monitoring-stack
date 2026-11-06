@@ -1,0 +1,47 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: repo-scan-egress-guard
+  namespace: repo-scan
+spec:
+  endpointSelector: {} # repo-scan namespace 内の全 Pod
+  # ingress は 1 つも許さない (CronJob の Pod は外から呼ばれない)。
+  # 空のルールを 1 つだけ置くと、ingress を既定拒否にしたうえで何も許さない形になる (Cilium の文書の「ingress default deny」と同じ書き方)。
+  # ingress の項目ごと書かないと、ingress は制御されず全部通る。
+  ingress:
+    - {}
+  egress:
+    # 1. CoreDNS による名前解決 (kube-system の DNS ポート 53 UDP/TCP)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    # 2. 外部への HTTPS (443 のみ)
+    # GitHub からのクローン、trivy の脆弱性 DB・設定チェックの取得 (mirror.gcr.io / ghcr.io)、semgrep のルールの取得 (semgrep.dev)
+    # 内部プライベート網 (192.168.0.0/16, 10.0.0.0/8 等) への横展開を完全遮断
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 192.168.0.0/16   # 自宅 LAN / Proxmox / PBS / ルータ等への通信を全面遮断
+            - 10.0.0.0/8       # k8s ノード / etcd / 内部ゾーン / 他 Namespace を全面遮断
+            - 172.16.0.0/12    # プライベート IP 帯全面遮断
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # 3. 件数の送り先 (vmagent の import API)。vmagent が 2 台の VMSingle (vm と vm-b) に同じものを書く
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: nuage-monitoring-stack
+            app.kubernetes.io/name: vmagent
+            app.kubernetes.io/instance: vm
+      toPorts:
+        - ports:
+            - port: "8429"
+              protocol: TCP

@@ -1,0 +1,31 @@
+# リポジトリのスキャン一式 (自分のリポジトリのコードを毎日 trivy・semgrep でスキャンする CronJob)。
+# 結果は Security ダッシュボード (k8s/trivy-operator/dashboards/trivy-operator.json、uid trivy-operator) の Repositories 行に出る。
+# 成功時刻が古くなったときのアラートは k8s/base/victoria/rules.yaml の VMRule repo-scan-rules にある。
+# prod overlay だけが読む。preview overlay には入れない (trivy-operator と同じ扱い。PR ごとに複製すると同じスキャンと件数の送信が重なるため)。
+#
+# 監視スタック本体 (nuage-monitoring-stack) とは別の repo-scan Namespace に置く。
+# networkpolicy.yaml の CiliumNetworkPolicy は endpointSelector: {} で Namespace 内の全 Pod に効くため。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: repo-scan
+
+resources:
+  # Argo CD の CreateNamespace=true は destination の nuage-monitoring-stack にしか効かないため、Namespace をリソースとして持つ
+  - namespace.yaml
+  - networkpolicy.yaml
+  - cronjob.yaml
+
+configMapGenerator:
+  # スキャンする対象の一覧。対象を足す・外すときは repos.txt だけを変える
+  - name: repo-scan-targets
+    files:
+      - repos.txt
+  # 各手順のスクリプト。テスト (scripts/test_aggregate.py・scripts/testdata/) は載せない
+  #   python3 -m unittest discover -s k8s/repo-scan/scripts
+  - name: repo-scan-scripts
+    files:
+      - scripts/clone.sh
+      - scripts/scan-trivy.sh
+      - scripts/scan-semgrep.sh
+      - scripts/aggregate.py
