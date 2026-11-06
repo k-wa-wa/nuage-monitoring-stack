@@ -60,6 +60,9 @@ configMapGenerator:
   #   - nuage:trivy_resource_configaudits:dedup_by_workload (設定不備を workload 単位にまとめた件数。
   #     Misconfiguration by Namespace の表は、このルールの式を写して Namespace ごとに分けている)
   #   - nuage:trivy_scan_target:by_workload (スキャン対象のワークロード一覧。Scan Coverage 行と Vulnerabilities by Workload の表で使う)
+  # 同じファイルの VMRule trivy-rbac-accepted-rules (recording rule) にも依存する。
+  #   - nuage:trivy_clusterrbac_accepted_findings (確認済みの ClusterRole の RBAC の指摘の一覧。Overview の Kubernetes: RBAC Assessment と
+  #     RBAC Issues by Namespace の (cluster-wide) 行の Critical から除き、Accepted ClusterRole Findings・Accepted List Out of Date の表に出す)
   # ルール名や数え方を変えるときは、このダッシュボードのクエリもあわせて直す。
   # リポジトリのスキャン (Scan Coverage・Overview・Repositories 行) は、k8s/repo-scan の CronJob が送る次のメトリクスに依存する。
   #   - nuage_repo_scan_findings{repo, category, severity} (指摘の件数)

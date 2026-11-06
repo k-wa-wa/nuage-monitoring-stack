@@ -3,6 +3,7 @@
 # - external-nodes-rules: クラスタ外の NixOS ホスト (job="external-nodes") のディスク・CPU・メモリ・systemd 失敗・MVS バッチジョブ失敗検知
 # - k8s-error-logs: Pod のエラーログ検知およびホスト journald の systemd 失敗検知 (VictoriaLogs)
 # - trivy-summary-rules: 壁掛けダッシュボード (uid nuage-wall) と Trivy ダッシュボード (uid trivy-operator) で使う trivy-operator の脆弱性・設定不備の件数と、Trivy ダッシュボードで使うスキャン対象のワークロード一覧 (recording rule)
+# - trivy-rbac-accepted-rules: Trivy ダッシュボード (uid trivy-operator) で ClusterRole の RBAC の Critical の件数から除く、確認済み (accepted) の指摘の一覧 (recording rule nuage:trivy_clusterrbac_accepted_findings)
 # - repo-scan-rules: リポジトリのスキャン (k8s/repo-scan の CronJob) が 36 時間以上成功していないリポジトリの検知
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
@@ -445,6 +446,419 @@ spec:
               or label_replace(label_replace(kube_job_owner{owner_kind="",namespace!="trivy-operator",namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "job_name", "(.+)"), "resource_kind", "Job", "", "")
               or label_replace(label_replace(kube_pod_owner{owner_kind=~"|Node|Workflow",namespace!~".+-pr-[0-9]+"}, "resource_name", "$1", "pod", "(.+)"), "resource_kind", "Pod", "", "")
             )
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: trivy-rbac-accepted-rules
+spec:
+  groups:
+    # ClusterRole の RBAC の指摘 (trivy_clusterrole_clusterrbacassessments) のうち、確認済み (accepted) のものの一覧。
+    # Trivy ダッシュボード (k8s/trivy-operator/dashboards/trivy-operator.json、uid trivy-operator) の Kubernetes: RBAC Assessment で、
+    # Critical の件数からこの一覧の分を除き (Overview の stat と RBAC Issues by Namespace の (cluster-wide) 行)、
+    # Accepted ClusterRole Findings・Accepted List Out of Date の表に出す。ルール名・ラベルを変えるときは、ダッシュボードの式も直す。
+    #
+    # 一覧の意味:
+    #   trivy は「その権限が要るかどうか」を判断せず、強い権限を機械的に拾う。Kubernetes 本体やアプリが動くのに要る権限を
+    #   1 件ずつ確かめ、受け入れたものをここに載せる。載せたものは件数から除き、新しく増えた指摘だけが件数に出るようにする。
+    #   1 件 = 1 系列。ラベルは name (trivy-operator のレポート名)・severity・clusterrole (本当の ClusterRole 名)・checks (チェック ID を空白区切り)。
+    #   値は受け入れた件数。
+    # 単位は「レポート × 重要度 × 件数」で、チェック ID では外せない:
+    #   trivy-operator (0.36.1 時点) の 1 件ごとのメトリクス (trivy_rbacassessments_info) は Namespace の Role の分だけを出し、
+    #   ClusterRole の分を出さない (pkg/metrics/collector.go)。trivy-operator の設定は変えない。
+    #   trivy_clusterrole_clusterrbacassessments の値は、1 つのレポートの中のチェック ID の種類数 (重要度ごと) である。
+    # 限界: 受け入れた ClusterRole に新しい種類の強い権限が増えれば件数が増えて出てくるが、
+    #   チェックが 1 つ消えて別の 1 つが増えた (件数が同じ) 入れ替わりは見逃す。
+    # name で突き合わせる理由: 名前に ':' を含む ClusterRole (system:*) は resource_name ラベルが空になり、
+    #   レポート名が clusterrole-<ハッシュ> になる。ハッシュは ClusterRole の名前だけから決まる (trivy-operator の kube.ComputeHash) ので変わらない。
+    # 載せていないもの (件数に残す):
+    #   - vm-grafana-clusterrole・vm-kube-state-metrics (どちらも KSV-0041)。設定で Secret の権限を外せる見込みで、別に直す
+    #   - High 以下の重要度 (載せるときは、ダッシュボードの式も直す。どの式も severity="Critical" に絞っている)
+    #
+    # 一覧の直し方:
+    #   - 件数が増えた (新しい指摘): Overview の RBAC の Critical に出る。中身を確かめ、受け入れるならこの一覧の値と checks を直す
+    #   - 件数が減った・レポートが無くなった (ClusterRole が消えた、更新で権限が減った): Accepted List Out of Date の表に出る。
+    #     そのままにすると、減った分だけ別の新しい指摘を隠すため、値を今の件数に下げるか、項目を消す
+    #   - ClusterRole が増えた: 下の調べ方で中身を確かめ、受け入れるなら項目を足す
+    #   どの項目にも、すぐ上に 1. 出どころ 2. チェック 3. 要る理由 4. 残る危険と手当て 5. 確度 を書く
+    # チェック ID の調べ方:
+    #   1. 本番の件数: Grafana の匿名の API で
+    #      curl -s -G https://grafana.wpcapp.net/api/datasources/proxy/uid/VictoriaMetrics/api/v1/query \
+    #        --data-urlencode 'query=sum by (name, resource_name, severity) (trivy_clusterrole_clusterrbacassessments{job="trivy-operator",severity="Critical"}) > 0'
+    #   2. ClusterRole の定義: アプリの分は各リポジトリの既定ブランチから組み上げる (kustomize build --enable-helm など)。
+    #      Kubernetes 組み込みは、本番と同じ版の kubernetes の plugin/pkg/auth/authorizer/rbac/bootstrappolicy/testdata/{cluster-roles,controller-roles}.yaml から取る
+    #      (admin・edit は aggregationRule で中身が決まるため、そこには rules が無い。クラスタの実物を見る必要がある)
+    #   3. 手元の trivy で検査する: trivy config --severity CRITICAL,HIGH <定義のディレクトリ>。
+    #      手元の trivy は同じチェックに当たったルールの数だけ数えるが、trivy-operator はチェック ID ごとに 1 件と数えるので、ID の種類で数え直して 1. と比べる
+    #   4. ハッシュのレポート名: trivy-operator の kube.ComputeHash を ClusterRole 名にかける (Go で再現して計算する)
+    # 評価間隔は vmalert の既定 (1m) に任せる。値は定数で、vector(<件数>) に labels でラベルを付ける。
+    # alert: "" は CRD の既定値。省略すると実機との差分が残って Argo CD が OutOfSync のままになるため明示する
+    - name: trivy-rbac-accepted
+      rules:
+        # [1] admin (レポート clusterrole-admin、Critical 1 件)
+        #   1. 出どころ: Kubernetes 組み込み。aggregationRule で aggregate-to-admin のラベルを持つ ClusterRole (edit・アプリの CRD 用のものなど) を集めて中身が決まる
+        #   2. チェック: KSV-0041 (Secret を扱える) と推定。集約で入る system:aggregate-to-edit の secrets (get・list・watch と create・update・patch・delete 等) が当たると見ている
+        #   3. 要る理由: Namespace の管理者の権限を RoleBinding で人に渡すための既定の ClusterRole。autoupdate の注釈があり、消しても API サーバーが起動時に作り直す
+        #   4. 残る危険: 割り当てられた利用者は、その Namespace の Secret をすべて読み書きできる (ClusterRoleBinding で割り当てればクラスタ全体)。手当て: 誰に割り当てているかを確かめる (未確認)
+        #   5. 確度: 推定 (手元の定義に rules が無く、チェック ID を特定できていない。件数 1 から KSV-0041 とみる)
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-admin
+            severity: Critical
+            clusterrole: "admin"
+            checks: KSV-0041
+        # [2] argo-cluster-role (レポート clusterrole-argo-cluster-role、Critical 1 件)
+        #   1. 出どころ: Argo Workflows のワークフローコントローラー用。pechka の k8s/base/infra/argo-workflows (上流 install.yaml v4.1.6、cluster-install)
+        #   2. チェック: KSV-0041 (Secret を扱える)。secrets の get だが resourceNames: [argo-workflows-agent-ca-certificates] で Secret 1 個に絞られている
+        #   3. 要る理由: コントローラーが agent の CA 証明書の Secret を読むため (Secret の名前からの推定)。外すと agent を使うワークフローが動かなくなる (推定)
+        #   4. 残る危険: Secret の権限は 1 個に絞られており小さい。同じ ClusterRole の pods・pods/exec の create 等の方が強い (High の KSV-0053、今回は対象外)。手当て: Argo Workflows を namespace-install にすればクラスタ全体の権限にしなくて済む
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-argo-cluster-role
+            severity: Critical
+            clusterrole: "argo-cluster-role"
+            checks: KSV-0041
+        # [3] argo-server-cluster-role (レポート clusterrole-argo-server-cluster-role、Critical 1 件)
+        #   1. 出どころ: Argo Workflows の argo-server (UI・API) 用。pechka の k8s/base/infra/argo-workflows (上流 install.yaml v4.1.6、cluster-install)
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・create (list は無い)
+        #   3. 要る理由: 上流の既定の権限で、argo-server が SSO の設定などの Secret を読み・作るためと見られる (推定)。外すと UI・API の一部が動かなくなる (推定)
+        #   4. 残る危険: pechka では argo-server を --auth-mode=server で動かし、Ingress (pechka-workflow.wpcapp.net) で出している。UI に届く人は argo-server の権限で、名前を知っている Secret を読め、ワークフローを投入できる。前段の認証の有無は確かめていない。手当て: auth-mode を client・sso にする、namespace-install にする
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-argo-server-cluster-role
+            severity: Critical
+            clusterrole: "argo-server-cluster-role"
+            checks: KSV-0041
+        # [4] argocd-application-controller (レポート clusterrole-argocd-application-controller、Critical 2 件)
+        #   1. 出どころ: Argo CD の application-controller 用。nuage-cluster の manifests/bootstrap/argocd (上流 install.yaml v3.5.7)
+        #   2. チェック: KSV-0044 (全リソースに全操作) と KSV-0046 (全リソースを扱える)。apiGroups・resources・verbs がすべて '*' のルールと、nonResourceURLs '*'
+        #   3. 要る理由: Git の宣言どおりに、どの種類のリソースでもクラスタに作る・直す・消すため。外すと Argo CD が同期できない
+        #   4. 残る危険: cluster-admin と同じ。コントローラーが乗っ取られればクラスタのすべてを握られる。Git に書かれたものがそのまま反映されるため、リポジトリへの書き込み権限も同じ重さになる。手当て: Argo CD の更新を続ける。AppProject で反映先・種類を絞る
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(2)
+          labels:
+            name: clusterrole-argocd-application-controller
+            severity: Critical
+            clusterrole: "argocd-application-controller"
+            checks: KSV-0044 KSV-0046
+        # [5] argocd-applicationset-controller (レポート clusterrole-argocd-applicationset-controller、Critical 1 件)
+        #   1. 出どころ: Argo CD の applicationset-controller 用。nuage-cluster の manifests/bootstrap/argocd (上流 install.yaml v3.5.7)
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets・configmaps に get・list・watch
+        #   3. 要る理由: ApplicationSet の生成器が、クラスタの登録情報やリポジトリの認証情報 (Secret) を読むため。外すと ApplicationSet が Application を作れなくなる
+        #   4. 残る危険: 乗っ取られるとクラスタ全体の Secret を読める。手当て: Argo CD の更新を続ける。namespace-install にすれば読む範囲を argocd Namespace に絞れる (Argo CD 全体の構成が変わる)
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-argocd-applicationset-controller
+            severity: Critical
+            clusterrole: "argocd-applicationset-controller"
+            checks: KSV-0041
+        # [6] argocd-server (レポート clusterrole-argocd-server、Critical 1 件)
+        #   1. 出どころ: Argo CD の argocd-server (UI・API) 用。nuage-cluster の manifests/bootstrap/argocd (上流 install.yaml v3.5.7)
+        #   2. チェック: KSV-0046 (全リソースを扱える)。apiGroups・resources が '*' で、verbs が get・patch・delete のルール
+        #   3. 要る理由: UI でリソースの中身を見せ、UI から直す・消すため。外すと UI のリソースの表示・操作ができない
+        #   4. 残る危険: get に Secret も含まれ、乗っ取られるとクラスタ全体の Secret を読め、任意のリソースを書き換え・削除できる。UI のログインが破られても同じ。手当て: Argo CD の更新を続ける。Argo CD の RBAC で利用者の操作を絞る
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-argocd-server
+            severity: Critical
+            clusterrole: "argocd-server"
+            checks: KSV-0046
+        # [7] cert-manager-cainjector (レポート clusterrole-cert-manager-cainjector、Critical 2 件)
+        #   1. 出どころ: cert-manager の cainjector 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
+        #   2. チェック: KSV-0041 (Secret を扱える。core の secrets に get・list・watch) と KSV-0114 (webhook の設定を書き換えられる。validating・mutatingwebhookconfigurations に update・patch)
+        #   3. 要る理由: 証明書の Secret から CA を読み、webhook・APIService の caBundle に書き込むため。外すと cert-manager の webhook などの TLS が通らなくなる
+        #   4. 残る危険: 乗っ取られるとクラスタ全体の Secret を読め、webhook を書き換えて作成・更新されるリソースを横取り・改ざんできる。手当て: cert-manager の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(2)
+          labels:
+            name: clusterrole-cert-manager-cainjector
+            severity: Critical
+            clusterrole: "cert-manager-cainjector"
+            checks: KSV-0041 KSV-0114
+        # [8] cert-manager-controller-certificates (レポート clusterrole-cert-manager-controller-certificates、Critical 1 件)
+        #   1. 出どころ: cert-manager の controller (Certificate の処理) 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch・create・update・delete・patch
+        #   3. 要る理由: 発行した証明書と秘密鍵を Secret に書き込むため。外すと証明書を発行・更新できない
+        #   4. 残る危険: cert-manager の controller が乗っ取られるとクラスタ全体の Secret を読み書きできる (同じ Pod が下の challenges・issuers なども持つ)。手当て: cert-manager の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-cert-manager-controller-certificates
+            severity: Critical
+            clusterrole: "cert-manager-controller-certificates"
+            checks: KSV-0041
+        # [9] cert-manager-controller-challenges (レポート clusterrole-cert-manager-controller-challenges、Critical 1 件)
+        #   1. 出どころ: cert-manager の controller (ACME の Challenge の処理) 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch (2 つのルール。trivy-operator は ID ごとに 1 件と数える)
+        #   3. 要る理由: DNS-01 の解決に使う DNS の API トークン (Cloudflare など) を Secret から読むため。外すと証明書の発行で Challenge を解けない
+        #   4. 残る危険: 乗っ取られるとクラスタ全体の Secret を読める。手当て: cert-manager の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-cert-manager-controller-challenges
+            severity: Critical
+            clusterrole: "cert-manager-controller-challenges"
+            checks: KSV-0041
+        # [10] cert-manager-controller-clusterissuers (レポート clusterrole-cert-manager-controller-clusterissuers、Critical 1 件)
+        #   1. 出どころ: cert-manager の controller (ClusterIssuer の処理) 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch・create・update・delete
+        #   3. 要る理由: ACME のアカウント鍵などを Secret に作る・読むため。外すと ClusterIssuer が使えない
+        #   4. 残る危険: 乗っ取られるとクラスタ全体の Secret を読み書きできる。手当て: cert-manager の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-cert-manager-controller-clusterissuers
+            severity: Critical
+            clusterrole: "cert-manager-controller-clusterissuers"
+            checks: KSV-0041
+        # [11] cert-manager-controller-issuers (レポート clusterrole-cert-manager-controller-issuers、Critical 1 件)
+        #   1. 出どころ: cert-manager の controller (Issuer の処理) 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch・create・update・delete
+        #   3. 要る理由: Namespace ごとの Issuer の鍵などを Secret に作る・読むため。外すと Issuer が使えない
+        #   4. 残る危険: 乗っ取られるとクラスタ全体の Secret を読み書きできる。手当て: cert-manager の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-cert-manager-controller-issuers
+            severity: Critical
+            clusterrole: "cert-manager-controller-issuers"
+            checks: KSV-0041
+        # [12] cert-manager-controller-orders (レポート clusterrole-cert-manager-controller-orders、Critical 1 件)
+        #   1. 出どころ: cert-manager の controller (ACME の Order の処理) 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch
+        #   3. 要る理由: ACME のアカウント鍵を Secret から読んで Order を出すため。外すと証明書の発行が進まない
+        #   4. 残る危険: 乗っ取られるとクラスタ全体の Secret を読める。手当て: cert-manager の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-cert-manager-controller-orders
+            severity: Critical
+            clusterrole: "cert-manager-controller-orders"
+            checks: KSV-0041
+        # [13] cilium-ingress-secrets-reader (レポート clusterrole-cilium-ingress-secrets-reader、Critical 1 件)
+        #   1. 出どころ: nuage-cluster の manifests/bootstrap/cilium/rbac.yaml に手で足したもの (チャートの外)。同じファイルの ClusterRoleBinding で kube-system の ServiceAccount cilium (各ノードの cilium agent) に割り当てている
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch
+        #   3. 要る理由: Cilium Ingress の TLS の Secret を agent に読ませるためと見られる (2026-02-15 に Ingress を NodePort で使う変更と一緒に入った。理由の記録は無い)
+        #   4. 残る危険: agent は全ノードで特権で動くため、どれか 1 台のノードが乗っ取られるとクラスタ全体の Secret を読まれる。手当て: values.yaml は ingressController.secretsNamespace.sync: true で、TLS の Secret は operator が cilium-secrets Namespace に写す。agent はそこを読めば足りる可能性があり、この ClusterRole を外せるか確かめる余地がある (推定)
+        #   5. 確度: 手元の trivy で ID まで特定した (要る理由は推定)
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-cilium-ingress-secrets-reader
+            severity: Critical
+            clusterrole: "cilium-ingress-secrets-reader"
+            checks: KSV-0041
+        # [14] cilium-operator (レポート clusterrole-cilium-operator、Critical 1 件)
+        #   1. 出どころ: Cilium の operator 用。nuage-cluster の manifests/bootstrap/cilium (Cilium チャート 1.19.6)
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の namespaces・secrets に get・list・watch
+        #   3. 要る理由: Ingress が参照する TLS の Secret を読み、cilium-secrets Namespace に写すため (secretsNamespace.sync: true)。外すと Cilium Ingress の TLS が動かない (推定)
+        #   4. 残る危険: operator が乗っ取られるとクラスタ全体の Secret を読める。手当て: Cilium の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した (要る理由は推定)
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-cilium-operator
+            severity: Critical
+            clusterrole: "cilium-operator"
+            checks: KSV-0041
+        # [15] cluster-admin (レポート clusterrole-cluster-admin、Critical 2 件)
+        #   1. 出どころ: Kubernetes 組み込み。autoupdate の注釈があり、消しても API サーバーが起動時に作り直す
+        #   2. チェック: KSV-0044 (全リソースに全操作) と KSV-0046 (全リソースを扱える)。apiGroups・resources・verbs がすべて '*' のルールと、nonResourceURLs '*'
+        #   3. 要る理由: クラスタの管理者 (system:masters など) の権限そのもの。消せない
+        #   4. 残る危険: 割り当てた相手がクラスタのすべてを握る。trivy は割り当て先を見ない。pechka の k8s/base/infra/argo-workflows/rbac.yaml の ClusterRoleBinding argo-default-admin が、pechka の ServiceAccount default にこれを割り当てている (ワークフローの Pod が既定で使う)。手当て: 割り当てを絞る (ワークフロー専用の ServiceAccount に要る権限だけ渡す)。クラスタの実物の割り当ては確かめていない
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(2)
+          labels:
+            name: clusterrole-cluster-admin
+            severity: Critical
+            clusterrole: "cluster-admin"
+            checks: KSV-0044 KSV-0046
+        # [16] edit (レポート clusterrole-edit、Critical 1 件)
+        #   1. 出どころ: Kubernetes 組み込み。aggregationRule で aggregate-to-edit のラベルを持つ ClusterRole (system:aggregate-to-edit・アプリの CRD 用のものなど) を集めて中身が決まる
+        #   2. チェック: KSV-0041 (Secret を扱える) と推定。集約で入る system:aggregate-to-edit の secrets (get・list・watch と create・update・patch・delete 等) が当たると見ている
+        #   3. 要る理由: Namespace の中のリソースを編集する権限を RoleBinding で人に渡すための既定の ClusterRole。autoupdate の注釈があり、消しても API サーバーが起動時に作り直す
+        #   4. 残る危険: 割り当てられた利用者は、その Namespace の Secret をすべて読み書きできる (ClusterRoleBinding で割り当てればクラスタ全体)。手当て: 誰に割り当てているかを確かめる (未確認)
+        #   5. 確度: 推定 (手元の定義に rules が無く、チェック ID を特定できていない。件数 1 から KSV-0041 とみる)
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-edit
+            severity: Critical
+            clusterrole: "edit"
+            checks: KSV-0041
+        # [17] keel (レポート clusterrole-keel、Critical 1 件)
+        #   1. 出どころ: keel (イメージの自動更新) 用。nuage-cluster の manifests/apps/keel (keel チャート 1.2.3)
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・watch・list
+        #   3. 要る理由: 監視するワークロードの imagePullSecrets からレジストリの認証情報を読み、新しいタグを問い合わせるため (推定。Helm の release の Secret を読む helmProvider は無効にしてある)
+        #   4. 残る危険: 乗っ取られるとクラスタ全体の Secret を読め、Deployment などを書き換えて任意のイメージを動かせる。手当て: 使うイメージが公開レジストリだけなら Secret を読まずに済む可能性があり、チャートの値で secrets の権限を外せるか確かめる余地がある (未確認)
+        #   5. 確度: 手元の trivy で ID まで特定した (要る理由は推定)
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-keel
+            severity: Critical
+            clusterrole: "keel"
+            checks: KSV-0041
+        # [18] system:aggregate-to-edit (レポート clusterrole-7b884bc5d8、Critical 1 件)
+        #   1. 出どころ: Kubernetes 組み込み (system:aggregate-to-edit)。名前に ':' を含むためレポート名がハッシュになる (kube.ComputeHash)
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch のルールと、create・delete・deletecollection・patch・update のルール (2 つ。ID ごとに 1 件)
+        #   3. 要る理由: edit (と、それを集める admin) に中身を渡すための部品。誰にも直接は割り当てない前提のもの。autoupdate の注釈があり、消しても作り直される
+        #   4. 残る危険: これ自体を割り当てなければ危険は edit・admin と同じ。手当て: edit・admin の割り当てを確かめる
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-7b884bc5d8
+            severity: Critical
+            clusterrole: "system:aggregate-to-edit"
+            checks: KSV-0041
+        # [19] system:controller:generic-garbage-collector (レポート clusterrole-57d745d4cc、Critical 1 件)
+        #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の garbage collector 用)。レポート名はハッシュ
+        #   2. チェック: KSV-0046 (全リソースを扱える)。apiGroups・resources が '*' で、verbs が delete・get・list・patch・update・watch のルール
+        #   3. 要る理由: 親 (ownerReferences) が消えたリソースを、種類を問わず消すため。外すと削除が連鎖しない
+        #   4. 残る危険: kube-controller-manager が乗っ取られれば、どのみちクラスタを握られる。手当て: Kubernetes の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-57d745d4cc
+            severity: Critical
+            clusterrole: "system:controller:generic-garbage-collector"
+            checks: KSV-0046
+        # [20] system:controller:horizontal-pod-autoscaler (レポート clusterrole-69c4fbc9c4、Critical 1 件)
+        #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の HPA 用)。レポート名はハッシュ
+        #   2. チェック: KSV-0046 (全リソースを扱える)。custom.metrics.k8s.io と external.metrics.k8s.io の resources '*' に get・list・watch (2 つのルール。ID ごとに 1 件)
+        #   3. 要る理由: HPA がカスタム・外部のメトリクスを読んでレプリカ数を決めるため
+        #   4. 残る危険: 当たっているのはメトリクスの API の読み取りだけで小さい。手当て: Kubernetes の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-69c4fbc9c4
+            severity: Critical
+            clusterrole: "system:controller:horizontal-pod-autoscaler"
+            checks: KSV-0046
+        # [21] system:controller:legacy-service-account-token-cleaner (レポート clusterrole-864fd65956、Critical 1 件)
+        #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の古い ServiceAccount トークンの掃除用)。レポート名はハッシュ
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に delete・patch
+        #   3. 要る理由: 使われていない古い形式の ServiceAccount トークンの Secret に印を付け、消すため
+        #   4. 残る危険: Secret を消せる (読めはしない)。kube-controller-manager が乗っ取られれば、どのみちクラスタを握られる。手当て: Kubernetes の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-864fd65956
+            severity: Critical
+            clusterrole: "system:controller:legacy-service-account-token-cleaner"
+            checks: KSV-0041
+        # [22] system:controller:namespace-controller (レポート clusterrole-79d4fc89cd、Critical 1 件)
+        #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の Namespace の削除用)。レポート名はハッシュ
+        #   2. チェック: KSV-0046 (全リソースを扱える)。apiGroups・resources が '*' で、verbs が delete・deletecollection・get・list・watch のルール
+        #   3. 要る理由: Namespace を消すとき、中のリソースを種類を問わず消すため。外すと Namespace が消えない
+        #   4. 残る危険: kube-controller-manager が乗っ取られれば、どのみちクラスタを握られる。手当て: Kubernetes の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-79d4fc89cd
+            severity: Critical
+            clusterrole: "system:controller:namespace-controller"
+            checks: KSV-0046
+        # [23] system:controller:resourcequota-controller (レポート clusterrole-86ccd5dd47、Critical 1 件)
+        #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の ResourceQuota 用)。レポート名はハッシュ
+        #   2. チェック: KSV-0046 (全リソースを扱える)。apiGroups・resources が '*' で、verbs が list・watch のルール
+        #   3. 要る理由: ResourceQuota の使用量を数えるため、すべての種類のリソースを一覧するため
+        #   4. 残る危険: list は Secret の中身も返すため、実質すべての Secret を読める。kube-controller-manager が乗っ取られれば、どのみちクラスタを握られる。手当て: Kubernetes の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-86ccd5dd47
+            severity: Critical
+            clusterrole: "system:controller:resourcequota-controller"
+            checks: KSV-0046
+        # [24] system:kube-controller-manager (レポート clusterrole-b754c4cc6、Critical 2 件)
+        #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager 本体の ServiceAccount 用)。レポート名はハッシュ
+        #   2. チェック: KSV-0041 (Secret を扱える。core の secrets に create・delete・get・update の 4 つのルール) と KSV-0046 (全リソースを扱える。apiGroups・resources が '*' で list・watch)
+        #   3. 要る理由: ServiceAccount のトークンの Secret を作る・直す・消すなど、コントローラーの仕事そのもの。外すとクラスタが回らない
+        #   4. 残る危険: コントロールプレーンの部品で、乗っ取られればクラスタを握られる。手当て: Kubernetes の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(2)
+          labels:
+            name: clusterrole-b754c4cc6
+            severity: Critical
+            clusterrole: "system:kube-controller-manager"
+            checks: KSV-0041 KSV-0046
+        # [25] system:node (レポート clusterrole-54cdc9b678、Critical 1 件)
+        #   1. 出どころ: Kubernetes 組み込み (kubelet 用)。レポート名はハッシュ
+        #   2. チェック: KSV-0041 (Secret を扱える)。core の configmaps・secrets に get・list・watch
+        #   3. 要る理由: kubelet が Pod に Secret を渡す (ボリューム・環境変数) ため
+        #   4. 残る危険: RBAC の上ではクラスタ全体の Secret を読めるが、通常は Node authorizer と NodeRestriction で、そのノードの Pod が参照する Secret に絞られる (trivy はここを見ない。このクラスタの API サーバーの設定は確かめていない)。ノードが乗っ取られると、そのノードの Pod の Secret を読まれる。手当て: Kubernetes の更新を続ける
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(1)
+          labels:
+            name: clusterrole-54cdc9b678
+            severity: Critical
+            clusterrole: "system:node"
+            checks: KSV-0041
+        # [26] vm-victoria-metrics-operator (レポート clusterrole-vm-victoria-metrics-operator、Critical 4 件)
+        #   1. 出どころ: VictoriaMetrics operator 用。このリポジトリの k8s/base/charts/victoria-metrics-k8s-stack-0.93.0 の victoria-metrics-operator チャート 0.67.3 (operator v0.74.1)
+        #   2. チェック: KSV-0041 (core の secrets を含むルールに verbs '*')、KSV-0045 (core・apps・rbac のルールに verbs '*')、KSV-0046 (monitoring.coreos.com の resources '*' に verbs '*')、KSV-0050 (roles・rolebindings・clusterroles・clusterrolebindings に verbs '*'。RBAC を作って権限を広げられる)
+        #   3. 要る理由: VMAgent・VMAlert などの部品を作るときに、設定の Secret・Deployment・StatefulSet と、部品が使う ServiceAccount・ClusterRole・ClusterRoleBinding を作るため。外すと監視スタックの部品が作れない
+        #   4. 残る危険: 乗っ取られると ClusterRoleBinding を作って cluster-admin を自分に割り当てられ、クラスタを握られる。手当て: operator の更新を続ける。Prometheus の CR の変換は無効 (disable_prometheus_converter: true) なのに monitoring.coreos.com の権限はチャートが無条件に付ける。チャートの watchNamespaces を自分の Namespace だけにすれば ClusterRole を作らない作りだが、trivy-operator Namespace の VMServiceScrape なども見なくなるため、そのままでは使えない (推定)
+        #   5. 確度: 手元の trivy で ID まで特定した (trivy は KSV-0045 を 3 つのルールで出すが、trivy-operator は ID ごとに 1 件と数える)
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(4)
+          labels:
+            name: clusterrole-vm-victoria-metrics-operator
+            severity: Critical
+            clusterrole: "vm-victoria-metrics-operator"
+            checks: KSV-0041 KSV-0045 KSV-0046 KSV-0050
 ---
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
