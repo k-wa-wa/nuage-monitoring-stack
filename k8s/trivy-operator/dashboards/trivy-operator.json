@@ -927,7 +927,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Role と ClusterRole の権限の問題 (trivy-operator)。PR 環境は含まない。RBAC には Unknown の重要度が無いため「-」と出る。",
+      "description": "Role と ClusterRole の権限の問題 (trivy-operator)。PR 環境は含まない。RBAC には Unknown の重要度が無いため「-」と出る。Critical は、確認済み (accepted) の ClusterRole の指摘 (k8s/base/victoria/rules.yaml の nuage:trivy_clusterrbac_accepted_findings) を除いた件数。ClusterRole ごとに「今の件数 − 受け入れた件数」(0 未満にしない) を数え、一覧に無い ClusterRole はそのまま数える。除いた分の元の件数は、下の Kubernetes: RBAC Assessment 行の Accepted ClusterRole Findings の表で見られる。",
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -1062,7 +1062,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "(sum(trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Critical\"}) + sum(trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"}))",
+          "expr": "(sum(trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Critical\"}) + sum(clamp_min(sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"}) - on (name, severity) sum by (name, severity) (nuage:trivy_clusterrbac_accepted_findings{severity=\"Critical\"}), 0) or sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"})))",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -1991,7 +1991,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Namespace ごとの、Role の権限の問題の件数 (trivy-operator の rbacassessment)。PR 環境は含まない。ClusterRole (Namespace に属さない) の分は「(cluster-wide)」の 1 行にまとめる。",
+      "description": "Namespace ごとの、Role の権限の問題の件数 (trivy-operator の rbacassessment)。PR 環境は含まない。ClusterRole (Namespace に属さない) の分は「(cluster-wide)」の 1 行にまとめる。「(cluster-wide)」行の Critical は、確認済み (accepted) の ClusterRole の指摘を除いた件数 (Overview の Kubernetes: RBAC Assessment と同じ数え方)。除いた分は下の Accepted ClusterRole Findings の表で見られる。",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -2185,7 +2185,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (exported_namespace) (trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Critical\"}) or label_replace(sum(trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"}), \"exported_namespace\", \"(cluster-wide)\", \"\", \"\")",
+          "expr": "sum by (exported_namespace) (trivy_role_rbacassessments{job=\"trivy-operator\",exported_namespace!~\".+-pr-[0-9]+\",severity=\"Critical\"}) or label_replace(sum(clamp_min(sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"}) - on (name, severity) sum by (name, severity) (nuage:trivy_clusterrbac_accepted_findings{severity=\"Critical\"}), 0) or sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\",severity=\"Critical\"})), \"exported_namespace\", \"(cluster-wide)\", \"\", \"\")",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -2263,12 +2263,294 @@
       "type": "table"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "確認済み (accepted) として件数から除いている ClusterRole の指摘の一覧 (k8s/base/victoria/rules.yaml の nuage:trivy_clusterrbac_accepted_findings)。1 件ごとの出どころ・要る理由・残る危険は、ルールのコメントに書いてある。Accepted は受け入れた件数、Current は今の件数 (trivy_clusterrole_clusterrbacassessments。レポートのチェック ID の種類数)、Report は trivy-operator のレポート名。Current が Accepted より多い分は、新しい指摘として Overview の件数に出る。Current が空ならレポートが無い。チェックが 1 つ消えて別の 1 つが増えた (件数が同じ) 入れ替わりは、件数では見分けられない。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Accepted"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Current"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 51
+      },
+      "id": 55,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "ClusterRole"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "nuage:trivy_clusterrbac_accepted_findings",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\"}) and on (name, severity) nuage:trivy_clusterrbac_accepted_findings",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "format": "table"
+        }
+      ],
+      "title": "Accepted ClusterRole Findings",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true
+            },
+            "indexByName": {
+              "clusterrole": 0,
+              "checks": 1,
+              "severity": 2,
+              "Value #A": 3,
+              "Value #B": 4,
+              "name": 5
+            },
+            "renameByName": {
+              "clusterrole": "ClusterRole",
+              "checks": "Checks",
+              "severity": "Severity",
+              "Value #A": "Accepted",
+              "Value #B": "Current",
+              "name": "Report"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "確認済みの一覧 (nuage:trivy_clusterrbac_accepted_findings) が古くなった項目。今の件数 (Current) が受け入れた件数 (Accepted) より少ないか、ClusterRole のレポートが無くなった (Current が空) もの。ふだんは空。出たら一覧を直す (値を今の件数に下げるか、項目を消す)。そのままにすると、減った分だけ別の新しい指摘を件数から隠してしまう。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Accepted"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Current"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 65
+      },
+      "id": 56,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "ClusterRole"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(nuage:trivy_clusterrbac_accepted_findings > on (name, severity) group_left sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\"})) or (nuage:trivy_clusterrbac_accepted_findings unless on (name, severity) sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\"}))",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{job=\"trivy-operator\"}) < on (name, severity) sum by (name, severity) (nuage:trivy_clusterrbac_accepted_findings)",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "format": "table"
+        }
+      ],
+      "title": "Accepted List Out of Date",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true
+            },
+            "indexByName": {
+              "clusterrole": 0,
+              "checks": 1,
+              "severity": 2,
+              "Value #A": 3,
+              "Value #B": 4,
+              "name": 5
+            },
+            "renameByName": {
+              "clusterrole": "ClusterRole",
+              "checks": "Checks",
+              "severity": "Severity",
+              "Value #A": "Accepted",
+              "Value #B": "Current",
+              "name": "Report"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 71
       },
       "id": 35,
       "panels": [],
@@ -2502,7 +2784,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 52
+        "y": 72
       },
       "id": 36,
       "options": {
