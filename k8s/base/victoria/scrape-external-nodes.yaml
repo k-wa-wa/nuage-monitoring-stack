@@ -1,6 +1,7 @@
 # クラスタ外の NixOS ホストの node-exporter。
 # TODO:
 # - 追加したホスト (swfs-cluster-1/2/3, mainframe, atelier, lm-server, bluray-extractor, chaos-monitor) の勘定を nuage-usage-ledger の mvs/cntl/ACCTDEF に登録する
+# - nuage-cluster 側で atelier, lm-server, bluray-extractor, chaos-monitor の node-exporter を有効化する (services.prometheus.exporters.node.enable = true)
 # - autopilot-server (10.20.1.51) への node-exporter 導入と追加を検討する
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMStaticScrape
