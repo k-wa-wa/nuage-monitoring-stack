@@ -1,7 +1,7 @@
 # 家の常設モニターにずっと表示しておく壁掛けダッシュボード。
 # 約 3m 離れて見ても、リソースの使用状況とアラートの状態が色で「正常か異常か」わかることを狙う。
 # しきい値の判断はアラートに任せ、細かい数字は出さない。
-# 1920x1080 の横置き・kiosk モード (?kiosk&theme=dark) で縦スクロールが出ないよう、grid は 27 行に収める。
+# 1920x1080 の横置き・kiosk モード (?kiosk&theme=dark) で縦スクロールが出ないよう、grid は 21 行に収める。
 #
 # エラーログの判定は、アプリのログレベルが未定義のため当面「"error" を含む行 (大文字小文字無視)」とする。
 # ログレベルが決まったら「本番のエラー」「PR 環境のエラー」「最新のエラーログ」のクエリを差し替える。
@@ -321,7 +321,7 @@ data:
             "x": 0,
             "y": 3,
             "w": 12,
-            "h": 8
+            "h": 6
           },
           "datasource": {
             "type": "prometheus",
@@ -484,7 +484,7 @@ data:
             "x": 12,
             "y": 3,
             "w": 4,
-            "h": 4
+            "h": 3
           },
           "datasource": {
             "type": "prometheus",
@@ -552,7 +552,7 @@ data:
             "x": 16,
             "y": 3,
             "w": 4,
-            "h": 4
+            "h": 3
           },
           "datasource": {
             "type": "prometheus",
@@ -620,7 +620,7 @@ data:
             "x": 20,
             "y": 3,
             "w": 4,
-            "h": 4
+            "h": 3
           },
           "datasource": {
             "type": "prometheus",
@@ -691,9 +691,9 @@ data:
           "title": "メモリ (全ノード平均)",
           "gridPos": {
             "x": 12,
-            "y": 7,
+            "y": 6,
             "w": 4,
-            "h": 4
+            "h": 3
           },
           "datasource": {
             "type": "prometheus",
@@ -764,9 +764,9 @@ data:
           "title": "VM 保存先 a の空き",
           "gridPos": {
             "x": 16,
-            "y": 7,
+            "y": 6,
             "w": 4,
-            "h": 4
+            "h": 3
           },
           "datasource": {
             "type": "prometheus",
@@ -837,9 +837,9 @@ data:
           "title": "VM 保存先 b の空き",
           "gridPos": {
             "x": 20,
-            "y": 7,
+            "y": 6,
             "w": 4,
-            "h": 4
+            "h": 3
           },
           "datasource": {
             "type": "prometheus",
@@ -910,9 +910,9 @@ data:
           "title": "ノード",
           "gridPos": {
             "x": 0,
-            "y": 11,
+            "y": 9,
             "w": 24,
-            "h": 4
+            "h": 3
           },
           "datasource": {
             "type": "prometheus",
@@ -1013,9 +1013,9 @@ data:
           "description": "直近 1 時間のエラーログ行数。対象: pechka / bare-web-proxy / nuage-home / monitoring-pwa (nuage-monitoring-stack の monitoring-pwa の backend / frontend コンテナのみ)。エラーの判定は当面「error を含む行 (大文字小文字無視)」とする。アプリのログレベルが決まったら差し替える。",
           "gridPos": {
             "x": 0,
-            "y": 15,
+            "y": 12,
             "w": 6,
-            "h": 7
+            "h": 5
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -1083,9 +1083,9 @@ data:
           "description": "直近 1 時間のエラーログ行数を、PR 環境 (namespace が -pr-<数字> で終わるもの) ごとに出す。エラーの判定は当面「error を含む行 (大文字小文字無視)」とする。アプリのログレベルが決まったら差し替える。",
           "gridPos": {
             "x": 6,
-            "y": 15,
+            "y": 12,
             "w": 6,
-            "h": 7
+            "h": 5
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -1153,9 +1153,9 @@ data:
           "description": "本番のエラー (左の集計と同じ対象・判定) と、NixOS ホストの journal の PRIORITY 0-3 (sshd・dbus-broker-launch は除く)。PR 環境は混ぜない。エラーの判定は当面「error を含む行 (大文字小文字無視)」とする。アプリのログレベルが決まったら差し替える。",
           "gridPos": {
             "x": 12,
-            "y": 15,
+            "y": 12,
             "w": 12,
-            "h": 7
+            "h": 5
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -1192,9 +1192,9 @@ data:
           "title": "CPU 使用率 (6h)",
           "gridPos": {
             "x": 0,
-            "y": 22,
+            "y": 17,
             "w": 4,
-            "h": 5
+            "h": 4
           },
           "datasource": {
             "type": "prometheus",
@@ -1294,9 +1294,9 @@ data:
           "title": "メモリ使用率 (6h)",
           "gridPos": {
             "x": 4,
-            "y": 22,
+            "y": 17,
             "w": 4,
-            "h": 5
+            "h": 4
           },
           "datasource": {
             "type": "prometheus",
@@ -1396,9 +1396,9 @@ data:
           "title": "ネットワーク (6h)",
           "gridPos": {
             "x": 8,
-            "y": 22,
+            "y": 17,
             "w": 4,
-            "h": 5
+            "h": 4
           },
           "datasource": {
             "type": "prometheus",
@@ -1496,9 +1496,9 @@ data:
           "title": "脆弱性 Critical",
           "gridPos": {
             "x": 12,
-            "y": 22,
+            "y": 17,
             "w": 3,
-            "h": 5
+            "h": 4
           },
           "datasource": {
             "type": "prometheus",
@@ -1708,9 +1708,9 @@ data:
           "title": "脆弱性 High",
           "gridPos": {
             "x": 15,
-            "y": 22,
+            "y": 17,
             "w": 3,
-            "h": 5
+            "h": 4
           },
           "datasource": {
             "type": "prometheus",
@@ -1920,9 +1920,9 @@ data:
           "title": "設定不備 Critical",
           "gridPos": {
             "x": 18,
-            "y": 22,
+            "y": 17,
             "w": 3,
-            "h": 5
+            "h": 4
           },
           "datasource": {
             "type": "prometheus",
@@ -2136,9 +2136,9 @@ data:
           "title": "設定不備 High",
           "gridPos": {
             "x": 21,
-            "y": 22,
+            "y": 17,
             "w": 3,
-            "h": 5
+            "h": 4
           },
           "datasource": {
             "type": "prometheus",
