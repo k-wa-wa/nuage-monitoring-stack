@@ -252,16 +252,17 @@ spec:
           labels:
             severity: warning
         # mainframe の MVS バッチジョブの失敗・未実行検知。
-        # LEDGER の GET ステップ RC 4 (締める日が無い) と MVSLCAT の RC 4 (未作成データセットの確認) は正常終了として扱う
+        # LEDGER の GET ステップ RC 4 (締める日が無い)、LEDGMON の MONSEL ステップ RC 4 (締める月が無い)、
+        # および MVSLCAT の RC 4 (未作成データセットの確認) は正常終了として扱う
         - alert: MvsJobFailed
           record: ""
           annotations:
             summary: "MVS ジョブ {{ $labels.job_name }} が失敗した (RC={{ $value }})"
             description: "mainframe ({{ $labels.instance }}) の MVS ジョブ {{ $labels.job_name }} の直近の実行が異常終了した (RC={{ $value }})。"
           expr: |-
-            mvs_job_last_rc{job_name!~"LEDGER|MVSLCAT"} > 0
+            mvs_job_last_rc{job_name!~"LEDGER|LEDGMON|MVSLCAT"} > 0
             or
-            (mvs_job_last_rc{job_name="LEDGER"} > 0 and mvs_job_last_rc{job_name="LEDGER"} != 4)
+            (mvs_job_last_rc{job_name=~"LEDGER|LEDGMON"} > 0 and mvs_job_last_rc{job_name=~"LEDGER|LEDGMON"} != 4)
             or
             mvs_job_last_rc{job_name="MVSLCAT"} > 4
           for: 1m
