@@ -17,17 +17,28 @@ import urllib.request
 
 DEFAULT_GRAFANA_URL = os.environ.get("GRAFANA_URL", "https://monitoring.wpcapp.net/grafana")
 DEFAULT_USER = os.environ.get("GRAFANA_USER", "admin")
-DEFAULT_PASSWORD = os.environ.get("GRAFANA_PASSWORD", "prom-operator")
+
+
+def get_password():
+    pwd = os.environ.get("GRAFANA_PASSWORD")
+    if not pwd:
+        print("環境変数 GRAFANA_PASSWORD が設定されていない。設定してから実行すること。", file=sys.stderr)
+        sys.exit(1)
+    return pwd
 
 
 def get_ssl_context():
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    return ctx
+    if os.environ.get("GRAFANA_INSECURE_SKIP_VERIFY") == "1":
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+    return ssl.create_default_context()
 
 
-def make_request(path, method="GET", data=None, user=DEFAULT_USER, password=DEFAULT_PASSWORD, base_url=DEFAULT_GRAFANA_URL):
+def make_request(path, method="GET", data=None, user=DEFAULT_USER, password=None, base_url=DEFAULT_GRAFANA_URL):
+    if password is None:
+        password = get_password()
     url = f"{base_url.rstrip('/')}/{path.lstrip('/')}"
     auth_header = "Basic " + base64.b64encode(f"{user}:{password}".encode("utf-8")).decode("utf-8")
     headers = {
@@ -95,13 +106,21 @@ def extract_dashboard_json(file_path):
 
 
 def cmd_create(args):
+    suffix = args.suffix.strip() if args.suffix else ""
+    if not suffix:
+        print("接尾辞 (--suffix) を空にすることはできない（本番ダッシュボードの上書きを防ぐため）。", file=sys.stderr)
+        sys.exit(1)
+
     dashboard = extract_dashboard_json(args.file)
 
     orig_uid = dashboard.get("uid", "temp")
     orig_title = dashboard.get("title", "Temporary Dashboard")
 
-    suffix = args.suffix
     debug_uid = f"{orig_uid}{suffix}"
+    if debug_uid == orig_uid:
+        print(f"検証用 UID ({debug_uid}) が元の UID と同一であるため作成を中止した。", file=sys.stderr)
+        sys.exit(1)
+
     debug_title = f"{orig_title} (検証)"
 
     dashboard["uid"] = debug_uid
@@ -139,6 +158,10 @@ def cmd_create(args):
 
 def cmd_delete(args):
     uid = args.uid
+    if not args.force and not uid.endswith("-debug"):
+        print(f"安全のため、'-debug' で終わらない UID の削除は拒否された: {uid} (削除するには --force を指定する)", file=sys.stderr)
+        sys.exit(1)
+
     status, res = make_request(f"api/dashboards/uid/{uid}", method="DELETE")
     if status == 200:
         print(f"検証用ダッシュボードを削除した: uid={uid}")
@@ -178,6 +201,7 @@ def main():
     # delete
     p_delete = subparsers.add_parser("delete", help="指定した UID のダッシュボードを削除する")
     p_delete.add_argument("uid", help="削除対象の UID (例: nuage-wall-debug)")
+    p_delete.add_argument("--force", action="store_true", help="-debug 接尾辞を持たない UID も強制削除する")
     p_delete.set_defaults(func=cmd_delete)
 
     # list
