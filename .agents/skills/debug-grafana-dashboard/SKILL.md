@@ -20,7 +20,7 @@ description: Grafana ダッシュボードの表示・レイアウト調整や�
 
 ## 2. 実行手順
 
-ヘルパースクリプト `skills/debug-grafana-dashboard/scripts/grafana_debug.py` を使用する。
+ヘルパースクリプト `.agents/skills/debug-grafana-dashboard/scripts/grafana_debug.py` を使用する。
 実行には環境変数 `GRAFANA_PASSWORD`（Grafana の管理者パスワード）の設定が必要である。
 
 ```bash
@@ -34,12 +34,12 @@ export GRAFANA_PASSWORD="<管理者パスワード>"
 
 ```bash
 # ConfigMap YAML または生の JSON ファイルを指定
-./skills/debug-grafana-dashboard/scripts/grafana_debug.py create <ファイルパス>
+./.agents/skills/debug-grafana-dashboard/scripts/grafana_debug.py create <ファイルパス>
 ```
 
 実行例:
 ```bash
-./skills/debug-grafana-dashboard/scripts/grafana_debug.py create k8s/base/monitoring-pwa/grafana-dashboard-wall.yaml
+./.agents/skills/debug-grafana-dashboard/scripts/grafana_debug.py create k8s/base/monitoring-pwa/grafana-dashboard-wall.yaml
 ```
 
 出力された確認用 URL（通常表示、`hideLogo=true`、Kiosk モード、TV モード）をブラウザで開き、表示を確認する。
@@ -61,7 +61,7 @@ export GRAFANA_PASSWORD="<管理者パスワード>"
 現在作成されている検証用ダッシュボードを確認する。
 
 ```bash
-./skills/debug-grafana-dashboard/scripts/grafana_debug.py list
+./.agents/skills/debug-grafana-dashboard/scripts/grafana_debug.py list
 ```
 
 ### Step 4: クリーンアップ（ダッシュボードの削除）
@@ -69,12 +69,12 @@ export GRAFANA_PASSWORD="<管理者パスワード>"
 デバッグ完了後、必ず検証用ダッシュボードを削除する。誤削除防止のため、`-debug` で終わらない UID は `--force` を指定しない限り拒否される。
 
 ```bash
-./skills/debug-grafana-dashboard/scripts/grafana_debug.py delete <uid>
+./.agents/skills/debug-grafana-dashboard/scripts/grafana_debug.py delete <uid>
 ```
 
 実行例:
 ```bash
-./skills/debug-grafana-dashboard/scripts/grafana_debug.py delete nuage-wall-debug
+./.agents/skills/debug-grafana-dashboard/scripts/grafana_debug.py delete nuage-wall-debug
 ```
 
 ---
