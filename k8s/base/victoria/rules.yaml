@@ -475,7 +475,7 @@ spec:
     #   レポート名が clusterrole-<ハッシュ> になる。ハッシュは ClusterRole の名前だけから決まる (trivy-operator の kube.ComputeHash) ので変わらない。
     # 載せていないもの (件数に残す):
     #   - vm-grafana-clusterrole・vm-kube-state-metrics (どちらも KSV-0041)。設定で Secret の権限を外せる見込みで、別に直す
-    #   - cilium-ingress-secrets-reader, cluster-admin, argo-server-cluster-role, keel (本来インフラ・アプリ側で権限を絞るべき課題のため Accepted に入れず件数に残す)
+    #   - cilium-ingress-secrets-reader, argo-server-cluster-role, keel (本来インフラ・アプリ側で権限を絞るべき課題のため Accepted に入れず件数に残す)
     #   - High 以下の重要度 (載せるときは、ダッシュボードの式も直す。どの式も severity="Critical" に絞っている)
     #
     # 一覧の直し方:
@@ -666,7 +666,21 @@ spec:
             severity: Critical
             clusterrole: "cilium-operator"
             checks: KSV-0041
-        # [13] edit (レポート clusterrole-edit、Critical 1 件)
+        # [13] cluster-admin (レポート clusterrole-cluster-admin、Critical 2 件)
+        #   1. 出どころ: Kubernetes 組み込み。autoupdate の注釈があり、消しても API サーバーが起動時に作り直す
+        #   2. チェック: KSV-0044 (全リソースに全操作) と KSV-0046 (全リソースを扱える)。apiGroups・resources・verbs がすべて '*' のルールと、nonResourceURLs '*'
+        #   3. 要る理由: クラスタの管理者 (system:masters など) の権限そのもの。消せない
+        #   4. 残る危険: 割り当てた相手がクラスタのすべてを握る。かつて pechka の argo-default-admin で ServiceAccount default に割り当てられていたが、pechka#101 で廃止・最小権限化されたため、現在は不要なバインドなし。
+        #   5. 確度: 手元の trivy で ID まで特定した
+        - record: nuage:trivy_clusterrbac_accepted_findings
+          alert: ""
+          expr: vector(2)
+          labels:
+            name: clusterrole-cluster-admin
+            severity: Critical
+            clusterrole: "cluster-admin"
+            checks: KSV-0044 KSV-0046
+        # [14] edit (レポート clusterrole-edit、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み。aggregationRule で aggregate-to-edit のラベルを持つ ClusterRole (system:aggregate-to-edit・アプリの CRD 用のものなど) を集めて中身が決まる
         #   2. チェック: KSV-0041 (Secret を扱える) と推定。集約で入る system:aggregate-to-edit の secrets (get・list・watch と create・update・patch・delete 等) が当たると見ている
         #   3. 要る理由: Namespace の中のリソースを編集する権限を RoleBinding で人に渡すための既定の ClusterRole。autoupdate の注釈があり、消しても API サーバーが起動時に作り直す
@@ -680,7 +694,7 @@ spec:
             severity: Critical
             clusterrole: "edit"
             checks: KSV-0041
-        # [14] system:aggregate-to-edit (レポート clusterrole-7b884bc5d8、Critical 1 件)
+        # [15] system:aggregate-to-edit (レポート clusterrole-7b884bc5d8、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (system:aggregate-to-edit)。名前に ':' を含むためレポート名がハッシュになる (kube.ComputeHash)
         #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch のルールと、create・delete・deletecollection・patch・update のルール (2 つ。ID ごとに 1 件)
         #   3. 要る理由: edit (と、それを集める admin) に中身を渡すための部品。誰にも直接は割り当てない前提のもの。autoupdate の注釈があり、消しても作り直される
@@ -694,7 +708,7 @@ spec:
             severity: Critical
             clusterrole: "system:aggregate-to-edit"
             checks: KSV-0041
-        # [15] system:controller:generic-garbage-collector (レポート clusterrole-57d745d4cc、Critical 1 件)
+        # [16] system:controller:generic-garbage-collector (レポート clusterrole-57d745d4cc、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の garbage collector 用)。レポート名はハッシュ
         #   2. チェック: KSV-0046 (全リソースを扱える)。apiGroups・resources が '*' で、verbs が delete・get・list・patch・update・watch のルール
         #   3. 要る理由: 親 (ownerReferences) が消えたリソースを、種類を問わず消すため。外すと削除が連鎖しない
@@ -708,7 +722,7 @@ spec:
             severity: Critical
             clusterrole: "system:controller:generic-garbage-collector"
             checks: KSV-0046
-        # [16] system:controller:horizontal-pod-autoscaler (レポート clusterrole-69c4fbc9c4、Critical 1 件)
+        # [17] system:controller:horizontal-pod-autoscaler (レポート clusterrole-69c4fbc9c4、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の HPA 用)。レポート名はハッシュ
         #   2. チェック: KSV-0046 (全リソースを扱える)。custom.metrics.k8s.io と external.metrics.k8s.io の resources '*' に get・list・watch (2 つのルール。ID ごとに 1 件)
         #   3. 要る理由: HPA がカスタム・外部のメトリクスを読んでレプリカ数を決めるため
@@ -722,7 +736,7 @@ spec:
             severity: Critical
             clusterrole: "system:controller:horizontal-pod-autoscaler"
             checks: KSV-0046
-        # [17] system:controller:legacy-service-account-token-cleaner (レポート clusterrole-864fd65956、Critical 1 件)
+        # [18] system:controller:legacy-service-account-token-cleaner (レポート clusterrole-864fd65956、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の古い ServiceAccount トークンの掃除用)。レポート名はハッシュ
         #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に delete・patch
         #   3. 要る理由: 使われていない古い形式の ServiceAccount トークンの Secret に印を付け、消すため
@@ -736,7 +750,7 @@ spec:
             severity: Critical
             clusterrole: "system:controller:legacy-service-account-token-cleaner"
             checks: KSV-0041
-        # [18] system:controller:namespace-controller (レポート clusterrole-79d4fc89cd、Critical 1 件)
+        # [19] system:controller:namespace-controller (レポート clusterrole-79d4fc89cd、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の Namespace の削除用)。レポート名はハッシュ
         #   2. チェック: KSV-0046 (全リソースを扱える)。apiGroups・resources が '*' で、verbs が delete・deletecollection・get・list・watch のルール
         #   3. 要る理由: Namespace を消すとき、中のリソースを種類を問わず消すため。外すと Namespace が消えない
@@ -750,7 +764,7 @@ spec:
             severity: Critical
             clusterrole: "system:controller:namespace-controller"
             checks: KSV-0046
-        # [19] system:controller:resourcequota-controller (レポート clusterrole-86ccd5dd47、Critical 1 件)
+        # [20] system:controller:resourcequota-controller (レポート clusterrole-86ccd5dd47、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の ResourceQuota 用)。レポート名はハッシュ
         #   2. チェック: KSV-0046 (全リソースを扱える)。apiGroups・resources が '*' で、verbs が list・watch のルール
         #   3. 要る理由: ResourceQuota の使用量を数えるため、すべての種類のリソースを一覧するため
@@ -764,7 +778,7 @@ spec:
             severity: Critical
             clusterrole: "system:controller:resourcequota-controller"
             checks: KSV-0046
-        # [20] system:kube-controller-manager (レポート clusterrole-b754c4cc6、Critical 2 件)
+        # [21] system:kube-controller-manager (レポート clusterrole-b754c4cc6、Critical 2 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager 本体の ServiceAccount 用)。レポート名はハッシュ
         #   2. チェック: KSV-0041 (Secret を扱える。core の secrets に create・delete・get・update の 4 つのルール) と KSV-0046 (全リソースを扱える。apiGroups・resources が '*' で list・watch)
         #   3. 要る理由: ServiceAccount のトークンの Secret を作る・直す・消すなど、コントローラーの仕事そのもの。外すとクラスタが回らない
@@ -778,7 +792,7 @@ spec:
             severity: Critical
             clusterrole: "system:kube-controller-manager"
             checks: KSV-0041 KSV-0046
-        # [21] system:node (レポート clusterrole-54cdc9b678、Critical 1 件)
+        # [22] system:node (レポート clusterrole-54cdc9b678、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kubelet 用)。レポート名はハッシュ
         #   2. チェック: KSV-0041 (Secret を扱える)。core の configmaps・secrets に get・list・watch
         #   3. 要る理由: kubelet が Pod に Secret を渡す (ボリューム・環境変数) ため
@@ -792,7 +806,7 @@ spec:
             severity: Critical
             clusterrole: "system:node"
             checks: KSV-0041
-        # [22] vm-victoria-metrics-operator (レポート clusterrole-vm-victoria-metrics-operator、Critical 4 件)
+        # [23] vm-victoria-metrics-operator (レポート clusterrole-vm-victoria-metrics-operator、Critical 4 件)
         #   1. 出どころ: VictoriaMetrics operator 用。このリポジトリの k8s/base/charts/victoria-metrics-k8s-stack-0.93.0 の victoria-metrics-operator チャート 0.67.3 (operator v0.74.1)
         #   2. チェック: KSV-0041 (core の secrets を含むルールに verbs '*')、KSV-0045 (core・apps・rbac のルールに verbs '*')、KSV-0046 (monitoring.coreos.com の resources '*' に verbs '*')、KSV-0050 (roles・rolebindings・clusterroles・clusterrolebindings に verbs '*'。RBAC を作って権限を広げられる)
         #   3. 要る理由: VMAgent・VMAlert などの部品を作るときに、設定の Secret・Deployment・StatefulSet と、部品が使う ServiceAccount・ClusterRole・ClusterRoleBinding を作るため。外すと監視スタックの部品が作れない
