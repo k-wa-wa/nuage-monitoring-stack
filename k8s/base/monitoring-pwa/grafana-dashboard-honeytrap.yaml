@@ -178,7 +178,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" | stats by (protocol) count() as count",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" | stats by (protocol) count() as count | sort by (count desc, protocol asc)",
               "queryType": "stats",
               "editorMode": "code",
               "legendFormat": "{{protocol}}"

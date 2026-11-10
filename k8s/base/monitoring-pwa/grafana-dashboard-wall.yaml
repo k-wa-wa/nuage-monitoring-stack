@@ -1098,7 +1098,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "_time:1h kubernetes.pod_namespace:~\"-pr-[0-9]+$\"\n| rename kubernetes.pod_namespace as namespace\n| stats by (namespace) count() if (~\"(?i)error\") as errors",
+              "expr": "_time:1h kubernetes.pod_namespace:~\"-pr-[0-9]+$\"\n| rename kubernetes.pod_namespace as namespace\n| stats by (namespace) count() if (~\"(?i)error\") as errors\n| sort by (errors desc, namespace asc)",
               "queryType": "stats",
               "editorMode": "code",
               "legendFormat": "{{namespace}}"
