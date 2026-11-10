@@ -499,12 +499,12 @@ spec:
         - alert: HoneypotIntrusionDetected
           record: ""
           expr: |-
-            _time:5m kubernetes.pod_namespace:="nuage-honeytrap" event:="honeypot_attack"
+            _time:15m kubernetes.pod_namespace:="nuage-honeytrap" event:="honeypot_attack"
             | stats by (src_ip, protocol, dst_port, service) count() as attacks
             | filter attacks:>0
           labels:
             severity: critical
           annotations:
             summary: "🚨 ハニーポット侵入検知 (protocol={{ $labels.protocol }})"
-            description: "攻撃元={{ $labels.src_ip }} から {{ $labels.service }} (port {{ $labels.dst_port }}) への攻撃試行を検知。"
+            description: "過去15分以内に攻撃元={{ $labels.src_ip }} から {{ $labels.service }} (port {{ $labels.dst_port }}) への攻撃試行を検知。"
             runbook_url: "https://monitoring.wpcapp.net/grafana/d/nuage-honeytrap"
