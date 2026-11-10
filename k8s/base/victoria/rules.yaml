@@ -474,8 +474,8 @@ spec:
     # name で突き合わせる理由: 名前に ':' を含む ClusterRole (system:*) は resource_name ラベルが空になり、
     #   レポート名が clusterrole-<ハッシュ> になる。ハッシュは ClusterRole の名前だけから決まる (trivy-operator の kube.ComputeHash) ので変わらない。
     # 載せていないもの (件数に残す):
-    #   - vm-grafana-clusterrole・vm-kube-state-metrics (どちらも KSV-0041)。設定で Secret の権限を外せる見込みで、別に直す
-    #   - cilium-ingress-secrets-reader, argo-server-cluster-role, keel (本来インフラ・アプリ側で権限を絞るべき課題のため Accepted に入れず件数に残す)
+    #   - vm-grafana-clusterrole・vm-kube-state-metrics (どちらも KSV-0041)。設定で Secret の権限を外せる見込みで、別に直す (現在 Overview の RBAC Critical 残件 2 件)
+    #   - 以前件数に残すとしていた cilium-ingress-secrets-reader, argo-server-cluster-role, keel は、argo-server-cluster-role が pechka#101 の namespace-install 移行で ClusterRole ごと消えるなどし、現在いずれもレポートが存在しないため件数に出ない
     #   - High 以下の重要度 (載せるときは、ダッシュボードの式も直す。どの式も severity="Critical" に絞っている)
     #
     # 一覧の直し方:
@@ -670,7 +670,7 @@ spec:
         #   1. 出どころ: Kubernetes 組み込み。autoupdate の注釈があり、消しても API サーバーが起動時に作り直す
         #   2. チェック: KSV-0044 (全リソースに全操作) と KSV-0046 (全リソースを扱える)。apiGroups・resources・verbs がすべて '*' のルールと、nonResourceURLs '*'
         #   3. 要る理由: クラスタの管理者 (system:masters など) の権限そのもの。消せない
-        #   4. 残る危険: 割り当てた相手がクラスタのすべてを握る。かつて pechka の argo-default-admin で ServiceAccount default に割り当てられていたが、pechka#101 で廃止・最小権限化されたため、現在は不要なバインドなし。
+        #   4. 残る危険: 割り当てた相手がクラスタのすべてを握る。かつて pechka の argo-default-admin で ServiceAccount default に割り当てられていたが、pechka#101 で廃止・最小権限化され pechka の定義からは消えた (クラスタ実物の割り当て全体は未確認)。
         #   5. 確度: 手元の trivy で ID まで特定した
         - record: nuage:trivy_clusterrbac_accepted_findings
           alert: ""
