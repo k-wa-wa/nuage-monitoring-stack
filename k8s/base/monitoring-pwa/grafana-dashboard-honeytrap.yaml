@@ -27,8 +27,8 @@ data:
         {
           "id": 1,
           "type": "stat",
-          "title": "総攻撃試行数 (24h)",
-          "description": "直近24時間にハニーポットで検知された総攻撃試行回数。",
+          "title": "総攻撃試行数",
+          "description": "選択期間内にハニーポットで検知された総攻撃試行回数。",
           "gridPos": {
             "h": 5,
             "w": 6,
@@ -94,7 +94,7 @@ data:
           "id": 2,
           "type": "stat",
           "title": "攻撃元 IP 数",
-          "description": "直近24時間にハニーポットへアクセスを試みたユニーク IP アドレス数。",
+          "description": "選択期間内にハニーポットへアクセスを試みたユニーク IP アドレス数。",
           "gridPos": {
             "h": 5,
             "w": 6,
@@ -160,7 +160,7 @@ data:
           "id": 3,
           "type": "bargauge",
           "title": "プロトコル別攻撃割合",
-          "description": "プロトコル（SSH, HTTP, PostgreSQL 等）別の攻撃検知回数。",
+          "description": "選択期間内のプロトコル（SSH, HTTP, PostgreSQL 等）別の攻撃検知回数。",
           "gridPos": {
             "h": 5,
             "w": 12,
@@ -217,7 +217,7 @@ data:
           "id": 4,
           "type": "timeseries",
           "title": "攻撃発生タイムライン",
-          "description": "直近24時間のプロトコル別攻撃発生推移。",
+          "description": "選択期間内のプロトコル別攻撃発生推移。",
           "gridPos": {
             "h": 8,
             "w": 24,
@@ -312,7 +312,7 @@ data:
           "id": 5,
           "type": "table",
           "title": "最新攻撃インシデント一覧",
-          "description": "直近24時間に検知された攻撃イベント一覧（最大50件）。",
+          "description": "選択期間内に検知された攻撃インシデントの一覧（最新順・最大50件）。",
           "gridPos": {
             "h": 10,
             "w": 24,
