@@ -5,3 +5,4 @@ resources:
   - grafana-dashboard-node-health.yaml
   - grafana-dashboard-ai-agent.yaml
   - grafana-dashboard-wall.yaml
+  - grafana-dashboard-honeytrap.yaml

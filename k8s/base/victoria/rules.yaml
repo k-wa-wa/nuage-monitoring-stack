@@ -4,6 +4,7 @@
 # - k8s-error-logs: Pod のエラーログ検知およびホスト journald の systemd 失敗検知 (VictoriaLogs)
 # - trivy-summary-rules: 壁掛けダッシュボード (uid nuage-wall) と Trivy ダッシュボード (uid trivy-operator) で使う trivy-operator の脆弱性・設定不備の件数と、Trivy ダッシュボードで使うスキャン対象のワークロード一覧 (recording rule)
 # - repo-scan-rules: リポジトリのスキャン (k8s/repo-scan の CronJob) が 36 時間以上成功していないリポジトリの検知
+# - honeytrap-rules: 侵入検知ハニーポット (nuage-honeytrap) の攻撃ログ検知 (VictoriaLogs)
 apiVersion: operator.victoriametrics.com/v1beta1
 kind: VMRule
 metadata:
@@ -482,3 +483,28 @@ spec:
           for: 1h
           labels:
             severity: warning
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: honeytrap-rules
+spec:
+  groups:
+    - name: honeytrap-rules
+      type: vlogs
+      interval: 1m
+      rules:
+        # 通常アクセスが 0 のハニーポットのため、1 件でもログが記録されたら誤検知ゼロとみなし即座に critical で発報する。
+        # record: "" は CRD の既定値。省略すると実機との差分が残って Argo CD が OutOfSync のままになるため明示する
+        - alert: HoneypotIntrusionDetected
+          record: ""
+          expr: |-
+            _time:5m kubernetes.pod_namespace:nuage-honeytrap event:honeypot_attack
+            | stats by (src_ip, protocol, dst_port, service) count() as attacks
+            | filter attacks:>0
+          labels:
+            severity: critical
+          annotations:
+            summary: "🚨 ハニーポット侵入検知 (protocol={{ $labels.protocol }})"
+            description: "攻撃元={{ $labels.src_ip }} から {{ $labels.service }} (port {{ $labels.dst_port }}) への攻撃試行を検知。"
+            runbook_url: "https://monitoring.wpcapp.net/grafana/d/nuage-honeytrap"
