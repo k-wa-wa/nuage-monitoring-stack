@@ -473,6 +473,7 @@ spec:
     #   レポート名が clusterrole-<ハッシュ> になる。ハッシュは ClusterRole の名前だけから決まる (trivy-operator の kube.ComputeHash) ので変わらない。
     # 載せていないもの (件数に残す):
     #   - vm-grafana-clusterrole・vm-kube-state-metrics (どちらも KSV-0041)。設定で Secret の権限を外せる見込みで、別に直す
+    #   - cilium-ingress-secrets-reader, cluster-admin, argo-server-cluster-role, keel (本来インフラ・アプリ側で権限を絞るべき課題のため Accepted に入れず件数に残す)
     #   - High 以下の重要度 (載せるときは、ダッシュボードの式も直す。どの式も severity="Critical" に絞っている)
     #
     # 一覧の直し方:
@@ -523,21 +524,7 @@ spec:
             severity: Critical
             clusterrole: "argo-cluster-role"
             checks: KSV-0041
-        # [3] argo-server-cluster-role (レポート clusterrole-argo-server-cluster-role、Critical 1 件)
-        #   1. 出どころ: Argo Workflows の argo-server (UI・API) 用。pechka の k8s/base/infra/argo-workflows (上流 install.yaml v4.1.6、cluster-install)
-        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・create (list は無い)
-        #   3. 要る理由: 上流の既定の権限で、argo-server が SSO の設定などの Secret を読み・作るためと見られる (推定)。外すと UI・API の一部が動かなくなる (推定)
-        #   4. 残る危険: pechka では argo-server を --auth-mode=server で動かし、Ingress (pechka-workflow.wpcapp.net) で出している。UI に届く人は argo-server の権限で、名前を知っている Secret を読め、ワークフローを投入できる。前段の認証の有無は確かめていない。手当て: auth-mode を client・sso にする、namespace-install にする
-        #   5. 確度: 手元の trivy で ID まで特定した
-        - record: nuage:trivy_clusterrbac_accepted_findings
-          alert: ""
-          expr: vector(1)
-          labels:
-            name: clusterrole-argo-server-cluster-role
-            severity: Critical
-            clusterrole: "argo-server-cluster-role"
-            checks: KSV-0041
-        # [4] argocd-application-controller (レポート clusterrole-argocd-application-controller、Critical 2 件)
+        # [3] argocd-application-controller (レポート clusterrole-argocd-application-controller、Critical 2 件)
         #   1. 出どころ: Argo CD の application-controller 用。nuage-cluster の manifests/bootstrap/argocd (上流 install.yaml v3.5.7)
         #   2. チェック: KSV-0044 (全リソースに全操作) と KSV-0046 (全リソースを扱える)。apiGroups・resources・verbs がすべて '*' のルールと、nonResourceURLs '*'
         #   3. 要る理由: Git の宣言どおりに、どの種類のリソースでもクラスタに作る・直す・消すため。外すと Argo CD が同期できない
@@ -551,7 +538,7 @@ spec:
             severity: Critical
             clusterrole: "argocd-application-controller"
             checks: KSV-0044 KSV-0046
-        # [5] argocd-applicationset-controller (レポート clusterrole-argocd-applicationset-controller、Critical 1 件)
+        # [4] argocd-applicationset-controller (レポート clusterrole-argocd-applicationset-controller、Critical 1 件)
         #   1. 出どころ: Argo CD の applicationset-controller 用。nuage-cluster の manifests/bootstrap/argocd (上流 install.yaml v3.5.7)
         #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets・configmaps に get・list・watch
         #   3. 要る理由: ApplicationSet の生成器が、クラスタの登録情報やリポジトリの認証情報 (Secret) を読むため。外すと ApplicationSet が Application を作れなくなる
@@ -565,7 +552,7 @@ spec:
             severity: Critical
             clusterrole: "argocd-applicationset-controller"
             checks: KSV-0041
-        # [6] argocd-server (レポート clusterrole-argocd-server、Critical 1 件)
+        # [5] argocd-server (レポート clusterrole-argocd-server、Critical 1 件)
         #   1. 出どころ: Argo CD の argocd-server (UI・API) 用。nuage-cluster の manifests/bootstrap/argocd (上流 install.yaml v3.5.7)
         #   2. チェック: KSV-0046 (全リソースを扱える)。apiGroups・resources が '*' で、verbs が get・patch・delete のルール
         #   3. 要る理由: UI でリソースの中身を見せ、UI から直す・消すため。外すと UI のリソースの表示・操作ができない
@@ -579,7 +566,7 @@ spec:
             severity: Critical
             clusterrole: "argocd-server"
             checks: KSV-0046
-        # [7] cert-manager-cainjector (レポート clusterrole-cert-manager-cainjector、Critical 2 件)
+        # [6] cert-manager-cainjector (レポート clusterrole-cert-manager-cainjector、Critical 2 件)
         #   1. 出どころ: cert-manager の cainjector 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
         #   2. チェック: KSV-0041 (Secret を扱える。core の secrets に get・list・watch) と KSV-0114 (webhook の設定を書き換えられる。validating・mutatingwebhookconfigurations に update・patch)
         #   3. 要る理由: 証明書の Secret から CA を読み、webhook・APIService の caBundle に書き込むため。外すと cert-manager の webhook などの TLS が通らなくなる
@@ -593,7 +580,7 @@ spec:
             severity: Critical
             clusterrole: "cert-manager-cainjector"
             checks: KSV-0041 KSV-0114
-        # [8] cert-manager-controller-certificates (レポート clusterrole-cert-manager-controller-certificates、Critical 1 件)
+        # [7] cert-manager-controller-certificates (レポート clusterrole-cert-manager-controller-certificates、Critical 1 件)
         #   1. 出どころ: cert-manager の controller (Certificate の処理) 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
         #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch・create・update・delete・patch
         #   3. 要る理由: 発行した証明書と秘密鍵を Secret に書き込むため。外すと証明書を発行・更新できない
@@ -607,7 +594,7 @@ spec:
             severity: Critical
             clusterrole: "cert-manager-controller-certificates"
             checks: KSV-0041
-        # [9] cert-manager-controller-challenges (レポート clusterrole-cert-manager-controller-challenges、Critical 1 件)
+        # [8] cert-manager-controller-challenges (レポート clusterrole-cert-manager-controller-challenges、Critical 1 件)
         #   1. 出どころ: cert-manager の controller (ACME の Challenge の処理) 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
         #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch (2 つのルール。trivy-operator は ID ごとに 1 件と数える)
         #   3. 要る理由: DNS-01 の解決に使う DNS の API トークン (Cloudflare など) を Secret から読むため。外すと証明書の発行で Challenge を解けない
@@ -621,7 +608,7 @@ spec:
             severity: Critical
             clusterrole: "cert-manager-controller-challenges"
             checks: KSV-0041
-        # [10] cert-manager-controller-clusterissuers (レポート clusterrole-cert-manager-controller-clusterissuers、Critical 1 件)
+        # [9] cert-manager-controller-clusterissuers (レポート clusterrole-cert-manager-controller-clusterissuers、Critical 1 件)
         #   1. 出どころ: cert-manager の controller (ClusterIssuer の処理) 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
         #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch・create・update・delete
         #   3. 要る理由: ACME のアカウント鍵などを Secret に作る・読むため。外すと ClusterIssuer が使えない
@@ -635,7 +622,7 @@ spec:
             severity: Critical
             clusterrole: "cert-manager-controller-clusterissuers"
             checks: KSV-0041
-        # [11] cert-manager-controller-issuers (レポート clusterrole-cert-manager-controller-issuers、Critical 1 件)
+        # [10] cert-manager-controller-issuers (レポート clusterrole-cert-manager-controller-issuers、Critical 1 件)
         #   1. 出どころ: cert-manager の controller (Issuer の処理) 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
         #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch・create・update・delete
         #   3. 要る理由: Namespace ごとの Issuer の鍵などを Secret に作る・読むため。外すと Issuer が使えない
@@ -649,7 +636,7 @@ spec:
             severity: Critical
             clusterrole: "cert-manager-controller-issuers"
             checks: KSV-0041
-        # [12] cert-manager-controller-orders (レポート clusterrole-cert-manager-controller-orders、Critical 1 件)
+        # [11] cert-manager-controller-orders (レポート clusterrole-cert-manager-controller-orders、Critical 1 件)
         #   1. 出どころ: cert-manager の controller (ACME の Order の処理) 用。nuage-cluster の manifests/apps/cert-manager (上流 cert-manager.yaml v1.21.3)
         #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch
         #   3. 要る理由: ACME のアカウント鍵を Secret から読んで Order を出すため。外すと証明書の発行が進まない
@@ -663,21 +650,7 @@ spec:
             severity: Critical
             clusterrole: "cert-manager-controller-orders"
             checks: KSV-0041
-        # [13] cilium-ingress-secrets-reader (レポート clusterrole-cilium-ingress-secrets-reader、Critical 1 件)
-        #   1. 出どころ: nuage-cluster の manifests/bootstrap/cilium/rbac.yaml に手で足したもの (チャートの外)。同じファイルの ClusterRoleBinding で kube-system の ServiceAccount cilium (各ノードの cilium agent) に割り当てている
-        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch
-        #   3. 要る理由: Cilium Ingress の TLS の Secret を agent に読ませるためと見られる (2026-02-15 に Ingress を NodePort で使う変更と一緒に入った。理由の記録は無い)
-        #   4. 残る危険: agent は全ノードで特権で動くため、どれか 1 台のノードが乗っ取られるとクラスタ全体の Secret を読まれる。手当て: values.yaml は ingressController.secretsNamespace.sync: true で、TLS の Secret は operator が cilium-secrets Namespace に写す。agent はそこを読めば足りる可能性があり、この ClusterRole を外せるか確かめる余地がある (推定)
-        #   5. 確度: 手元の trivy で ID まで特定した (要る理由は推定)
-        - record: nuage:trivy_clusterrbac_accepted_findings
-          alert: ""
-          expr: vector(1)
-          labels:
-            name: clusterrole-cilium-ingress-secrets-reader
-            severity: Critical
-            clusterrole: "cilium-ingress-secrets-reader"
-            checks: KSV-0041
-        # [14] cilium-operator (レポート clusterrole-cilium-operator、Critical 1 件)
+        # [12] cilium-operator (レポート clusterrole-cilium-operator、Critical 1 件)
         #   1. 出どころ: Cilium の operator 用。nuage-cluster の manifests/bootstrap/cilium (Cilium チャート 1.19.6)
         #   2. チェック: KSV-0041 (Secret を扱える)。core の namespaces・secrets に get・list・watch
         #   3. 要る理由: Ingress が参照する TLS の Secret を読み、cilium-secrets Namespace に写すため (secretsNamespace.sync: true)。外すと Cilium Ingress の TLS が動かない (推定)
@@ -691,21 +664,7 @@ spec:
             severity: Critical
             clusterrole: "cilium-operator"
             checks: KSV-0041
-        # [15] cluster-admin (レポート clusterrole-cluster-admin、Critical 2 件)
-        #   1. 出どころ: Kubernetes 組み込み。autoupdate の注釈があり、消しても API サーバーが起動時に作り直す
-        #   2. チェック: KSV-0044 (全リソースに全操作) と KSV-0046 (全リソースを扱える)。apiGroups・resources・verbs がすべて '*' のルールと、nonResourceURLs '*'
-        #   3. 要る理由: クラスタの管理者 (system:masters など) の権限そのもの。消せない
-        #   4. 残る危険: 割り当てた相手がクラスタのすべてを握る。trivy は割り当て先を見ない。pechka の k8s/base/infra/argo-workflows/rbac.yaml の ClusterRoleBinding argo-default-admin が、pechka の ServiceAccount default にこれを割り当てている (ワークフローの Pod が既定で使う)。手当て: 割り当てを絞る (ワークフロー専用の ServiceAccount に要る権限だけ渡す)。クラスタの実物の割り当ては確かめていない
-        #   5. 確度: 手元の trivy で ID まで特定した
-        - record: nuage:trivy_clusterrbac_accepted_findings
-          alert: ""
-          expr: vector(2)
-          labels:
-            name: clusterrole-cluster-admin
-            severity: Critical
-            clusterrole: "cluster-admin"
-            checks: KSV-0044 KSV-0046
-        # [16] edit (レポート clusterrole-edit、Critical 1 件)
+        # [13] edit (レポート clusterrole-edit、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み。aggregationRule で aggregate-to-edit のラベルを持つ ClusterRole (system:aggregate-to-edit・アプリの CRD 用のものなど) を集めて中身が決まる
         #   2. チェック: KSV-0041 (Secret を扱える) と推定。集約で入る system:aggregate-to-edit の secrets (get・list・watch と create・update・patch・delete 等) が当たると見ている
         #   3. 要る理由: Namespace の中のリソースを編集する権限を RoleBinding で人に渡すための既定の ClusterRole。autoupdate の注釈があり、消しても API サーバーが起動時に作り直す
@@ -719,21 +678,7 @@ spec:
             severity: Critical
             clusterrole: "edit"
             checks: KSV-0041
-        # [17] keel (レポート clusterrole-keel、Critical 1 件)
-        #   1. 出どころ: keel (イメージの自動更新) 用。nuage-cluster の manifests/apps/keel (keel チャート 1.2.3)
-        #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・watch・list
-        #   3. 要る理由: 監視するワークロードの imagePullSecrets からレジストリの認証情報を読み、新しいタグを問い合わせるため (推定。Helm の release の Secret を読む helmProvider は無効にしてある)
-        #   4. 残る危険: 乗っ取られるとクラスタ全体の Secret を読め、Deployment などを書き換えて任意のイメージを動かせる。手当て: 使うイメージが公開レジストリだけなら Secret を読まずに済む可能性があり、チャートの値で secrets の権限を外せるか確かめる余地がある (未確認)
-        #   5. 確度: 手元の trivy で ID まで特定した (要る理由は推定)
-        - record: nuage:trivy_clusterrbac_accepted_findings
-          alert: ""
-          expr: vector(1)
-          labels:
-            name: clusterrole-keel
-            severity: Critical
-            clusterrole: "keel"
-            checks: KSV-0041
-        # [18] system:aggregate-to-edit (レポート clusterrole-7b884bc5d8、Critical 1 件)
+        # [14] system:aggregate-to-edit (レポート clusterrole-7b884bc5d8、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (system:aggregate-to-edit)。名前に ':' を含むためレポート名がハッシュになる (kube.ComputeHash)
         #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に get・list・watch のルールと、create・delete・deletecollection・patch・update のルール (2 つ。ID ごとに 1 件)
         #   3. 要る理由: edit (と、それを集める admin) に中身を渡すための部品。誰にも直接は割り当てない前提のもの。autoupdate の注釈があり、消しても作り直される
@@ -747,7 +692,7 @@ spec:
             severity: Critical
             clusterrole: "system:aggregate-to-edit"
             checks: KSV-0041
-        # [19] system:controller:generic-garbage-collector (レポート clusterrole-57d745d4cc、Critical 1 件)
+        # [15] system:controller:generic-garbage-collector (レポート clusterrole-57d745d4cc、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の garbage collector 用)。レポート名はハッシュ
         #   2. チェック: KSV-0046 (全リソースを扱える)。apiGroups・resources が '*' で、verbs が delete・get・list・patch・update・watch のルール
         #   3. 要る理由: 親 (ownerReferences) が消えたリソースを、種類を問わず消すため。外すと削除が連鎖しない
@@ -761,7 +706,7 @@ spec:
             severity: Critical
             clusterrole: "system:controller:generic-garbage-collector"
             checks: KSV-0046
-        # [20] system:controller:horizontal-pod-autoscaler (レポート clusterrole-69c4fbc9c4、Critical 1 件)
+        # [16] system:controller:horizontal-pod-autoscaler (レポート clusterrole-69c4fbc9c4、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の HPA 用)。レポート名はハッシュ
         #   2. チェック: KSV-0046 (全リソースを扱える)。custom.metrics.k8s.io と external.metrics.k8s.io の resources '*' に get・list・watch (2 つのルール。ID ごとに 1 件)
         #   3. 要る理由: HPA がカスタム・外部のメトリクスを読んでレプリカ数を決めるため
@@ -775,7 +720,7 @@ spec:
             severity: Critical
             clusterrole: "system:controller:horizontal-pod-autoscaler"
             checks: KSV-0046
-        # [21] system:controller:legacy-service-account-token-cleaner (レポート clusterrole-864fd65956、Critical 1 件)
+        # [17] system:controller:legacy-service-account-token-cleaner (レポート clusterrole-864fd65956、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の古い ServiceAccount トークンの掃除用)。レポート名はハッシュ
         #   2. チェック: KSV-0041 (Secret を扱える)。core の secrets に delete・patch
         #   3. 要る理由: 使われていない古い形式の ServiceAccount トークンの Secret に印を付け、消すため
@@ -789,7 +734,7 @@ spec:
             severity: Critical
             clusterrole: "system:controller:legacy-service-account-token-cleaner"
             checks: KSV-0041
-        # [22] system:controller:namespace-controller (レポート clusterrole-79d4fc89cd、Critical 1 件)
+        # [18] system:controller:namespace-controller (レポート clusterrole-79d4fc89cd、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の Namespace の削除用)。レポート名はハッシュ
         #   2. チェック: KSV-0046 (全リソースを扱える)。apiGroups・resources が '*' で、verbs が delete・deletecollection・get・list・watch のルール
         #   3. 要る理由: Namespace を消すとき、中のリソースを種類を問わず消すため。外すと Namespace が消えない
@@ -803,7 +748,7 @@ spec:
             severity: Critical
             clusterrole: "system:controller:namespace-controller"
             checks: KSV-0046
-        # [23] system:controller:resourcequota-controller (レポート clusterrole-86ccd5dd47、Critical 1 件)
+        # [19] system:controller:resourcequota-controller (レポート clusterrole-86ccd5dd47、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager の ResourceQuota 用)。レポート名はハッシュ
         #   2. チェック: KSV-0046 (全リソースを扱える)。apiGroups・resources が '*' で、verbs が list・watch のルール
         #   3. 要る理由: ResourceQuota の使用量を数えるため、すべての種類のリソースを一覧するため
@@ -817,7 +762,7 @@ spec:
             severity: Critical
             clusterrole: "system:controller:resourcequota-controller"
             checks: KSV-0046
-        # [24] system:kube-controller-manager (レポート clusterrole-b754c4cc6、Critical 2 件)
+        # [20] system:kube-controller-manager (レポート clusterrole-b754c4cc6、Critical 2 件)
         #   1. 出どころ: Kubernetes 組み込み (kube-controller-manager 本体の ServiceAccount 用)。レポート名はハッシュ
         #   2. チェック: KSV-0041 (Secret を扱える。core の secrets に create・delete・get・update の 4 つのルール) と KSV-0046 (全リソースを扱える。apiGroups・resources が '*' で list・watch)
         #   3. 要る理由: ServiceAccount のトークンの Secret を作る・直す・消すなど、コントローラーの仕事そのもの。外すとクラスタが回らない
@@ -831,7 +776,7 @@ spec:
             severity: Critical
             clusterrole: "system:kube-controller-manager"
             checks: KSV-0041 KSV-0046
-        # [25] system:node (レポート clusterrole-54cdc9b678、Critical 1 件)
+        # [21] system:node (レポート clusterrole-54cdc9b678、Critical 1 件)
         #   1. 出どころ: Kubernetes 組み込み (kubelet 用)。レポート名はハッシュ
         #   2. チェック: KSV-0041 (Secret を扱える)。core の configmaps・secrets に get・list・watch
         #   3. 要る理由: kubelet が Pod に Secret を渡す (ボリューム・環境変数) ため
@@ -845,7 +790,7 @@ spec:
             severity: Critical
             clusterrole: "system:node"
             checks: KSV-0041
-        # [26] vm-victoria-metrics-operator (レポート clusterrole-vm-victoria-metrics-operator、Critical 4 件)
+        # [22] vm-victoria-metrics-operator (レポート clusterrole-vm-victoria-metrics-operator、Critical 4 件)
         #   1. 出どころ: VictoriaMetrics operator 用。このリポジトリの k8s/base/charts/victoria-metrics-k8s-stack-0.93.0 の victoria-metrics-operator チャート 0.67.3 (operator v0.74.1)
         #   2. チェック: KSV-0041 (core の secrets を含むルールに verbs '*')、KSV-0045 (core・apps・rbac のルールに verbs '*')、KSV-0046 (monitoring.coreos.com の resources '*' に verbs '*')、KSV-0050 (roles・rolebindings・clusterroles・clusterrolebindings に verbs '*'。RBAC を作って権限を広げられる)
         #   3. 要る理由: VMAgent・VMAlert などの部品を作るときに、設定の Secret・Deployment・StatefulSet と、部品が使う ServiceAccount・ClusterRole・ClusterRoleBinding を作るため。外すと監視スタックの部品が作れない
