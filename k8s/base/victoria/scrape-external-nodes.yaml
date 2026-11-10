@@ -54,8 +54,9 @@ spec:
       labels:
         role: chaos-monitor
       interval: 30s
-    - targets:
-        - 192.168.5.222:9100
-      labels:
-        role: lm-server
-      interval: 30s
+    # lm-server は現在 VM 停止中（起動および SDN 接続後に有効化する）
+    # - targets:
+    #     - 192.168.5.222:9100
+    #   labels:
+    #     role: lm-server
+    #   interval: 30s
