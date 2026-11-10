@@ -499,7 +499,7 @@ spec:
         - alert: HoneypotIntrusionDetected
           record: ""
           expr: |-
-            _time:5m kubernetes.pod_namespace:nuage-honeytrap event:honeypot_attack
+            _time:5m kubernetes.pod_namespace:="nuage-honeytrap" event:="honeypot_attack"
             | stats by (src_ip, protocol, dst_port, service) count() as attacks
             | filter attacks:>0
           labels:

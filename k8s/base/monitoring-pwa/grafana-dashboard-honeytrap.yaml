@@ -46,7 +46,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "_time:24h kubernetes.pod_namespace:nuage-honeytrap event:honeypot_attack | stats count() as total",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" | stats count() as total",
               "queryType": "stats",
               "editorMode": "code"
             }
@@ -112,7 +112,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "_time:24h kubernetes.pod_namespace:nuage-honeytrap event:honeypot_attack | stats count_uniq(src_ip) as ips",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" | stats count_uniq(src_ip) as ips",
               "queryType": "stats",
               "editorMode": "code"
             }
@@ -178,7 +178,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "_time:24h kubernetes.pod_namespace:nuage-honeytrap event:honeypot_attack | stats by (protocol) count() as count",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" | stats by (protocol) count() as count",
               "queryType": "stats",
               "editorMode": "code",
               "legendFormat": "{{protocol}}"
@@ -235,8 +235,8 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "_time:24h kubernetes.pod_namespace:nuage-honeytrap event:honeypot_attack | stats by (_time:5m, protocol) count() as count",
-              "queryType": "stats",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" | stats by (protocol) count() as count",
+              "queryType": "statsRange",
               "editorMode": "code",
               "legendFormat": "{{protocol}}"
             }
@@ -330,17 +330,28 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "_time:24h kubernetes.pod_namespace:nuage-honeytrap event:honeypot_attack | fields _time, protocol, src_ip, dst_port, service, details | sort by (_time desc) | limit 50",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| replace_regexp (\".+\", \"***\") at details.password\n| pack_json fields (details.*) as details\n| fields _time, protocol, src_ip, dst_port, service, details\n| sort by (_time desc)\n| limit 50",
               "queryType": "instant",
               "editorMode": "code"
             }
           ],
           "transformations": [
             {
+              "id": "extractFields",
+              "options": {
+                "format": "auto",
+                "source": "labels"
+              }
+            },
+            {
               "id": "organize",
               "options": {
-                "excludeByName": {},
+                "excludeByName": {
+                  "Line": true,
+                  "labels": true
+                },
                 "indexByName": {
+                  "Time": 0,
                   "_time": 0,
                   "protocol": 1,
                   "src_ip": 2,
@@ -349,6 +360,7 @@ data:
                   "details": 5
                 },
                 "renameByName": {
+                  "Time": "時刻",
                   "_time": "時刻",
                   "protocol": "プロトコル",
                   "src_ip": "攻撃元 IP",
