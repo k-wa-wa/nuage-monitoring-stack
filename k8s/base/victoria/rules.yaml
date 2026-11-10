@@ -495,6 +495,7 @@ spec:
       interval: 1m
       rules:
         # 通常アクセスが 0 のハニーポットのため、1 件でもログが記録されたら誤検知ゼロとみなし即座に critical で発報する。
+        # _time:15m は、攻撃検知後に壁掛けモニターや通知で 15 分間 critical を維持し、最後の攻撃から 15 分で自動 resolved させるため
         # record: "" は CRD の既定値。省略すると実機との差分が残って Argo CD が OutOfSync のままになるため明示する
         - alert: HoneypotIntrusionDetected
           record: ""
