@@ -234,7 +234,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| replace_regexp (\".+\", \"***\") at details.password\n| replace_regexp (\"([\\\"\\']?password[\\\"\\']?\\s*[:=]\\s*[\\\"\\']?)[^&\\\"\\',}]+\", \"$1***\") at details.body\n| default(details.body, details.username, details.user, \"-\") as payload\n| fields _time, details.country, src_ip, protocol, details.path, payload\n| sort by (_time desc)\n| limit 50",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| replace_regexp (\".+\", \"***\") at details.password\n| replace_regexp (\"([\\\"']?password[\\\"']?\\\\s*[:=]\\\\s*[\\\"']?)[^&\\\"',}]+\", \"$1***\") at details.body\n| coalesce (details.body, details.username, details.user) default \"-\" as payload\n| fields _time, details.country, src_ip, protocol, details.path, payload\n| sort by (_time desc)\n| limit 50",
               "queryType": "instant",
               "editorMode": "code"
             }
