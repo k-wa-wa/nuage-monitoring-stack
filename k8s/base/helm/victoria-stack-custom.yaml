@@ -278,6 +278,8 @@ grafana:
     - victoriametrics-logs-datasource
     # 壁掛けダッシュボード (monitoring-pwa/grafana-dashboard-wall.yaml) の時計
     - grafana-clock-panel
+    # ハニーポット攻撃可視化マップ (monitoring-pwa/grafana-dashboard-honeypot.yaml)
+    - volkovlabs-echarts-panel
   sidecar:
     image:
       # Trivy 脆弱性対応 (#27)。チャート既定値 (2.8.1) を上書きする。チャート側が追いついたら外す

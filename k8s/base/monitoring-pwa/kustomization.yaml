@@ -6,3 +6,4 @@ resources:
   - grafana-dashboard-ai-agent.yaml
   - grafana-dashboard-wall.yaml
   - grafana-dashboard-honeytrap.yaml
+  - grafana-dashboard-honeypot.yaml
