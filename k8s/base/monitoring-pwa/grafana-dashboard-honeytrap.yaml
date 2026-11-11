@@ -23,6 +23,43 @@ data:
       },
       "refresh": "30s",
       "schemaVersion": 39,
+      "templating": {
+        "list": [
+          {
+            "name": "domain",
+            "label": "ドメイン",
+            "type": "query",
+            "datasource": {
+              "type": "victoriametrics-logs-datasource",
+              "uid": "VictoriaLogs"
+            },
+            "query": {
+              "refId": "VictoriaLogsVariableQueryEditor-VariableQuery",
+              "type": "fieldValue",
+              "field": "domain",
+              "query": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" domain:!\"\"",
+              "limit": 100
+            },
+            "definition": "fieldValue: domain",
+            "refresh": 2,
+            "multi": true,
+            "includeAll": true,
+            "allValue": "*",
+            "current": {
+              "selected": true,
+              "text": [
+                "All"
+              ],
+              "value": [
+                "$__all"
+              ]
+            },
+            "sort": 1,
+            "hide": 0,
+            "options": []
+          }
+        ]
+      },
       "panels": [
         {
           "id": 1,
@@ -46,7 +83,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" | stats count() as total",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" domain:$domain | stats count() as total",
               "queryType": "stats",
               "editorMode": "code"
             }
@@ -112,7 +149,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" | stats count_uniq(src_ip) as ips",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" domain:$domain | stats count_uniq(src_ip) as ips",
               "queryType": "stats",
               "editorMode": "code"
             }
@@ -178,7 +215,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" | stats by (protocol) count() as count | sort by (count desc, protocol asc)",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" domain:$domain | stats by (protocol) count() as count | sort by (count desc, protocol asc)",
               "queryType": "stats",
               "editorMode": "code",
               "legendFormat": "{{protocol}}"
@@ -235,10 +272,162 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" | stats by (protocol) count() as count",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" domain:$domain | stats by (protocol) count() as count",
               "queryType": "statsRange",
               "editorMode": "code",
               "legendFormat": "{{protocol}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 15,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "linear",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "normal"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "calcs": [
+                "sum",
+                "max"
+              ],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "id": 6,
+          "type": "bargauge",
+          "title": "ドメイン別攻撃数",
+          "description": "選択期間内の囮ドメイン別の HTTP 攻撃検知回数。ドメインは Host ヘッダーを正規化した値（ログの domain フィールド）。",
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 13
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "VictoriaLogs"
+              },
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" domain:$domain domain:!\"\" | stats by (domain) count() as count | sort by (count desc, domain asc)",
+              "queryType": "stats",
+              "editorMode": "code",
+              "legendFormat": "{{domain}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "min": 0,
+              "noValue": "0",
+              "unit": "none"
+            },
+            "overrides": []
+          },
+          "options": {
+            "displayMode": "gradient",
+            "minVizHeight": 16,
+            "minVizWidth": 8,
+            "namePlacement": "left",
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true,
+            "sizing": "auto",
+            "valueMode": "color"
+          }
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "ドメイン別攻撃タイムライン",
+          "description": "選択期間内の囮ドメイン別の HTTP 攻撃発生推移。",
+          "gridPos": {
+            "h": 8,
+            "w": 16,
+            "x": 8,
+            "y": 13
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "VictoriaLogs"
+              },
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" domain:$domain domain:!\"\" | stats by (domain) count() as count",
+              "queryType": "statsRange",
+              "editorMode": "code",
+              "legendFormat": "{{domain}}"
             }
           ],
           "fieldConfig": {
@@ -317,7 +506,7 @@ data:
             "h": 10,
             "w": 24,
             "x": 0,
-            "y": 13
+            "y": 21
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -330,7 +519,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| replace_regexp (\".+\", \"***\") at details.password\n| pack_json fields (details.*) as details\n| fields _time, protocol, src_ip, dst_port, service, details\n| sort by (_time desc)\n| limit 50",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" domain:$domain\n| replace_regexp (\".+\", \"***\") at details.password\n| pack_json fields (details.*) as details\n| fields _time, protocol, src_ip, dst_port, service, domain, details\n| sort by (_time desc)\n| limit 50",
               "queryType": "instant",
               "editorMode": "code"
             }
@@ -357,7 +546,8 @@ data:
                   "src_ip": 2,
                   "dst_port": 3,
                   "service": 4,
-                  "details": 5
+                  "domain": 5,
+                  "details": 6
                 },
                 "renameByName": {
                   "Time": "時刻",
@@ -366,7 +556,8 @@ data:
                   "src_ip": "攻撃元 IP",
                   "dst_port": "公開ポート",
                   "service": "サービス",
-                  "details": "詳細"
+                  "details": "詳細",
+                  "domain": "ドメイン"
                 }
               }
             }
@@ -493,6 +684,18 @@ data:
                   {
                     "id": "custom.width",
                     "value": 160
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ドメイン"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 200
                   }
                 ]
               },
