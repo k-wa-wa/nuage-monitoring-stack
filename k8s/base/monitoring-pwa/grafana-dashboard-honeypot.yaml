@@ -66,7 +66,7 @@ data:
           "title": "国別攻撃数ランキング Top 10",
           "description": "選択期間内にハニーポットへ攻撃を試みた攻撃元国の Top 10 ランキング。※国コードは Cloudflare 経由の HTTP 攻撃のみ付与されます。",
           "gridPos": {
-            "h": 14,
+            "h": 7,
             "w": 8,
             "x": 16,
             "y": 0
@@ -86,6 +86,63 @@ data:
               "queryType": "stats",
               "editorMode": "code",
               "legendFormat": "{{details.country}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "min": 0,
+              "noValue": "0",
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "options": {
+            "displayMode": "gradient",
+            "minVizHeight": 16,
+            "minVizWidth": 8,
+            "namePlacement": "left",
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showUnfilled": true,
+            "sizing": "auto",
+            "valueMode": "color"
+          }
+        },
+        {
+          "id": 5,
+          "type": "bargauge",
+          "title": "攻撃元組織 (ASN) Top 10",
+          "description": "選択期間内にハニーポットへ攻撃を試みた攻撃元組織・プロバイダ（MaxMind GeoLite2-ASN）の Top 10 ランキング。",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 16,
+            "y": 7
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "VictoriaLogs"
+              },
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\" | filter details.as_org:!=\"\" | stats by (details.as_org) count() as count | sort by (count desc, details.as_org asc) | limit 10",
+              "queryType": "stats",
+              "editorMode": "code",
+              "legendFormat": "{{details.as_org}}"
             }
           ],
           "fieldConfig": {
@@ -234,7 +291,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| replace_regexp (\".+\", \"***\") at details.password\n| replace_regexp (\"([\\\"']?password[\\\"']?\\\\s*[:=]\\\\s*[\\\"']?)[^&\\\"',}]+\", \"$1***\") at details.body\n| coalesce (details.body, details.username, details.user) default \"-\" as payload\n| fields _time, details.country, src_ip, protocol, details.path, payload\n| sort by (_time desc)\n| limit 50",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| replace_regexp (\".+\", \"***\") at details.password\n| replace_regexp (\"([\\\"']?password[\\\"']?\\\\s*[:=]\\\\s*[\\\"']?)[^&\\\"',}]+\", \"$1***\") at details.body\n| coalesce (details.body, details.username, details.user) default \"-\" as payload\n| coalesce (details.as_org) default \"-\" as as_org\n| coalesce (details.asn) default \"-\" as asn\n| fields _time, details.country, src_ip, as_org, asn, protocol, details.path, payload\n| sort by (_time desc)\n| limit 50",
               "queryType": "instant",
               "editorMode": "code"
             }
@@ -260,12 +317,16 @@ data:
                   "details.country": 1,
                   "country": 1,
                   "src_ip": 2,
-                  "protocol": 3,
-                  "details.path": 4,
-                  "path": 4,
-                  "payload": 5,
-                  "details.body": 5,
-                  "body": 5
+                  "as_org": 3,
+                  "details.as_org": 3,
+                  "asn": 4,
+                  "details.asn": 4,
+                  "protocol": 5,
+                  "details.path": 6,
+                  "path": 6,
+                  "payload": 7,
+                  "details.body": 7,
+                  "body": 7
                 },
                 "renameByName": {
                   "Time": "発生時刻",
@@ -273,6 +334,10 @@ data:
                   "details.country": "国コード",
                   "country": "国コード",
                   "src_ip": "送信元 IP",
+                  "as_org": "組織名 (ISP/Cloud)",
+                  "details.as_org": "組織名 (ISP/Cloud)",
+                  "asn": "ASN",
+                  "details.asn": "ASN",
                   "protocol": "プロトコル",
                   "details.path": "標的パス",
                   "path": "標的パス",
@@ -341,6 +406,34 @@ data:
                   {
                     "id": "custom.width",
                     "value": 150
+                  },
+                  {
+                    "id": "custom.align",
+                    "value": "center"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "組織名 (ISP/Cloud)"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 220
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ASN"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 90
                   },
                   {
                     "id": "custom.align",
