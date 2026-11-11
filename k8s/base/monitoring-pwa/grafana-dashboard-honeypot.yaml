@@ -273,7 +273,7 @@ data:
           "id": 4,
           "type": "table",
           "title": "直近の攻撃試行一覧",
-          "description": "直近検知された攻撃試行の詳細（発生時刻、国コード・国名、送信元 IP、プロトコル、標的パス、入力ペイロード / クレデンシャル等、最新50件）。パスワードは自動マスクされます。",
+          "description": "直近検知された攻撃試行の詳細（発生時刻、国コード・国名、送信元 IP、プロトコル、標的パス（HTTP はドメイン + パス）、入力ペイロード / クレデンシャル等、最新50件）。パスワードは自動マスクされます。",
           "gridPos": {
             "h": 10,
             "w": 24,
@@ -291,7 +291,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| replace_regexp (\".+\", \"***\") at details.password\n| replace_regexp (\"([\\\"']?password[\\\"']?\\\\s*[:=]\\\\s*[\\\"']?)[^&\\\"',}]+\", \"$1***\") at details.body\n| coalesce (details.body, details.username, details.user) default \"-\" as payload\n| coalesce (details.as_org) default \"-\" as as_org\n| coalesce (details.asn) default \"-\" as asn\n| fields _time, details.country, details.country_ja, src_ip, as_org, asn, protocol, details.path, payload\n| sort by (_time desc)\n| limit 50",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| replace_regexp (\".+\", \"***\") at details.password\n| replace_regexp (\"([\\\"']?password[\\\"']?\\\\s*[:=]\\\\s*[\\\"']?)[^&\\\"',}]+\", \"$1***\") at details.body\n| coalesce (details.body, details.username, details.user) default \"-\" as payload\n| coalesce (details.as_org) default \"-\" as as_org\n| coalesce (details.asn) default \"-\" as asn\n| format \"<domain><details.path>\" as target_path\n| fields _time, details.country, details.country_ja, src_ip, as_org, asn, protocol, target_path, payload\n| sort by (_time desc)\n| limit 50",
               "queryType": "instant",
               "editorMode": "code"
             }
@@ -326,6 +326,7 @@ data:
                   "protocol": 6,
                   "details.path": 7,
                   "path": 7,
+                  "target_path": 7,
                   "payload": 8,
                   "details.body": 8,
                   "body": 8
@@ -345,6 +346,7 @@ data:
                   "protocol": "プロトコル",
                   "details.path": "標的パス",
                   "path": "標的パス",
+                  "target_path": "標的パス",
                   "payload": "入力ペイロード / クレデンシャル",
                   "details.body": "入力ペイロード / クレデンシャル",
                   "body": "入力ペイロード / クレデンシャル"
@@ -513,7 +515,7 @@ data:
                 "properties": [
                   {
                     "id": "custom.width",
-                    "value": 200
+                    "value": 320
                   }
                 ]
               },
