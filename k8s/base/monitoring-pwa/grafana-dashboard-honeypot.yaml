@@ -36,7 +36,7 @@ data:
           },
           "options": {
             "mode": "markdown",
-            "content": "- **判定保留**：`/`・`/robots.txt`・`/favicon.ico` の通常 GET/HEAD、認証前の切断など\n- **探索**：その他の HTTP アクセス、SSH の認証方式確認、DB 接続情報の指定\n- **侵入・悪用試行（優先）**：認証要求・攻撃文字列を検出\n- **既知の監視・試験**：送信元 IP が `219.104.137.232`\n\n**クエリ例**　前方一致：`details.path:=\"/.git\"*`　／　AGENT を含む（大小文字不問）：`details.path:~\"(?i)^/.*agent\"`"
+            "content": "- **分類**：探索（その他の HTTP アクセス・SSH 認証方式確認・DB 接続情報指定）、侵入・悪用試行（認証要求・攻撃文字列を検出。優先判定）、判定保留（`/`・`/robots.txt`・`/favicon.ico` の通常 GET/HEAD、認証前の切断など）\n- **既知の監視・試験**：送信元 IP が `219.104.137.232` の通信\n- **クエリ例**：git の前方一致 `details.path:=\"/.git\"*`、AGENT を含むパス（大小文字不問）`details.path:~\"(?i)^/.*agent\"`"
           }
         },
         {
