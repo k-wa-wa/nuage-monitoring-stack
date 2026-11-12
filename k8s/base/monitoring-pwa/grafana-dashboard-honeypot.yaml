@@ -27,16 +27,16 @@ data:
         {
           "id": 6,
           "type": "text",
-          "title": "絞り込みのヒント",
+          "title": "判定条件・クエリ例",
           "gridPos": {
             "x": 0,
             "y": 0,
             "w": 24,
-            "h": 3
+            "h": 5
           },
           "options": {
             "mode": "markdown",
-            "content": "分類は複数選択（All を外して絞る）。検索は空欄で条件なし・Enter で適用。既知通信はチェックで表示。例：`details.path:=\"/.git\"*`"
+            "content": "- **判定保留**：`/`・`/robots.txt`・`/favicon.ico` の通常 GET/HEAD、認証前の切断など\n- **探索**：その他の HTTP アクセス、SSH の認証方式確認、DB 接続情報の指定\n- **侵入・悪用試行（優先）**：認証要求・攻撃文字列を検出\n- **既知の監視・試験**：送信元 IP が `219.104.137.232`\n\n**クエリ例**　前方一致：`details.path:=\"/.git\"*`　／　AGENT を含む（大小文字不問）：`details.path:~\"(?i)^/.*agent\"`"
           }
         },
         {
@@ -46,7 +46,7 @@ data:
           "description": "上部の共通フィルターに一致する通信を分類別に集計する。0件の分類は系列が返らないため表示されない。",
           "gridPos": {
             "x": 0,
-            "y": 3,
+            "y": 5,
             "w": 24,
             "h": 4
           },
@@ -168,7 +168,7 @@ data:
             "h": 14,
             "w": 16,
             "x": 0,
-            "y": 7
+            "y": 9
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -207,7 +207,7 @@ data:
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 7
+            "y": 9
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -264,7 +264,7 @@ data:
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 14
+            "y": 16
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -321,7 +321,7 @@ data:
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 21
+            "y": 23
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -462,7 +462,7 @@ data:
             "h": 10,
             "w": 24,
             "x": 0,
-            "y": 29
+            "y": 31
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
