@@ -32,11 +32,11 @@ data:
             "x": 0,
             "y": 0,
             "w": 24,
-            "h": 5
+            "h": 6
           },
           "options": {
             "mode": "markdown",
-            "content": "**上部の入力欄を編集して Enter** → 地図・全グラフ・一覧に共通適用。全件: `*` ／ 既定: `traffic_class:in(\"probe\", \"attack\")` ／ HTTP の探索: `protocol:=\"http\" traffic_class:=\"probe\"`。\n\n🟢 `operational` 既知の監視・試験 ／ ⚪ `unknown` 判定保留 ／ 🟠 `probe` 探索 ／ 🔴 `attack` 侵入・悪用試行。**攻撃意図・成功の断定ではない**。監視・試験は第2欄で確認済み条件を指定する（既定は未登録）。\n\n期間は右上で選択。入力は絞り込み条件のみ（集計パイプ不可）。地図・国ランキングは国情報付き HTTP のみ。"
+            "content": "**分類（複数選択）と検索条件を指定して Enter** → 地図・全グラフ・一覧に適用。**分類が All・検索が空なら全件**。分類を絞るときは All のチェックを外す。\n\n例: `details.path:=\"/.git\"*` ／ 大小文字を区別せず AGENT を含むパス: `details.path:~\"(?i)^/.*agent\"` ／ 指定 IP を除外: `NOT src_ip:=\"192.0.2.25\"`。`AND`・`OR`・`NOT`・括弧で組み合わせられる。\n\nHTTP の判定保留は `/`・`/robots.txt`・`/favicon.ico` の GET/HEAD のみ。それ以外は原則「探索」、認証要求・攻撃文字列は「侵入・悪用試行」（攻撃意図・成功の断定ではない）。期間は右上、地図は国情報付き HTTP のみ。検索欄は絞り込み条件用（集計パイプ不可）。"
           }
         },
         {
@@ -46,7 +46,7 @@ data:
           "description": "上部の共通フィルターに一致する通信を分類別に集計する。0件の分類は系列が返らないため表示されない。",
           "gridPos": {
             "x": 0,
-            "y": 5,
+            "y": 6,
             "w": 24,
             "h": 4
           },
@@ -61,7 +61,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter (${logsql:raw})\n| stats by (traffic_class) count() as count | sort by (count desc)",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter traffic_class:~\"^(${traffic_class:regex})$\"\n| filter (${effective_logsql:raw})\n| stats by (traffic_class) count() as count | sort by (count desc)",
               "queryType": "stats",
               "editorMode": "code",
               "legendFormat": "{{traffic_class}}"
@@ -187,7 +187,7 @@ data:
             "h": 14,
             "w": 16,
             "x": 0,
-            "y": 9
+            "y": 10
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -200,7 +200,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter (${logsql:raw}) | filter details.country:!=\"\" | stats by (details.country, details.country_ja) count() as count | sort by (count desc, details.country asc)",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter traffic_class:~\"^(${traffic_class:regex})$\"\n| filter (${effective_logsql:raw}) | filter details.country:!=\"\" | stats by (details.country, details.country_ja) count() as count | sort by (count desc, details.country asc)",
               "queryType": "stats",
               "editorMode": "code"
             }
@@ -223,7 +223,7 @@ data:
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 9
+            "y": 10
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -236,7 +236,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter (${logsql:raw}) | filter details.country:!=\"\" | stats by (details.country, details.country_ja) count() as count | sort by (count desc, details.country asc) | limit 10",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter traffic_class:~\"^(${traffic_class:regex})$\"\n| filter (${effective_logsql:raw}) | filter details.country:!=\"\" | stats by (details.country, details.country_ja) count() as count | sort by (count desc, details.country asc) | limit 10",
               "queryType": "stats",
               "editorMode": "code",
               "legendFormat": "{{details.country}} {{details.country_ja}}"
@@ -280,7 +280,7 @@ data:
             "h": 7,
             "w": 8,
             "x": 16,
-            "y": 16
+            "y": 17
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -293,7 +293,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter (${logsql:raw}) | filter details.as_org:!=\"\" | stats by (details.as_org) count() as count | sort by (count desc, details.as_org asc) | limit 10",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter traffic_class:~\"^(${traffic_class:regex})$\"\n| filter (${effective_logsql:raw}) | filter details.as_org:!=\"\" | stats by (details.as_org) count() as count | sort by (count desc, details.as_org asc) | limit 10",
               "queryType": "stats",
               "editorMode": "code",
               "legendFormat": "{{details.as_org}}"
@@ -337,7 +337,7 @@ data:
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 23
+            "y": 24
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -350,7 +350,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter (${logsql:raw})\n| stats by (traffic_class, protocol) count() as count",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter traffic_class:~\"^(${traffic_class:regex})$\"\n| filter (${effective_logsql:raw})\n| stats by (traffic_class, protocol) count() as count",
               "queryType": "statsRange",
               "editorMode": "code",
               "legendFormat": "{{traffic_class}} / {{protocol}}"
@@ -493,7 +493,7 @@ data:
             "h": 10,
             "w": 24,
             "x": 0,
-            "y": 31
+            "y": 32
           },
           "datasource": {
             "type": "victoriametrics-logs-datasource",
@@ -506,7 +506,7 @@ data:
                 "type": "victoriametrics-logs-datasource",
                 "uid": "VictoriaLogs"
               },
-              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter (${logsql:raw})\n| replace_regexp (\".+\", \"***\") at details.password\n| format if (details.body:* AND (details.path:=\"/login\" OR details.body:~\"(?i)(password|passwd|pwd|token|secret|api[_-]?key|authorization|credential|%70assword|%74oken)\")) \"*** (認証情報を含む本文)\" as details.body\n| format if (details.query:~\"(?i)(password|passwd|pwd|token|secret|api[_-]?key|authorization|credential|%70assword|%74oken)\") \"*** (認証情報を含むクエリ)\" as details.query\n| coalesce (details.body, details.username, details.user) default \"-\" as payload\n| coalesce (details.as_org) default \"-\" as as_org\n| coalesce (details.asn) default \"-\" as asn\n| format \"<domain><details.path>\" as target_path\n| fields _time, traffic_class, classification_reason, protocol, details.method, target_path, details.query, src_ip, details.country, details.country_ja, as_org, asn, details.user_agent, payload\n| sort by (_time desc)\n| limit 1000",
+              "expr": "kubernetes.pod_namespace:=\"nuage-honeytrap\" event:=\"honeypot_attack\"\n| ${traffic_classifier:raw}\n| format if (${known_traffic:raw}) \"operational\" as traffic_class\n| format if (traffic_class:=\"operational\") \"確認済みの監視・試験の条件に一致\" as classification_reason\n| coalesce (_msg, classification_reason) as _msg\n| filter traffic_class:~\"^(${traffic_class:regex})$\"\n| filter (${effective_logsql:raw})\n| replace_regexp (\".+\", \"***\") at details.password\n| format if (details.body:* AND (details.path:=\"/login\" OR details.body:~\"(?i)(password|passwd|pwd|token|secret|api[_-]?key|authorization|credential|%70assword|%74oken)\")) \"*** (認証情報を含む本文)\" as details.body\n| format if (details.query:~\"(?i)(password|passwd|pwd|token|secret|api[_-]?key|authorization|credential|%70assword|%74oken)\") \"*** (認証情報を含むクエリ)\" as details.query\n| coalesce (details.body, details.username, details.user) default \"-\" as payload\n| coalesce (details.as_org) default \"-\" as as_org\n| coalesce (details.asn) default \"-\" as asn\n| format \"<domain><details.path>\" as target_path\n| fields _time, traffic_class, classification_reason, protocol, details.method, target_path, details.query, src_ip, details.country, details.country_ja, as_org, asn, details.user_agent, payload\n| sort by (_time desc)\n| limit 1000",
               "queryType": "instant",
               "editorMode": "code"
             }
@@ -883,31 +883,104 @@ data:
       "templating": {
         "list": [
           {
-            "name": "logsql",
-            "label": "LogsQL フィルター",
-            "type": "textbox",
+            "name": "traffic_class",
+            "label": "分類",
+            "type": "custom",
             "hide": 0,
-            "description": "全パネル共通の絞り込み条件。既定は探索・侵入／悪用試行。* で全件。traffic_class / protocol / src_ip / domain / details.* を使用できる。集計用パイプは入力しない。",
-            "query": "traffic_class:in(\"probe\", \"attack\")",
+            "description": "複数選択できる。All はすべての分類。分類を絞るときは All のチェックを外して対象を選ぶ。検索欄の条件と組み合わせて全パネルに適用する。",
+            "query": "探索 : probe,侵入・悪用試行 : attack,判定保留 : unknown,既知の監視・試験 : operational",
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
             "current": {
-              "text": "traffic_class:in(\"probe\", \"attack\")",
-              "value": "traffic_class:in(\"probe\", \"attack\")"
+              "text": [
+                "All"
+              ],
+              "value": [
+                "$__all"
+              ]
             },
             "options": [
               {
-                "text": "traffic_class:in(\"probe\", \"attack\")",
-                "value": "traffic_class:in(\"probe\", \"attack\")",
+                "text": "All",
+                "value": "$__all",
+                "selected": true
+              },
+              {
+                "text": "探索",
+                "value": "probe",
+                "selected": false
+              },
+              {
+                "text": "侵入・悪用試行",
+                "value": "attack",
+                "selected": false
+              },
+              {
+                "text": "判定保留",
+                "value": "unknown",
+                "selected": false
+              },
+              {
+                "text": "既知の監視・試験",
+                "value": "operational",
+                "selected": false
+              }
+            ],
+            "skipUrlSync": false
+          },
+          {
+            "name": "logsql",
+            "label": "追加の検索条件 (LogsQL)",
+            "type": "textbox",
+            "hide": 0,
+            "description": "空欄・空白だけなら追加条件なし。例: details.path:=\"/.git\"*。AND / OR / NOT、正規表現で条件を組み合わせる。分類は左の選択ボックスで指定する。集計パイプは入力しない。",
+            "query": "",
+            "current": {
+              "text": "",
+              "value": ""
+            },
+            "options": [
+              {
+                "text": "",
+                "value": "",
                 "selected": true
               }
             ],
             "skipUrlSync": false
           },
           {
+            "name": "effective_logsql",
+            "type": "query",
+            "hide": 2,
+            "description": "検索欄の空欄・空白だけを * に正規化する。入力済みの式は変更しない。",
+            "datasource": {
+              "type": "victoriametrics-logs-datasource",
+              "uid": "VictoriaLogs"
+            },
+            "query": {
+              "type": "fieldValue",
+              "field": "effective_filter",
+              "query": "_time:1s | limit 0 | union rows({\"encoded_filter\":\"${logsql:percentencode}\"}) | format \"<urldecode:encoded_filter>\" as effective_filter | coalesce (effective_filter) default \"*\" as effective_filter | replace_regexp (\"^[[:space:]]*$\", \"*\") at effective_filter | fields effective_filter"
+            },
+            "refresh": 1,
+            "regex": "",
+            "sort": 0,
+            "multi": false,
+            "includeAll": false,
+            "skipUrlSync": true,
+            "current": {
+              "text": "*",
+              "value": "*"
+            },
+            "options": []
+          },
+          {
             "name": "known_traffic",
             "label": "確認済みの監視・試験 (LogsQL)",
-            "type": "textbox",
-            "hide": 0,
-            "description": "確認できた運用通信だけを指定する。既定の NOT traffic_class:* は未登録（0件）。送信元 IP・ドメイン・期間などで限定し、User-Agent やプライベート IP だけでは安全扱いしない。",
+            "type": "constant",
+            "hide": 2,
+            "description": "確認済みの運用通信を分類する管理用の固定条件。既定は未登録。表示時の除外は共通 LogsQL 入力欄に NOT 条件を書く。",
             "query": "NOT traffic_class:*",
             "current": {
               "text": "NOT traffic_class:*",
@@ -920,21 +993,21 @@ data:
                 "selected": true
               }
             ],
-            "skipUrlSync": false
+            "skipUrlSync": true
           },
           {
             "name": "traffic_classifier",
             "type": "constant",
             "hide": 2,
-            "query": "format \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"単独の通信では攻撃意図を判断できない\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:in(\"/\", \"/index.html\", \"/index.php\", \"/favicon.ico\", \"/robots.txt\", \"/healthz\")) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"一般的なページ・メタデータの取得。安全性も攻撃意図も未確認\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.stage:=\"pre_auth\") \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"SSH 認証前の切断。疎通確認・探索のどちらもあり得る\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" details.stage:*) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"PostgreSQL 初期接続のみ。切断・不正パケットだけでは攻撃意図は不明\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:=\"none\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"SSH のユーザー・認証方式の確認（none）\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" (details.user:* OR details.database:*)) \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"PostgreSQL のユーザー・DB 名を指定した接続。パスワード試行は未観測\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:~\"(?i)(^|/)(?:\\\\.env(?:[./]|$)|\\\\.(?:git|svn|ssh|aws|vscode)(?:/|$)|\\\\.npmrc$|(?:[^/]*(?:backup|dump|database)[^/]*\\\\.(?:sql|zip|tar(?:\\\\.gz)?|gz))$|(?:secrets?|user_secrets)\\\\.(?:json|ya?ml)$|config\\\\.(?:xml|json|php)$|actuator(?:/|$)|wp-admin(?:/|$)|phpmyadmin(?:/|$)|admin(?:/|$))\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"設定・秘密情報・管理画面・バックアップの探索\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:in(\"password\", \"publickey\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"SSH のパスワード・公開鍵認証要求（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:=\"POST\" details.path:=\"/login\" details.body:*) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"囮ログインへの入力送信（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" (details.path:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.query:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.body:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"パストラバーサル・SQLi・スクリプト／コマンド実行を疑う文字列\\\"}\" as _traffic_classification\n| unpack_json from _traffic_classification\n| delete _traffic_classification",
+            "query": "format \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"単独の通信では攻撃意図を判断できない\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"通常3パスの GET/HEAD 以外の HTTP アクセス\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:in(\"GET\", \"HEAD\") details.path:in(\"/\", \"/robots.txt\", \"/favicon.ico\")) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"通常3パスの GET/HEAD 取得。攻撃意図は未確認\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.stage:=\"pre_auth\") \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"SSH 認証前の切断。疎通確認・探索のどちらもあり得る\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" details.stage:*) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"PostgreSQL 初期接続のみ。切断・不正パケットだけでは攻撃意図は不明\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:=\"none\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"SSH のユーザー・認証方式の確認（none）\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" (details.user:* OR details.database:*)) \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"PostgreSQL のユーザー・DB 名を指定した接続。パスワード試行は未観測\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:~\"(?i)(^|/)(?:\\\\.env(?:[./]|$)|\\\\.(?:git|svn|ssh|aws|vscode)(?:/|$)|\\\\.npmrc$|(?:[^/]*(?:backup|dump|database)[^/]*\\\\.(?:sql|zip|tar(?:\\\\.gz)?|gz))$|(?:secrets?|user_secrets)\\\\.(?:json|ya?ml)$|config\\\\.(?:xml|json|php)$|actuator(?:/|$)|wp-admin(?:/|$)|phpmyadmin(?:/|$)|admin(?:/|$))\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"設定・秘密情報・管理画面・バックアップの探索\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:in(\"password\", \"publickey\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"SSH のパスワード・公開鍵認証要求（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:=\"POST\" details.path:=\"/login\" details.body:*) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"囮ログインへの入力送信（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" (details.path:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.query:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.body:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"パストラバーサル・SQLi・スクリプト／コマンド実行を疑う文字列\\\"}\" as _traffic_classification\n| unpack_json from _traffic_classification\n| delete _traffic_classification",
             "current": {
-              "text": "format \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"単独の通信では攻撃意図を判断できない\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:in(\"/\", \"/index.html\", \"/index.php\", \"/favicon.ico\", \"/robots.txt\", \"/healthz\")) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"一般的なページ・メタデータの取得。安全性も攻撃意図も未確認\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.stage:=\"pre_auth\") \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"SSH 認証前の切断。疎通確認・探索のどちらもあり得る\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" details.stage:*) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"PostgreSQL 初期接続のみ。切断・不正パケットだけでは攻撃意図は不明\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:=\"none\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"SSH のユーザー・認証方式の確認（none）\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" (details.user:* OR details.database:*)) \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"PostgreSQL のユーザー・DB 名を指定した接続。パスワード試行は未観測\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:~\"(?i)(^|/)(?:\\\\.env(?:[./]|$)|\\\\.(?:git|svn|ssh|aws|vscode)(?:/|$)|\\\\.npmrc$|(?:[^/]*(?:backup|dump|database)[^/]*\\\\.(?:sql|zip|tar(?:\\\\.gz)?|gz))$|(?:secrets?|user_secrets)\\\\.(?:json|ya?ml)$|config\\\\.(?:xml|json|php)$|actuator(?:/|$)|wp-admin(?:/|$)|phpmyadmin(?:/|$)|admin(?:/|$))\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"設定・秘密情報・管理画面・バックアップの探索\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:in(\"password\", \"publickey\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"SSH のパスワード・公開鍵認証要求（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:=\"POST\" details.path:=\"/login\" details.body:*) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"囮ログインへの入力送信（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" (details.path:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.query:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.body:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"パストラバーサル・SQLi・スクリプト／コマンド実行を疑う文字列\\\"}\" as _traffic_classification\n| unpack_json from _traffic_classification\n| delete _traffic_classification",
-              "value": "format \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"単独の通信では攻撃意図を判断できない\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:in(\"/\", \"/index.html\", \"/index.php\", \"/favicon.ico\", \"/robots.txt\", \"/healthz\")) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"一般的なページ・メタデータの取得。安全性も攻撃意図も未確認\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.stage:=\"pre_auth\") \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"SSH 認証前の切断。疎通確認・探索のどちらもあり得る\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" details.stage:*) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"PostgreSQL 初期接続のみ。切断・不正パケットだけでは攻撃意図は不明\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:=\"none\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"SSH のユーザー・認証方式の確認（none）\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" (details.user:* OR details.database:*)) \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"PostgreSQL のユーザー・DB 名を指定した接続。パスワード試行は未観測\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:~\"(?i)(^|/)(?:\\\\.env(?:[./]|$)|\\\\.(?:git|svn|ssh|aws|vscode)(?:/|$)|\\\\.npmrc$|(?:[^/]*(?:backup|dump|database)[^/]*\\\\.(?:sql|zip|tar(?:\\\\.gz)?|gz))$|(?:secrets?|user_secrets)\\\\.(?:json|ya?ml)$|config\\\\.(?:xml|json|php)$|actuator(?:/|$)|wp-admin(?:/|$)|phpmyadmin(?:/|$)|admin(?:/|$))\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"設定・秘密情報・管理画面・バックアップの探索\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:in(\"password\", \"publickey\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"SSH のパスワード・公開鍵認証要求（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:=\"POST\" details.path:=\"/login\" details.body:*) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"囮ログインへの入力送信（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" (details.path:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.query:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.body:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"パストラバーサル・SQLi・スクリプト／コマンド実行を疑う文字列\\\"}\" as _traffic_classification\n| unpack_json from _traffic_classification\n| delete _traffic_classification"
+              "text": "format \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"単独の通信では攻撃意図を判断できない\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"通常3パスの GET/HEAD 以外の HTTP アクセス\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:in(\"GET\", \"HEAD\") details.path:in(\"/\", \"/robots.txt\", \"/favicon.ico\")) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"通常3パスの GET/HEAD 取得。攻撃意図は未確認\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.stage:=\"pre_auth\") \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"SSH 認証前の切断。疎通確認・探索のどちらもあり得る\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" details.stage:*) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"PostgreSQL 初期接続のみ。切断・不正パケットだけでは攻撃意図は不明\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:=\"none\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"SSH のユーザー・認証方式の確認（none）\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" (details.user:* OR details.database:*)) \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"PostgreSQL のユーザー・DB 名を指定した接続。パスワード試行は未観測\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:~\"(?i)(^|/)(?:\\\\.env(?:[./]|$)|\\\\.(?:git|svn|ssh|aws|vscode)(?:/|$)|\\\\.npmrc$|(?:[^/]*(?:backup|dump|database)[^/]*\\\\.(?:sql|zip|tar(?:\\\\.gz)?|gz))$|(?:secrets?|user_secrets)\\\\.(?:json|ya?ml)$|config\\\\.(?:xml|json|php)$|actuator(?:/|$)|wp-admin(?:/|$)|phpmyadmin(?:/|$)|admin(?:/|$))\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"設定・秘密情報・管理画面・バックアップの探索\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:in(\"password\", \"publickey\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"SSH のパスワード・公開鍵認証要求（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:=\"POST\" details.path:=\"/login\" details.body:*) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"囮ログインへの入力送信（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" (details.path:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.query:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.body:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"パストラバーサル・SQLi・スクリプト／コマンド実行を疑う文字列\\\"}\" as _traffic_classification\n| unpack_json from _traffic_classification\n| delete _traffic_classification",
+              "value": "format \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"単独の通信では攻撃意図を判断できない\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"通常3パスの GET/HEAD 以外の HTTP アクセス\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:in(\"GET\", \"HEAD\") details.path:in(\"/\", \"/robots.txt\", \"/favicon.ico\")) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"通常3パスの GET/HEAD 取得。攻撃意図は未確認\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.stage:=\"pre_auth\") \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"SSH 認証前の切断。疎通確認・探索のどちらもあり得る\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" details.stage:*) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"PostgreSQL 初期接続のみ。切断・不正パケットだけでは攻撃意図は不明\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:=\"none\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"SSH のユーザー・認証方式の確認（none）\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" (details.user:* OR details.database:*)) \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"PostgreSQL のユーザー・DB 名を指定した接続。パスワード試行は未観測\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:~\"(?i)(^|/)(?:\\\\.env(?:[./]|$)|\\\\.(?:git|svn|ssh|aws|vscode)(?:/|$)|\\\\.npmrc$|(?:[^/]*(?:backup|dump|database)[^/]*\\\\.(?:sql|zip|tar(?:\\\\.gz)?|gz))$|(?:secrets?|user_secrets)\\\\.(?:json|ya?ml)$|config\\\\.(?:xml|json|php)$|actuator(?:/|$)|wp-admin(?:/|$)|phpmyadmin(?:/|$)|admin(?:/|$))\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"設定・秘密情報・管理画面・バックアップの探索\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:in(\"password\", \"publickey\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"SSH のパスワード・公開鍵認証要求（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:=\"POST\" details.path:=\"/login\" details.body:*) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"囮ログインへの入力送信（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" (details.path:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.query:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.body:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"パストラバーサル・SQLi・スクリプト／コマンド実行を疑う文字列\\\"}\" as _traffic_classification\n| unpack_json from _traffic_classification\n| delete _traffic_classification"
             },
             "options": [
               {
-                "text": "format \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"単独の通信では攻撃意図を判断できない\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:in(\"/\", \"/index.html\", \"/index.php\", \"/favicon.ico\", \"/robots.txt\", \"/healthz\")) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"一般的なページ・メタデータの取得。安全性も攻撃意図も未確認\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.stage:=\"pre_auth\") \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"SSH 認証前の切断。疎通確認・探索のどちらもあり得る\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" details.stage:*) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"PostgreSQL 初期接続のみ。切断・不正パケットだけでは攻撃意図は不明\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:=\"none\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"SSH のユーザー・認証方式の確認（none）\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" (details.user:* OR details.database:*)) \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"PostgreSQL のユーザー・DB 名を指定した接続。パスワード試行は未観測\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:~\"(?i)(^|/)(?:\\\\.env(?:[./]|$)|\\\\.(?:git|svn|ssh|aws|vscode)(?:/|$)|\\\\.npmrc$|(?:[^/]*(?:backup|dump|database)[^/]*\\\\.(?:sql|zip|tar(?:\\\\.gz)?|gz))$|(?:secrets?|user_secrets)\\\\.(?:json|ya?ml)$|config\\\\.(?:xml|json|php)$|actuator(?:/|$)|wp-admin(?:/|$)|phpmyadmin(?:/|$)|admin(?:/|$))\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"設定・秘密情報・管理画面・バックアップの探索\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:in(\"password\", \"publickey\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"SSH のパスワード・公開鍵認証要求（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:=\"POST\" details.path:=\"/login\" details.body:*) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"囮ログインへの入力送信（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" (details.path:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.query:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.body:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"パストラバーサル・SQLi・スクリプト／コマンド実行を疑う文字列\\\"}\" as _traffic_classification\n| unpack_json from _traffic_classification\n| delete _traffic_classification",
-                "value": "format \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"単独の通信では攻撃意図を判断できない\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:in(\"/\", \"/index.html\", \"/index.php\", \"/favicon.ico\", \"/robots.txt\", \"/healthz\")) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"一般的なページ・メタデータの取得。安全性も攻撃意図も未確認\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.stage:=\"pre_auth\") \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"SSH 認証前の切断。疎通確認・探索のどちらもあり得る\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" details.stage:*) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"PostgreSQL 初期接続のみ。切断・不正パケットだけでは攻撃意図は不明\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:=\"none\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"SSH のユーザー・認証方式の確認（none）\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" (details.user:* OR details.database:*)) \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"PostgreSQL のユーザー・DB 名を指定した接続。パスワード試行は未観測\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:~\"(?i)(^|/)(?:\\\\.env(?:[./]|$)|\\\\.(?:git|svn|ssh|aws|vscode)(?:/|$)|\\\\.npmrc$|(?:[^/]*(?:backup|dump|database)[^/]*\\\\.(?:sql|zip|tar(?:\\\\.gz)?|gz))$|(?:secrets?|user_secrets)\\\\.(?:json|ya?ml)$|config\\\\.(?:xml|json|php)$|actuator(?:/|$)|wp-admin(?:/|$)|phpmyadmin(?:/|$)|admin(?:/|$))\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"設定・秘密情報・管理画面・バックアップの探索\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:in(\"password\", \"publickey\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"SSH のパスワード・公開鍵認証要求（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:=\"POST\" details.path:=\"/login\" details.body:*) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"囮ログインへの入力送信（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" (details.path:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.query:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.body:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"パストラバーサル・SQLi・スクリプト／コマンド実行を疑う文字列\\\"}\" as _traffic_classification\n| unpack_json from _traffic_classification\n| delete _traffic_classification",
+                "text": "format \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"単独の通信では攻撃意図を判断できない\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"通常3パスの GET/HEAD 以外の HTTP アクセス\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:in(\"GET\", \"HEAD\") details.path:in(\"/\", \"/robots.txt\", \"/favicon.ico\")) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"通常3パスの GET/HEAD 取得。攻撃意図は未確認\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.stage:=\"pre_auth\") \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"SSH 認証前の切断。疎通確認・探索のどちらもあり得る\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" details.stage:*) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"PostgreSQL 初期接続のみ。切断・不正パケットだけでは攻撃意図は不明\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:=\"none\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"SSH のユーザー・認証方式の確認（none）\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" (details.user:* OR details.database:*)) \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"PostgreSQL のユーザー・DB 名を指定した接続。パスワード試行は未観測\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:~\"(?i)(^|/)(?:\\\\.env(?:[./]|$)|\\\\.(?:git|svn|ssh|aws|vscode)(?:/|$)|\\\\.npmrc$|(?:[^/]*(?:backup|dump|database)[^/]*\\\\.(?:sql|zip|tar(?:\\\\.gz)?|gz))$|(?:secrets?|user_secrets)\\\\.(?:json|ya?ml)$|config\\\\.(?:xml|json|php)$|actuator(?:/|$)|wp-admin(?:/|$)|phpmyadmin(?:/|$)|admin(?:/|$))\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"設定・秘密情報・管理画面・バックアップの探索\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:in(\"password\", \"publickey\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"SSH のパスワード・公開鍵認証要求（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:=\"POST\" details.path:=\"/login\" details.body:*) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"囮ログインへの入力送信（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" (details.path:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.query:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.body:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"パストラバーサル・SQLi・スクリプト／コマンド実行を疑う文字列\\\"}\" as _traffic_classification\n| unpack_json from _traffic_classification\n| delete _traffic_classification",
+                "value": "format \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"単独の通信では攻撃意図を判断できない\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"通常3パスの GET/HEAD 以外の HTTP アクセス\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:in(\"GET\", \"HEAD\") details.path:in(\"/\", \"/robots.txt\", \"/favicon.ico\")) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"通常3パスの GET/HEAD 取得。攻撃意図は未確認\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.stage:=\"pre_auth\") \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"SSH 認証前の切断。疎通確認・探索のどちらもあり得る\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" details.stage:*) \"{\\\"traffic_class\\\": \\\"unknown\\\", \\\"classification_reason\\\": \\\"PostgreSQL 初期接続のみ。切断・不正パケットだけでは攻撃意図は不明\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:=\"none\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"SSH のユーザー・認証方式の確認（none）\\\"}\" as _traffic_classification\n| format if (protocol:=\"postgres\" (details.user:* OR details.database:*)) \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"PostgreSQL のユーザー・DB 名を指定した接続。パスワード試行は未観測\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.path:~\"(?i)(^|/)(?:\\\\.env(?:[./]|$)|\\\\.(?:git|svn|ssh|aws|vscode)(?:/|$)|\\\\.npmrc$|(?:[^/]*(?:backup|dump|database)[^/]*\\\\.(?:sql|zip|tar(?:\\\\.gz)?|gz))$|(?:secrets?|user_secrets)\\\\.(?:json|ya?ml)$|config\\\\.(?:xml|json|php)$|actuator(?:/|$)|wp-admin(?:/|$)|phpmyadmin(?:/|$)|admin(?:/|$))\") \"{\\\"traffic_class\\\": \\\"probe\\\", \\\"classification_reason\\\": \\\"設定・秘密情報・管理画面・バックアップの探索\\\"}\" as _traffic_classification\n| format if (protocol:=\"ssh\" details.auth_method:in(\"password\", \"publickey\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"SSH のパスワード・公開鍵認証要求（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" details.method:=\"POST\" details.path:=\"/login\" details.body:*) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"囮ログインへの入力送信（攻撃意図は要確認）\\\"}\" as _traffic_classification\n| format if (protocol:=\"http\" (details.path:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.query:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\" OR details.body:~\"(?i)(\\\\.\\\\.(?:/|%2f|%5c)|%2e%2e(?:/|%2f|%5c)|union(?:\\\\s|%20|\\\\+)+(?:all(?:\\\\s|%20|\\\\+)+)?select\\\\b|(?:<|%3c)script\\\\b|(?:;|%3b|\\\\||%7c)(?:\\\\s|%20|\\\\+)*(?:curl|wget|bash|sh)(?:\\\\s|%20|\\\\+))\")) \"{\\\"traffic_class\\\": \\\"attack\\\", \\\"classification_reason\\\": \\\"パストラバーサル・SQLi・スクリプト／コマンド実行を疑う文字列\\\"}\" as _traffic_classification\n| unpack_json from _traffic_classification\n| delete _traffic_classification",
                 "selected": true
               }
             ],
