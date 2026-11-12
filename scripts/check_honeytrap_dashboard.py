@@ -54,8 +54,12 @@ def validate_structure(dashboard):
     assert variables["traffic_class"]["current"]["value"] == ["$__all"]
     assert variables["logsql"]["type"] == "textbox"
     assert variables["logsql"]["current"]["value"] == ""
-    assert variables["known_traffic"]["current"]["value"] == "NOT traffic_class:*"
-    assert [item["name"] for item in variables.values() if item.get("hide", 0) != 2] == ["traffic_class", "logsql"]
+    assert variables["known_traffic"]["current"]["value"] == 'src_ip:="219.104.137.232"'
+    assert 'operational' not in variables["traffic_class"]["query"]
+    assert variables["include_known"]["type"] == "switch"
+    assert variables["include_known"]["current"]["value"] == "false"
+    assert [o["value"] for o in variables["include_known"]["options"]] == ["true", "false"]
+    assert [item["name"] for item in variables.values() if item.get("hide", 0) != 2] == ["traffic_class", "include_known", "logsql"]
     assert variables["effective_logsql"]["type"] == "query"
     assert variables["effective_logsql"]["hide"] == 2
     assert variables["effective_logsql"]["skipUrlSync"]
@@ -71,6 +75,7 @@ def validate_structure(dashboard):
             assert expr.count("${effective_logsql:raw}") == 1, panel["title"]
             assert expr.count("${traffic_class:regex}") == 1, panel["title"]
             assert expr.count("${known_traffic:raw}") == 1, panel["title"]
+            assert expr.count("${include_known:raw}") == 1, panel["title"]
             assert expr.count("${traffic_classifier:raw}") == 1, panel["title"]
             assert expr.index("${effective_logsql:raw}") < expr.index("| stats") if "| stats" in expr else True
     table = next(panel for panel in dashboard["panels"] if panel["id"] == 4)
@@ -78,6 +83,7 @@ def validate_structure(dashboard):
     assert "details.method" in table["targets"][0]["expr"]
     assert "details.query" in table["targets"][0]["expr"]
     assert "details.user_agent" in table["targets"][0]["expr"]
+    assert "is_known" in table["targets"][0]["expr"]
     return {name: item["current"]["value"] for name, item in variables.items()}
 
 
@@ -119,6 +125,10 @@ def validate_classification(endpoint, dashboard, defaults):
         ("json_secret", "unknown", {"protocol": "http", "details.path": "/", "details.body": '{"password": "fixture-secret"}'}),
         ("query_secret", "unknown", {"protocol": "http", "details.path": "/", "details.query": "token=fixture-secret&foo=bar"}),
         ("verified_monitor", "unknown", {"protocol": "http", "details.path": "/", "src_ip": "192.0.2.25", "domain": "fixture.invalid"}),
+        ("known_root", "unknown", {"protocol": "http", "details.path": "/", "src_ip": "219.104.137.232"}),
+        ("known_probe", "probe", {"protocol": "http", "details.path": "/AGENTS.md", "src_ip": "219.104.137.232"}),
+        ("known_attack", "attack", {"protocol": "http", "details.path": "/login", "details.method": "POST", "details.body": "password=fixture-secret", "src_ip": "219.104.137.232"}),
+        ("near_known_ip", "probe", {"protocol": "http", "details.path": "/AGENTS.md", "src_ip": "219.104.137.233"}),
     ]
     for path in ["/", "/robots.txt", "/favicon.ico"]:
         for method in ["GET", "HEAD", "POST", "OPTIONS", "PUT", "DELETE"]:
@@ -133,20 +143,28 @@ def validate_classification(endpoint, dashboard, defaults):
     common = table_expr.split("\n| replace_regexp", 1)[0]
     common = common.replace('kubernetes.pod_namespace:="nuage-honeytrap" event:="honeypot_attack"', synthetic, 1)
 
-    actual = query(endpoint, interpolate(common, {**defaults, "logsql": "*"}) + " | fields case, traffic_class, classification_reason")
+    known_cases = {name for name, _, fields in cases if fields.get("src_ip") == "219.104.137.232"}
+    visible_cases = {name for name, _, _ in cases} - known_cases
+    actual = query(endpoint, interpolate(common, {**defaults, "include_known": "true", "logsql": "*"}) + " | fields case, traffic_class, classification_reason, is_known")
     actual_classes = {row["case"]: row["traffic_class"] for row in actual}
     expected_classes = {name: expected for name, expected, _ in cases}
     assert actual_classes == expected_classes, {name: (expected, actual_classes.get(name)) for name, expected in expected_classes.items() if actual_classes.get(name) != expected}
     assert all(row["classification_reason"] for row in actual)
+    assert {row["case"] for row in actual if row["is_known"] == "true"} == known_cases
     assert "パスワード試行は未観測" in next(row["classification_reason"] for row in actual if row["case"] == "pg_startup")
     selected = query(endpoint, interpolate(common, defaults) + " | fields case, traffic_class")
-    assert {row["case"] for row in selected} == {name for name, _, _ in cases}
-    for categories in [["probe"], ["probe", "attack"], ["unknown"], ["operational"]]:
-        selected = query(endpoint, interpolate(common, {**defaults, "traffic_class": categories}) + " | fields case, traffic_class")
-        assert {row["case"] for row in selected} == {name for name, category, _ in cases if category in categories}, categories
-    known = 'src_ip:="192.0.2.25" domain:="fixture.invalid"'
-    operational = query(endpoint, interpolate(common, {**defaults, "known_traffic": known, "logsql": 'traffic_class:="operational"'}) + " | fields case, traffic_class")
-    assert [row["case"] for row in operational] == ["verified_monitor"]
+    assert {row["case"] for row in selected} == visible_cases
+    for categories in [["probe"], ["probe", "attack"], ["unknown"]]:
+        for include in ["false", "true"]:
+            selected = query(endpoint, interpolate(common, {**defaults, "traffic_class": categories, "include_known": include}) + " | fields case, traffic_class")
+            expected = {name for name, category, _ in cases if category in categories and (include == "true" or name not in known_cases)}
+            assert {row["case"] for row in selected} == expected, (categories, include)
+    known_only = query(endpoint, interpolate(common, {**defaults, "include_known": "true", "logsql": 'is_known:="true"'}) + " | fields case, traffic_class")
+    assert {row["case"] for row in known_only} == known_cases
+    excluded = query(endpoint, interpolate(common, {**defaults, "logsql": 'is_known:="true"'}) + " | fields case")
+    assert excluded == []
+    combined = query(endpoint, interpolate(common, {**defaults, "include_known": "true", "traffic_class": ["probe"], "logsql": 'is_known:="true" details.path:="/AGENTS.md"'}) + " | fields case")
+    assert [row["case"] for row in combined] == ["known_probe"]
 
     # 単一の入力欄で前方一致・正規表現・論理式・運用通信の除外を扱えることを確認する。
     filter_cases = [
@@ -160,7 +178,7 @@ def validate_classification(endpoint, dashboard, defaults):
     ]
     for expression, expected in filter_cases:
         filtered = query(endpoint, interpolate(common, {**defaults, "logsql": expression}) + " | fields case")
-        assert {row["case"] for row in filtered} == expected, expression
+        assert {row["case"] for row in filtered} == expected & visible_cases, expression
 
     variable = next(v for v in dashboard["templating"]["list"] if v["name"] == "effective_logsql")
     for text in ["", " ", "\t\n", '*', 'details.path:="/.git"*', 'details.path:~"^/[.]git(/|$)"', r'details.path:~"^/\\.git(/|$)"', "details.path:='/AGENTS.md'", 'details.user_agent:~"日本語"', 'protocol:="http" OR']:
@@ -170,7 +188,7 @@ def validate_classification(endpoint, dashboard, defaults):
         assert [row["effective_filter"] for row in normalized] == [expected], (text, normalized)
     for blank in ["", " ", "\t\n"]:
         selected = query(endpoint, interpolate(common, {**defaults, "logsql": blank}) + " | fields case")
-        assert {row["case"] for row in selected} == {name for name, _, _ in cases}
+        assert {row["case"] for row in selected} == visible_cases
     try:
         query(endpoint, interpolate(common, {**defaults, "logsql": 'protocol:="http" OR'}))
     except urllib.error.HTTPError as error:
@@ -188,9 +206,9 @@ def validate_classification(endpoint, dashboard, defaults):
     # 分類後の表示用マスクを通しても、本文・クエリの秘密値が一覧に残らないことを確認する。
     masked_expr = table_expr.replace('kubernetes.pod_namespace:="nuage-honeytrap" event:="honeypot_attack"', synthetic, 1)
     masked_expr = masked_expr.split("\n| fields", 1)[0] + " | fields case, details.password, details.body, details.query, payload"
-    masked = query(endpoint, interpolate(masked_expr, {**defaults, "logsql": "*"}))
+    masked = query(endpoint, interpolate(masked_expr, {**defaults, "include_known": "true", "logsql": "*"}))
     assert "fixture-secret" not in json.dumps(masked)
-    print(f"PASS: {len(cases)} 件の分類例、分類選択、空欄の正規化、前方一致・論理式・不正な式、マスク")
+    print(f"PASS: {len(cases)} 件の分類例、既知IPの完全一致・表示切替・分類の独立性、空欄・検索・マスク")
 
 
 def validate_live_queries(endpoint, dashboard, defaults):
