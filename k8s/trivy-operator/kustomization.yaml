@@ -75,6 +75,8 @@ configMapGenerator:
     files:
       - dashboards/trivy-operator.json
     options:
+      annotations:
+        grafana_folder: nuage
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: true

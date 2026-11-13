@@ -1,0 +1,54 @@
+# 匿名 Viewer でも使える固定リンク集である。HTML は Grafana 標準のサニタイズを通す。
+# /grafana/ 配下のホームと /d/ のどちらから開いても同じ UID に移動する。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-home
+  annotations:
+    grafana_folder: nuage
+  labels:
+    grafana_dashboard: "1"
+data:
+  home.json: |
+    {
+      "uid": "nuage-home",
+      "title": "nuage ホーム",
+      "description": "よく見る自作ダッシュボードへのリンク集である。",
+      "tags": [
+        "nuage",
+        "home"
+      ],
+      "timezone": "Asia/Tokyo",
+      "editable": false,
+      "schemaVersion": 41,
+      "version": 1,
+      "refresh": "",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "timepicker": {
+        "hidden": true
+      },
+      "templating": {
+        "list": []
+      },
+      "links": [],
+      "panels": [
+        {
+          "id": 1,
+          "type": "text",
+          "title": "よく見るダッシュボード",
+          "gridPos": {
+            "h": 19,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "options": {
+            "mode": "html",
+            "content": "<a href=\"/grafana/d/nuage-wall\" style=\"display: block; padding: 12px 16px; margin-bottom: 10px; border: 1px solid #808080; border-radius: 8px; text-decoration: none;\"><strong style=\"display: block; font-size: 18px; line-height: 26px;\">壁掛けモニター</strong><span style=\"display: block; font-size: 14px; line-height: 22px;\">リソースの状態とアラートをひと目で確認する</span></a>\n<a href=\"/grafana/d/trivy-operator\" style=\"display: block; padding: 12px 16px; margin-bottom: 10px; border: 1px solid #808080; border-radius: 8px; text-decoration: none;\"><strong style=\"display: block; font-size: 18px; line-height: 26px;\">Security</strong><span style=\"display: block; font-size: 14px; line-height: 22px;\">脆弱性と設定不備を確認する</span></a>\n<a href=\"/grafana/d/nuage-ai-agent-usage\" style=\"display: block; padding: 12px 16px; margin-bottom: 10px; border: 1px solid #808080; border-radius: 8px; text-decoration: none;\"><strong style=\"display: block; font-size: 18px; line-height: 26px;\">AI Agent Usage Overview</strong><span style=\"display: block; font-size: 14px; line-height: 22px;\">AI エージェントの利用状況を確認する</span></a>\n<a href=\"/grafana/d/nuage-honeytrap-attack-map\" style=\"display: block; padding: 12px 16px; margin-bottom: 10px; border: 1px solid #808080; border-radius: 8px; text-decoration: none;\"><strong style=\"display: block; font-size: 18px; line-height: 26px;\">攻撃マップ</strong><span style=\"display: block; font-size: 14px; line-height: 22px;\">Honeytrap の攻撃元と傾向を確認する</span></a>\n<a href=\"/grafana/d/nuage-honeytrap\" style=\"display: block; padding: 12px 16px; margin-bottom: 10px; border: 1px solid #808080; border-radius: 8px; text-decoration: none;\"><strong style=\"display: block; font-size: 18px; line-height: 26px;\">侵入検知ハニーポット</strong><span style=\"display: block; font-size: 14px; line-height: 22px;\">ハニーポットへのアクセスを詳しく確認する</span></a>\n<a href=\"/grafana/d/nuage-node-health\" style=\"display: block; padding: 12px 16px; margin-bottom: 10px; border: 1px solid #808080; border-radius: 8px; text-decoration: none;\"><strong style=\"display: block; font-size: 18px; line-height: 26px;\">Node Health Overview</strong><span style=\"display: block; font-size: 14px; line-height: 22px;\">ノードの稼働状況を確認する</span></a>"
+          }
+        }
+      ]
+    }
