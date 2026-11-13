@@ -292,17 +292,12 @@ grafana:
     dashboards:
       # 全 Namespace の ConfigMap (label grafana_dashboard: "1") を監視して自動ロードする
       searchNamespace: ALL
-      folder: /tmp/dashboards
-      # 親チャート既定の default を外し、注釈の相対パスとホームのパスをそろえる
-      defaultFolderName: ""
       folderAnnotation: grafana_folder
       provider:
         foldersFromFilesStructure: true
       label: grafana_dashboard
       labelValue: "1"
   grafana.ini:
-    dashboards:
-      default_home_dashboard_path: /tmp/dashboards/nuage/home.json
     server:
       root_url: "https://monitoring.wpcapp.net/grafana/"
       serve_from_sub_path: true

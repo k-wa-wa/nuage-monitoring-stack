@@ -3,14 +3,13 @@
 # requires-python = ">=3.11"
 # dependencies = ["PyYAML>=6.0,<7"]
 # ///
-"""Grafana ホーム・フォルダ・preview 除外の契約をレンダリング結果で検証する。
+"""Grafana フォルダ・標準ホーム・preview 除外の契約をレンダリング結果で検証する。
 
-実行: uv run scripts/check_grafana_home.py
+実行: uv run scripts/check_grafana_folders.py
 kustomize と helm を PATH に用意する。クラスタへの接続や書き込みは行わない。
 """
 
 import configparser
-from html.parser import HTMLParser
 import json
 from pathlib import Path, PurePosixPath
 import subprocess
@@ -19,7 +18,7 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LINK_UIDS = [
+CUSTOM_UIDS = [
     "nuage-wall",
     "trivy-operator",
     "nuage-ai-agent-usage",
@@ -27,16 +26,6 @@ LINK_UIDS = [
     "nuage-honeytrap",
     "nuage-node-health",
 ]
-
-
-class Links(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.hrefs = []
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "a":
-            self.hrefs.append(dict(attrs).get("href"))
 
 
 def require(condition, message):
@@ -93,34 +82,31 @@ def validate(documents, scope):
             require(uid not in by_uid, f"UID が重複する: {uid}")
             by_uid[uid] = (dashboard, path)
 
-    expected = set(LINK_UIDS) | {"nuage-home"}
+    expected = set(CUSTOM_UIDS)
     if scope == "base":
         expected.remove("trivy-operator")
     require(set(by_uid) == expected, f"{scope}: 自作ダッシュボードの UID 一覧が変わっている")
-    home, home_path = by_uid["nuage-home"]
     config = configparser.ConfigParser(interpolation=None)
     config.read_string(resource("ConfigMap", "vm-grafana")["data"]["grafana.ini"])
     require(
-        PurePosixPath(config["dashboards"]["default_home_dashboard_path"]) == home_path,
-        "既定ホームのパスと sidecar が書くホームのパスが異なる",
+        not config.has_option("dashboards", "default_home_dashboard_path"),
+        "標準ホームを上書きする設定が存在する",
     )
-    links = Links()
-    for panel in home["panels"]:
-        require(panel["type"] == "text", "ホームに text 以外のパネルが存在する")
-        require(panel["options"]["mode"] == "html", "リンク集が HTML ではない")
-        links.feed(panel["options"]["content"])
+    grafana = next(
+        container for container in deployment["spec"]["template"]["spec"]["containers"]
+        if container["name"] == "grafana"
+    )
     require(
-        links.hrefs == [f"/grafana/d/{uid}" for uid in LINK_UIDS],
-        "ホームの6リンクの UID・順序・サブパスが変わっている",
+        not any(item["name"] == "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH"
+                for item in grafana.get("env", [])),
+        "標準ホームを上書きする環境変数が存在する",
     )
 
     sync = yaml.safe_load(resource("ConfigMap", "vm-sync-job-config")["data"]["config.yaml"])
     standard_folder = sync["dashboards"]["common"]["annotations"][annotation]
     require(
-        isinstance(standard_folder, str)
-        and standard_folder not in ("", ".", "..", "nuage")
-        and "/" not in standard_folder,
-        "標準ダッシュボードの注釈が独立した単一フォルダではない",
+        standard_folder == "標準",
+        "チャート既定ダッシュボードのフォルダ注釈が標準ではない",
     )
 
 

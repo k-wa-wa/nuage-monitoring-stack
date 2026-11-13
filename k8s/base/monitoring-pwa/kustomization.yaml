@@ -7,4 +7,3 @@ resources:
   - grafana-dashboard-wall.yaml
   - grafana-dashboard-honeytrap.yaml
   - grafana-dashboard-honeypot.yaml
-  - grafana-dashboard-home.yaml
