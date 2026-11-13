@@ -27,6 +27,39 @@ CUSTOM_UIDS = [
     "nuage-node-health",
 ]
 
+# チャート0.93.0で維持する取得元と個別設定である。外部取得後の42本の実数は同期後に確認する。
+STANDARD_SOURCES = {
+    "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaLogs/master/dashboards/victorialogs.json",
+    "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaLogs/master/dashboards/vlagent.json",
+    "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/master/dashboards/operator.json",
+    "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/master/dashboards/victoriametrics.json",
+    "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/master/dashboards/vmagent.json",
+    "https://raw.githubusercontent.com/VictoriaMetrics/VictoriaMetrics/master/dashboards/vmalert.json",
+    "https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-system-api-server.json",
+    "https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-global.json",
+    "https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-namespaces.json",
+    "https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-nodes.json",
+    "https://raw.githubusercontent.com/dotdc/grafana-dashboards-kubernetes/master/dashboards/k8s-views-pods.json",
+    "https://raw.githubusercontent.com/prometheus-operator/kube-prometheus/main/manifests/grafana-dashboardDefinitions.yaml",
+    "https://raw.githubusercontent.com/rfmoz/grafana-dashboards/master/prometheus/node-exporter-full.json",
+}
+STANDARD_OVERRIDES = {
+    "controller-manager": {"enabled": False},
+    "node-exporter-full": {"clusterMetric": "node_uname_info"},
+    "proxy": {"enabled": False},
+    "scheduler": {"enabled": False},
+    "victorialogs-cluster": {"clusterMetric": "vm_app_version"},
+    "victorialogs-single-node": {"clusterMetric": "vm_app_version"},
+    "victorialogs-vlagent": {"clusterMetric": "vm_app_version"},
+    "victoriametrics-cluster": {"clusterMetric": "vm_app_version"},
+    "victoriametrics-operator": {"clusterMetric": "vm_app_version"},
+    "victoriametrics-single-node": {"clusterMetric": "vm_app_version"},
+    "victoriametrics-vmagent": {"clusterMetric": "vm_app_version"},
+    "victoriametrics-vmalert": {"clusterMetric": "vm_app_version"},
+    "victoriatraces-cluster": {"clusterMetric": "vm_app_version"},
+    "victoriatraces-single-node": {"clusterMetric": "vm_app_version"},
+}
+
 
 def require(condition, message):
     if not condition:
@@ -57,6 +90,9 @@ def validate(documents, scope):
         if container["name"] == "grafana-sc-dashboard"
     )
     env = {item["name"]: item.get("value") for item in sidecar["env"]}
+    require(env.get("NAMESPACE") == "ALL", "sidecar が全 Namespace を監視していない")
+    require(env.get("LABEL") == "grafana_dashboard", "sidecar の監視ラベルが異なる")
+    require(env.get("LABEL_VALUE") == "1", "sidecar の監視ラベル値が異なる")
     annotation = env["FOLDER_ANNOTATION"]
     folder = PurePosixPath(env["FOLDER"])
     require(folder.is_absolute(), "sidecar の出力先が絶対パスではない")
@@ -103,7 +139,22 @@ def validate(documents, scope):
     )
 
     sync = yaml.safe_load(resource("ConfigMap", "vm-sync-job-config")["data"]["config.yaml"])
-    standard_folder = sync["dashboards"]["common"]["annotations"][annotation]
+    standard = sync["dashboards"]
+    require(
+        {source["url"] for source in standard.get("sources", [])
+         if source.get("enabled", True)} == STANDARD_SOURCES,
+        "標準ダッシュボードの有効な取得元が変わっている",
+    )
+    require(
+        standard.get("dashboards") == STANDARD_OVERRIDES,
+        "標準ダッシュボードの個別設定が変わっている",
+    )
+    require(
+        standard["common"]["grafana"]["labelName"] == env["LABEL"]
+        and standard["common"]["grafana"]["labelValue"] == env["LABEL_VALUE"],
+        "標準ダッシュボードのラベルと sidecar の監視対象が異なる",
+    )
+    standard_folder = standard["common"]["annotations"][annotation]
     require(
         standard_folder == "標準",
         "チャート既定ダッシュボードのフォルダ注釈が標準ではない",
