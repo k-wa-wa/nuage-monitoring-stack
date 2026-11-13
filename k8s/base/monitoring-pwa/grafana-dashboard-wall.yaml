@@ -17,6 +17,8 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-dashboard-wall
+  annotations:
+    grafana_folder: nuage
   labels:
     grafana_dashboard: "1"
 data:

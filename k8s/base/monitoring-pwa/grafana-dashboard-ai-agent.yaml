@@ -2,6 +2,8 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-dashboard-ai-agent
+  annotations:
+    grafana_folder: nuage
   labels:
     grafana_dashboard: "1"
 data:

@@ -53,3 +53,21 @@ patches:
       kind: ConfigMap
       metadata:
         name: grafana-dashboard-wall
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboard-honeytrap
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-honeytrap
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboard-honeypot
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: grafana-dashboard-honeypot
