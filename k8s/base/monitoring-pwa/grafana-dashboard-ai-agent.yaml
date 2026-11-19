@@ -116,7 +116,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\",model!~\".*(opus|sonnet|haiku|flash|argon|gpt-oss).*\"}[$__range])) or vector(0)",
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\",model!~\".*(opus|sonnet|haiku|flash|argon|hydrogen|gpt-oss|astra|sol|luna|terra).*\"}[$__range])) or vector(0)",
               "instant": true
             }
           ],
