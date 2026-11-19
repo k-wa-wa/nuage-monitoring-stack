@@ -30,7 +30,13 @@ helmCharts:
         annotations:
           prometheus.io/scrape: "true"
           prometheus.io/port: "8080"
-        scanJobsConcurrentLimit: 1
+        # Job 終了後に即削除するとタイムアウトや OOMKilled の理由・イベントを追えないため、短時間だけ残す。
+        # LimitChecker は完了済み Job も同時実行数 (scanJobsConcurrentLimit) に数えるため、長時間の TTL は
+        # 後続スキャンを詰まらせる。2m の保持と並行数 2 の組み合わせで、ログ回収の猶予と進行を両立する。
+        scanJobTTL: "2m"
+        scanJobsConcurrentLimit: 2
+        # 失敗・スキップ時の経緯 (V(1) ログを含む) を VictoriaLogs に残して原因を追えるようにする。
+        logDevMode: true
         # aivisspeech (pechka) のスキャンが既定の 5m (activeDeadlineSeconds: 300) で打ち切られ、
         # VulnerabilityReport が作られないまま評価から落ちていたため 30m に延ばす。
         # 実スキャン所要時間は未計測のため、大きな ML イメージでも収まるよう余裕を持たせた。
@@ -52,8 +58,26 @@ helmCharts:
           cpu: 500m
           # operator が OOMKilled で CrashLoopBackOff になったため 512Mi から上げた。
           memory: 1Gi
+      trivyOperator:
+        # rootfs スキャンでは対象イメージ内の全ディレクトリを読むため、コンテナ内の実行ユーザーを root (UID 0) にする。
+        # privileged: false・allowPrivilegeEscalation: false・capabilities.drop: [ALL]・readOnlyRootFilesystem: true は維持する。
+        scanJobPodTemplateContainerSecurityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsUser: 0
       trivy:
         offlineScan: true
+        # aivisspeech-engine (展開後 4GB 超) の image スキャンで、ghcr.io からの層取得中に HTTP/2 PROTOCOL_ERROR で
+        # 中断されるため、稼働中ノード上のイメージを直接読む rootfs スキャンに切り替える (ClientServer と併用)。
+        # filesystem コマンドは TypeIndividualPkgs (python-pkg・gobinary 等) を無効化するため、image と同じ
+        # アナライザ構成 (OS + インストール済み言語パッケージ) を保つ rootfs を使う。
+        command: rootfs
+        # rootfs スキャン時に initContainer が配置した trivy バイナリ自身 (/var/trivyoperator/trivy) を走査対象から外す。
+        skipDirs: "/var/trivyoperator"
         # operator.scanJobTimeout と合わせて Trivy CLI 側の制限時間も 30m0s に延ばす (既定 5m0s)。
         timeout: "30m0s"
         # キャッシュ専用のため PVC を作らず emptyDir を使う (再起動時は起動時に trivy-db を再取得する)。
@@ -71,10 +95,12 @@ helmCharts:
         resources:
           requests:
             cpu: 100m
-            memory: 128Mi
+            memory: 256Mi
           limits:
-            cpu: 500m
-            memory: 512Mi
+            # cilium (apply-sysctl-overwrites) が 512Mi で OOMKilled になったこと、および 4GB 超の
+            # aivisspeech イメージを rootfs でローカル走査 (--list-all-pkgs 含む) する負荷を見込み、2Gi に上げる。
+            cpu: "1"
+            memory: 2Gi
 
 configMapGenerator:
   # このダッシュボードは k8s/base/victoria/rules.yaml の VMRule trivy-summary-rules (recording rule) に依存する。
