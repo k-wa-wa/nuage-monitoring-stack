@@ -45,7 +45,8 @@ spec:
                 - /scripts/evaluate.py
                 - --assets=/etc/ssvc/assets.yaml
                 - --overrides=/etc/ssvc/overrides.yaml
-                - --table=/scripts/deployer_patch_application_priority_1_0_0.csv
+                - --table=/scripts/deployer_patch_application_priority_nuage.csv
+                - --base-table=/scripts/deployer_patch_application_priority_1_0_0.csv
                 - --vlogs-url=http://vmauth-vm.nuage-monitoring-stack.svc:8427/select/logsql/query
                 - --push-url=http://vmagent-vm.nuage-monitoring-stack.svc:8429/api/v1/import/prometheus
               env:

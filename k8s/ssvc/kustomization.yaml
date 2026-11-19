@@ -19,9 +19,10 @@ configMapGenerator:
     files:
       - declarations/assets.yaml
       - declarations/overrides.yaml
-  # 評価スクリプトと CERT/CC SSVC Deployer 判定表。テスト (test_evaluate.py) は載せない
+  # 評価スクリプト、CERT/CC SSVC Deployer 判定表（上流・nuage 用）。テスト (test_evaluate.py) は載せない
   #   python3 -m unittest discover -s k8s/ssvc/scripts
   - name: ssvc-scripts
     files:
       - scripts/evaluate.py
       - scripts/deployer_patch_application_priority_1_0_0.csv
+      - scripts/deployer_patch_application_priority_nuage.csv

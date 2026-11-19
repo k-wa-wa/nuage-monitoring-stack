@@ -25,16 +25,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import evaluate  # noqa: E402
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-CSV_PATH = os.path.join(SCRIPTS_DIR, "deployer_patch_application_priority_1_0_0.csv")
+UPSTREAM_CSV_PATH = os.path.join(SCRIPTS_DIR, "deployer_patch_application_priority_1_0_0.csv")
+CSV_PATH = os.path.join(SCRIPTS_DIR, "deployer_patch_application_priority_nuage.csv")
 SSVC_DIR = os.path.dirname(SCRIPTS_DIR)
 
 
 class DecisionTableTest(unittest.TestCase):
-    def test_all_72_combinations_match_csv(self):
-        table = evaluate.load_decision_table(CSV_PATH)
+    def _assert_csv_matches_table(self, csv_path):
+        table = evaluate.load_decision_table(csv_path)
         self.assertEqual(len(table), 72)
 
-        with open(CSV_PATH, encoding="utf-8", newline="") as f:
+        with open(csv_path, encoding="utf-8", newline="") as f:
             rows = list(csv.DictReader(f))
         self.assertEqual(len(rows), 72)
 
@@ -49,9 +50,67 @@ class DecisionTableTest(unittest.TestCase):
             self.assertEqual(
                 evaluate.evaluate_ssvc(exp, expo, auto, hi, table),
                 expected,
-                f"mismatch for {(exp, expo, auto, hi)}",
+                f"mismatch in {os.path.basename(csv_path)} for {(exp, expo, auto, hi)}",
             )
         self.assertEqual(len(seen), 72)
+        return rows, table
+
+    def test_all_72_combinations_match_csv(self):
+        self._assert_csv_matches_table(UPSTREAM_CSV_PATH)
+        self._assert_csv_matches_table(CSV_PATH)
+
+    def test_custom_table_differs_from_upstream_only_on_expected_5_rows(self):
+        upstream_rows, upstream_table = self._assert_csv_matches_table(UPSTREAM_CSV_PATH)
+        custom_rows, custom_table = self._assert_csv_matches_table(CSV_PATH)
+
+        dec_col = "Defer, Scheduled, Out-of-Cycle, Immediate v1.0.0"
+        expected_changed_rows = {
+            "64": ("scheduled", "immediate"),
+            "65": ("out-of-cycle", "immediate"),
+            "66": ("out-of-cycle", "immediate"),
+            "68": ("out-of-cycle", "immediate"),
+            "69": ("out-of-cycle", "immediate"),
+        }
+
+        actual_changed = {}
+        for up_row, cu_row in zip(upstream_rows, custom_rows):
+            row_id = up_row["row"].strip()
+            self.assertEqual(row_id, cu_row["row"].strip())
+            for col in (
+                "Exploitation v1.1.0",
+                "System Exposure v1.0.1",
+                "Automatable v2.0.0",
+                "Human Impact v2.0.2",
+            ):
+                self.assertEqual(up_row[col].strip(), cu_row[col].strip())
+            up_dec = up_row[dec_col].strip()
+            cu_dec = cu_row[dec_col].strip()
+            if up_dec != cu_dec:
+                actual_changed[row_id] = (up_dec, cu_dec)
+                self.assertEqual(up_row["Exploitation v1.1.0"].strip(), "active")
+                self.assertEqual(up_row["System Exposure v1.0.1"].strip(), "open")
+
+        self.assertEqual(actual_changed, expected_changed_rows)
+
+        diff_keys = evaluate.diff_decision_tables(upstream_table, custom_table)
+        self.assertEqual(
+            diff_keys,
+            frozenset(
+                {
+                    ("active", "open", "no", "low"),
+                    ("active", "open", "no", "medium"),
+                    ("active", "open", "no", "high"),
+                    ("active", "open", "yes", "low"),
+                    ("active", "open", "yes", "medium"),
+                }
+            ),
+        )
+        self.assertEqual(evaluate.DEFAULT_TABLE_PATH, CSV_PATH)
+        self.assertEqual(evaluate.DEFAULT_BASE_TABLE_PATH, UPSTREAM_CSV_PATH)
+        with open(os.path.join(SSVC_DIR, "cronjob.yaml"), encoding="utf-8") as f:
+            cronjob_text = f.read()
+        self.assertIn("--table=/scripts/deployer_patch_application_priority_nuage.csv", cronjob_text)
+        self.assertIn("--base-table=/scripts/deployer_patch_application_priority_1_0_0.csv", cronjob_text)
 
     def test_missing_or_invalid_inputs_return_unknown(self):
         table = evaluate.load_decision_table(CSV_PATH)
@@ -336,6 +395,7 @@ class VulnrichmentAndWorkloadTest(unittest.TestCase):
 
 class EvaluateFindingsTest(unittest.TestCase):
     def setUp(self):
+        self.base_table = evaluate.load_decision_table(UPSTREAM_CSV_PATH)
         self.table = evaluate.load_decision_table(CSV_PATH)
         f = tempfile.NamedTemporaryFile("w", delete=False, suffix=".yaml", encoding="utf-8")
         f.write(
@@ -512,12 +572,14 @@ hosts:
             vuln_map,
             epss_map,
             self.table,
+            base_decision_table=self.base_table,
         )
 
         by_title = {r["title"]: r for r in evaluated}
         self.assertEqual(by_title["kev test"]["exploitation"], "active")
         self.assertEqual(by_title["kev test"]["exploitation_source"], "KEV")
         self.assertEqual(by_title["kev test"]["decision"], "immediate")
+        self.assertEqual(by_title["kev test"]["decision_source"], "ssvc_table")
         self.assertEqual(by_title["kev test"]["epss"], 0.95)
 
         self.assertEqual(by_title["ghsa test"]["decision"], "unknown")
@@ -532,13 +594,20 @@ hosts:
         self.assertEqual(by_title["unregistered ns"]["decision"], "unregistered")
         self.assertEqual(by_title["unregistered repo"]["decision"], "unregistered")
 
-        metrics = evaluate.render_metrics(counts, reg, self.assets, expired_ovr, 1700000000)
+        metrics = evaluate.render_metrics(
+            counts, reg, self.assets, expired_ovr, 1700000000, evaluated=evaluated
+        )
         # CVE ID はメトリクスに出ない
         self.assertNotIn("CVE-", metrics)
         self.assertNotIn("GHSA-", metrics)
         self.assertIn("nuage_ssvc_unregistered_targets_total 2", metrics)
         self.assertIn("nuage_ssvc_unscanned_assets_total 1", metrics)
         self.assertIn("nuage_ssvc_expired_overrides_total 1", metrics)
+        self.assertIn("nuage_ssvc_active_exploitation_total 3", metrics)
+        self.assertIn(
+            'nuage_ssvc_exploitation_findings{source="k8s",namespace="pechka",target="api",exploitation="active"} 1',
+            metrics,
+        )
         self.assertIn("nuage_ssvc_last_success_timestamp_seconds 1700000000", metrics)
         # 未登録対象にも全 7 種の decision が 0 で送られる (前日の残存と二重カウントしない)
         for dec in evaluate.ALL_METRIC_DECISIONS:
@@ -553,6 +622,147 @@ hosts:
             )
         self.assertIn(
             'nuage_ssvc_unscanned_assets{host="nuc-1",kind="proxmox",human_impact="very high",exposure="controlled"} 1',
+            metrics,
+        )
+
+    def test_active_open_medium_becomes_immediate_with_custom_decision_source(self):
+        # pechka (medium, open) の aivisspeech にある KEV 2 件に相当する入力 (automatable=no / yes)
+        f_assets = tempfile.NamedTemporaryFile("w", delete=False, suffix=".yaml", encoding="utf-8")
+        f_assets.write(
+            """
+namespaces:
+  pechka:
+    human_impact: medium
+    workloads:
+      mongodb:
+        exposure: controlled
+        reason: "internal only"
+repositories:
+  nuage-autopilot5:
+    human_impact: medium
+    exposure: small
+    reason: "local cli"
+"""
+        )
+        f_assets.close()
+        self.addCleanup(os.unlink, f_assets.name)
+        assets = evaluate.load_assets(f_assets.name)
+
+        findings = [
+            {
+                "source": "k8s",
+                "namespace": "pechka",
+                "workload": "aivisspeech",
+                "container": "aivisspeech",
+                "repository": "",
+                "target": "pechka/aivisspeech",
+                "cve_id": "CVE-2026-111497",
+                "pkg_name": "brotli",
+                "installed_version": "1.0.9",
+                "fixed_version": "1.2.0",
+                "trivy_severity": "MEDIUM",
+                "title": "aivisspeech kev no",
+                "url": "",
+            },
+            {
+                "source": "k8s",
+                "namespace": "pechka",
+                "workload": "aivisspeech",
+                "container": "aivisspeech",
+                "repository": "",
+                "target": "pechka/aivisspeech",
+                "cve_id": "CVE-2026-48710",
+                "pkg_name": "starlette",
+                "installed_version": "0.37.2",
+                "fixed_version": "0.49.1",
+                "trivy_severity": "HIGH",
+                "title": "aivisspeech kev yes",
+                "url": "",
+            },
+            # controlled + medium + active + no -> scheduled (上流表のまま)
+            {
+                "source": "k8s",
+                "namespace": "pechka",
+                "workload": "mongodb",
+                "container": "mongodb",
+                "repository": "",
+                "target": "pechka/mongodb",
+                "cve_id": "CVE-2026-111497",
+                "pkg_name": "brotli",
+                "installed_version": "1.0.9",
+                "fixed_version": "1.2.0",
+                "trivy_severity": "MEDIUM",
+                "title": "controlled kev",
+                "url": "",
+            },
+            # small + medium + active + yes -> out-of-cycle (上流表のまま)
+            {
+                "source": "repo",
+                "namespace": "",
+                "workload": "",
+                "container": "",
+                "repository": "nuage-autopilot5",
+                "target": "nuage-autopilot5",
+                "cve_id": "CVE-2026-48710",
+                "pkg_name": "starlette",
+                "installed_version": "0.37.2",
+                "fixed_version": "0.49.1",
+                "trivy_severity": "HIGH",
+                "title": "small kev",
+                "url": "",
+            },
+        ]
+        targets = {
+            ("k8s", "pechka", "aivisspeech"),
+            ("k8s", "pechka", "mongodb"),
+            ("repo", "", "nuage-autopilot5"),
+        }
+        kev_set = {"CVE-2026-111497", "CVE-2026-48710"}
+        vuln_map = {
+            "CVE-2026-111497": ("none", "no"),
+            "CVE-2026-48710": ("active", "yes"),
+        }
+        evaluated, counts, reg = evaluate.evaluate_findings(
+            findings,
+            targets,
+            assets,
+            {"pechka"},
+            {},
+            kev_set,
+            vuln_map,
+            {},
+            self.table,
+            base_decision_table=self.base_table,
+        )
+        by_title = {r["title"]: r for r in evaluated}
+        self.assertEqual(by_title["aivisspeech kev no"]["decision"], "immediate")
+        self.assertEqual(by_title["aivisspeech kev no"]["decision_source"], "ssvc_table_custom")
+        self.assertEqual(by_title["aivisspeech kev yes"]["decision"], "immediate")
+        self.assertEqual(by_title["aivisspeech kev yes"]["decision_source"], "ssvc_table_custom")
+        self.assertEqual(by_title["controlled kev"]["decision"], "scheduled")
+        self.assertEqual(by_title["controlled kev"]["decision_source"], "ssvc_table")
+        self.assertEqual(by_title["small kev"]["decision"], "out-of-cycle")
+        self.assertEqual(by_title["small kev"]["decision_source"], "ssvc_table")
+
+        metrics = evaluate.render_metrics(
+            counts, reg, assets, [], 1700000000, evaluated=evaluated
+        )
+        self.assertIn("nuage_ssvc_active_exploitation_total 4", metrics)
+        self.assertIn(
+            'nuage_ssvc_exploitation_findings{source="repo",namespace="",target="nuage-autopilot5",exploitation="active"} 1',
+            metrics,
+        )
+
+    def test_zero_active_exploitation_emits_zero_metric(self):
+        evaluated, counts, reg = evaluate.evaluate_findings(
+            [], {("k8s", "pechka", "api")}, self.assets, {"pechka"}, {}, set(), {}, {}, self.table
+        )
+        metrics = evaluate.render_metrics(
+            counts, reg, self.assets, [], 1700000000, evaluated=evaluated
+        )
+        self.assertIn("nuage_ssvc_active_exploitation_total 0", metrics)
+        self.assertIn(
+            'nuage_ssvc_exploitation_findings{source="k8s",namespace="pechka",target="api",exploitation="active"} 0',
             metrics,
         )
 
@@ -786,7 +996,7 @@ class EndToEndTest(unittest.TestCase):
         )
         self.assertNotIn("pechka-pr-99", received_metrics[0])
 
-    def _run_with_routes(self, routes, k8s_client, overrides_yaml="overrides: []\n"):
+    def _run_with_routes(self, routes, k8s_client, overrides_yaml="overrides: []\n", human_impact="very high"):
         received_metrics = []
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -847,7 +1057,7 @@ class EndToEndTest(unittest.TestCase):
             assets_path = os.path.join(tmp, "assets.yaml")
             with open(assets_path, "w", encoding="utf-8") as f:
                 f.write(
-                    "namespaces:\n  pechka:\n    human_impact: very high\n"
+                    f"namespaces:\n  pechka:\n    human_impact: {human_impact}\n"
                     "repositories:\n  pechka:\n    namespaces: [pechka]\n"
                 )
             overrides_path = os.path.join(tmp, "overrides.yaml")
@@ -1007,6 +1217,53 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(seen_queries[0]["limit"], ["2"])
         self.assertEqual(seen_queries[1]["continue"], ["tok2"])
 
+    def test_custom_table_end_to_end_medium_kev_becomes_immediate(self):
+        class MediumK8s:
+            def list_all(self, path):
+                if path.endswith("/ingresses"):
+                    return [{"metadata": {"namespace": "pechka", "name": "pechka-ing"}}]
+                return []
+
+        routes = {
+            "/kev.json": (200, {"vulnerabilities": [{"cveID": "CVE-2024-5555"}]}),
+            "/vulnrichment/2024/5xxx/CVE-2024-5555.json": (
+                200,
+                {
+                    "containers": {
+                        "adp": [
+                            {
+                                "metrics": [
+                                    {
+                                        "other": {
+                                            "type": "ssvc",
+                                            "content": {
+                                                "options": [
+                                                    {"Exploitation": "none"},
+                                                    {"Automatable": "yes"},
+                                                ]
+                                            },
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                },
+            ),
+            "/epss": (200, {"data": []}),
+        }
+        code, stdout, _, metrics = self._run_with_routes(routes, MediumK8s(), human_impact="medium")
+        self.assertEqual(code, 0)
+        records = [json.loads(l) for l in stdout.splitlines()]
+        finding = next(r for r in records if r["event"] == "ssvc_finding")
+        self.assertEqual(finding["decision"], "immediate")
+        self.assertEqual(finding["decision_source"], "ssvc_table_custom")
+        self.assertEqual(finding["exploitation"], "active")
+        self.assertEqual(finding["exploitation_source"], "KEV")
+        done = next(r for r in records if r["event"] == "eval_done")
+        self.assertEqual(done["active_exploitation"], 1)
+        self.assertIn("nuage_ssvc_active_exploitation_total 1", metrics[0])
+
 
 class DashboardTest(unittest.TestCase):
     def test_security_dashboard_keeps_existing_panels_and_adds_ssvc(self):
@@ -1031,15 +1288,60 @@ class DashboardTest(unittest.TestCase):
         self.assertTrue(expected_existing_ids.issubset(set(all_ids)))
 
         by_id = {p["id"]: p for p in dash["panels"]}
-        self.assertIn(100, by_id)
-        self.assertIn(108, by_id)
+        for pid in (100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110):
+            self.assertIn(pid, by_id)
+
+        # SSVC Prioritization 行がダッシュボードの一番上で、既存の行がその下に元の順で並ぶ
+        top_ids = [p["id"] for p in dash["panels"]]
+        self.assertEqual(top_ids[0], 100)
+        self.assertEqual(by_id[100]["gridPos"]["y"], 0)
+        self.assertFalse(by_id[100]["collapsed"])
+        row_order = [p["id"] for p in dash["panels"] if p.get("type") == "row"]
+        self.assertEqual(row_order, [100, 31, 50, 2, 4, 8, 35])
+        self.assertTrue(by_id[31]["collapsed"])
+        for row_id in (100, 50, 2, 4, 8, 35):
+            self.assertFalse(by_id[row_id]["collapsed"])
+
+        # panels 配列の順が表示順（gridPos.y 非減少）と一致する
+        ys = [p["gridPos"]["y"] for p in dash["panels"]]
+        self.assertEqual(ys, sorted(ys))
+
+        # 悪用が確認済み (Exploitation = active) パネルが SSVC 行の一番上 (Findings by Decision より上) にある
+        self.assertLess(by_id[109]["gridPos"]["y"], by_id[101]["gridPos"]["y"])
+        self.assertLess(by_id[110]["gridPos"]["y"], by_id[101]["gridPos"]["y"])
+        p109_expr = by_id[109]["targets"][0]["expr"]
+        p109_filter = p109_expr.split("\n|")[0]
+        self.assertIn('exploitation:="active"', p109_filter)
+        self.assertNotIn("decision", p109_filter)
+        self.assertIn("exploitation_source", p109_expr)
+        self.assertIn("decision", p109_expr)
+        self.assertIn("nuage_ssvc_active_exploitation_total", by_id[110]["targets"][0]["expr"])
+
         self.assertIn("nuage_ssvc_last_success_timestamp_seconds", by_id[108]["targets"][0]["expr"])
-        for pid in (101, 102):
+        for pid in (101, 102, 110):
             for t in by_id[pid]["targets"]:
                 self.assertNotIn("or vector(0)", t["expr"])
                 self.assertIn("or vector(-1)", t["expr"])
-        for pid in (104, 107):
+        for pid in (104, 107, 109):
             self.assertEqual(by_id[pid].get("timeFrom"), "36h")
+
+        # Immediate & Out-of-Cycle by Target (103): 悪用の状況列とソート順
+        p103_exprs = "\n".join(t["expr"] for t in by_id[103]["targets"])
+        self.assertIn('exploitation="active"', p103_exprs)
+        self.assertIn('exploitation="public poc"', p103_exprs)
+        self.assertIn('exploitation="none"', p103_exprs)
+        sort_tf = next(tf for tf in by_id[103]["transformations"] if tf["id"] == "sortBy")
+        sort_fields = [s["field"] for s in sort_tf["options"]["sort"]]
+        self.assertEqual(
+            sort_fields[:5], ["Immediate", "Active", "Public PoC", "Out-of-Cycle", "None"]
+        )
+
+        # Immediate & Out-of-Cycle CVE Details (104): 判定 -> 悪用の状況 (active -> public poc -> none) の順
+        p104_expr = by_id[104]["targets"][0]["expr"]
+        self.assertIn('format if (exploitation:="active") "1" as _exp_rank', p104_expr)
+        self.assertIn('format if (exploitation:="public poc") "2" as _exp_rank', p104_expr)
+        self.assertIn('format if (exploitation:="none") "3" as _exp_rank', p104_expr)
+        self.assertIn("sort by (decision asc, _exp_rank asc", p104_expr)
 
 
 if __name__ == "__main__":
