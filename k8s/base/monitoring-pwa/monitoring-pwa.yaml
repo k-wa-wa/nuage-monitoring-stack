@@ -27,6 +27,7 @@ spec:
       containers:
         - name: backend
           image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-backend:latest
+          imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -140,6 +141,7 @@ spec:
       containers:
         - name: frontend
           image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-frontend:latest
+          imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
