@@ -72,8 +72,11 @@ configMapGenerator:
   # 指摘の一覧 (VictoriaLogs の kubernetes.pod_namespace="repo-scan" の JSON 行) はこのダッシュボードには出さない。Explore で見る。
   # SSVC Prioritization 行は k8s/ssvc の CronJob が送る次のメトリクスとログに依存する。
   #   - nuage_ssvc_findings{source, namespace, target, decision}
+  #   - nuage_ssvc_exploitation_findings{source, namespace, target, exploitation}
+  #   - nuage_ssvc_active_exploitation_total
   #   - nuage_ssvc_unscanned_assets{host, kind, human_impact, exposure} / nuage_ssvc_unscanned_assets_total
   #   - nuage_ssvc_expired_overrides_total
+  #   - nuage_ssvc_last_success_timestamp_seconds
   #   - VictoriaLogs の kubernetes.pod_namespace="ssvc" (event="ssvc_finding" / "expired_override" / "eval_done")
   # Grafana の sidecar は全 Namespace を見る (searchNamespace: ALL) ため、trivy-operator Namespace に置いても読み込まれる。
   - name: trivy-operator-dashboard

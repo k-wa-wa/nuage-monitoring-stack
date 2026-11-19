@@ -4,6 +4,10 @@
 
 変更は PR で行い、`master` に入ると翌日の CronJob（毎日 日本時間 5:00）から反映される。
 
+## 判定表の前提
+
+評価には CERT/CC SSVC Deployer 判定表を自宅クラスター向けに調整した表（`../scripts/deployer_patch_application_priority_nuage.csv`）を使う。悪用が確認済み（`Exploitation = active`）かつ露出が `open` の脆弱性は、`human_impact` に関わらず `immediate` と判定する。元の表との差分 5 行と理由は [scripts/README.md](../scripts/README.md) にまとめている。
+
 ## `assets.yaml`（資産の宣言）
 
 k8s の Namespace・`repo-scan` のリポジトリ・未スキャン機器（VM・LXC・Proxmox 等）の重要度と露出を宣言する。

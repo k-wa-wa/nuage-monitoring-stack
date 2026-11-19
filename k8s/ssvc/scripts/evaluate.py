@@ -7,7 +7,7 @@
   - k8s API: VulnerabilityReport (aquasecurity.github.io/v1alpha1) と Ingress (networking.k8s.io/v1)
   - VictoriaLogs: repo-scan Namespace の最新 run_id の vulnerability 指摘
   - 資産の宣言 (assets.yaml) と例外ファイル (overrides.yaml)
-  - CERT/CC SSVC Deployer 判定表 (deployer_patch_application_priority_1_0_0.csv)
+  - SSVC Deployer 判定表 (deployer_patch_application_priority_nuage.csv、上流の deployer_patch_application_priority_1_0_0.csv との差分を判定出所に反映)
   - CISA KEV / CISA Vulnrichment / FIRST EPSS (参考値)
 
 出力:
@@ -680,6 +680,15 @@ def load_decision_table(path):
     return table
 
 
+def diff_decision_tables(base_table, custom_table):
+    """基準の判定表と判定結果が異なる 4 決定点のキー集合を返す。"""
+    if base_table is None:
+        return frozenset()
+    return frozenset(
+        key for key, val in custom_table.items() if base_table.get(key) != val
+    )
+
+
 def evaluate_ssvc(exploitation, exposure, automatable, human_impact, table):
     """4 つの決定点から SSVC 判定を返す。いずれかが欠けていれば 'unknown' にする。"""
     if (
@@ -1116,6 +1125,12 @@ def collect_repo_scan_data(vlogs_url, lookback="7d"):
 
 
 ALL_METRIC_DECISIONS = REGISTERED_METRIC_DECISIONS + ("unregistered",)
+ALL_METRIC_EXPLOITATIONS = ("active", "public poc", "none", "missing", "error")
+
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_TABLE_PATH = os.path.join(_SCRIPTS_DIR, "deployer_patch_application_priority_nuage.csv")
+DEFAULT_BASE_TABLE_PATH = os.path.join(_SCRIPTS_DIR, "deployer_patch_application_priority_1_0_0.csv")
+_DEFAULT_BASE_TABLE = object()
 
 
 def evaluate_findings(
@@ -1129,9 +1144,11 @@ def evaluate_findings(
     epss_map,
     decision_table,
     vulnrichment_errors=None,
+    base_decision_table=None,
 ):
     """全脆弱性指摘を SSVC で評価し、評価済みレコード群と対象別集計を返す。"""
     vulnrichment_errors = vulnrichment_errors or {}
+    customized_keys = diff_decision_tables(base_decision_table, decision_table)
     evaluated = []
     target_registration = {}
     counts = {}
@@ -1219,6 +1236,8 @@ def evaluate_findings(
             )
             if decision == "unknown":
                 decision_source = "error" if has_vulnrichment_error else "missing_data"
+            elif (exploitation, exposure, automatable, human_impact) in customized_keys:
+                decision_source = "ssvc_table_custom"
             else:
                 decision_source = "ssvc_table"
             override_reason = ""
@@ -1257,7 +1276,13 @@ def _label_value(value):
 
 
 def render_metrics(
-    counts, target_registration, assets, expired_overrides, now, include_last_success=True
+    counts,
+    target_registration,
+    assets,
+    expired_overrides,
+    now,
+    include_last_success=True,
+    evaluated=None,
 ):
     """Prometheus テキスト形式を生成する。CVE ID はラベルに含めない。"""
     lines = [
@@ -1267,6 +1292,9 @@ def render_metrics(
         "# TYPE nuage_ssvc_unscanned_assets_total gauge",
         "# TYPE nuage_ssvc_expired_overrides_total gauge",
     ]
+    if evaluated is not None:
+        lines.append("# TYPE nuage_ssvc_exploitation_findings gauge")
+        lines.append("# TYPE nuage_ssvc_active_exploitation_total gauge")
     if include_last_success:
         lines.append("# TYPE nuage_ssvc_last_success_timestamp_seconds gauge")
 
@@ -1279,6 +1307,39 @@ def render_metrics(
             f'decision="{_label_value(decision)}"'
             f"}} {value}"
         )
+
+    if evaluated is not None:
+        exp_counts = {}
+        for source, namespace, target in target_registration:
+            for exp in ALL_METRIC_EXPLOITATIONS:
+                exp_counts[(source, namespace, target, exp)] = 0
+        active_exploitation_total = 0
+        for item in evaluated:
+            source = item["source"]
+            namespace = item["namespace"]
+            target_label = item["workload"] if source == "k8s" else item["repository"]
+            exp_key = (
+                item["exploitation"]
+                if item["exploitation"] is not None
+                else item["exploitation_source"]
+            )
+            for exp in ALL_METRIC_EXPLOITATIONS:
+                exp_counts.setdefault((source, namespace, target_label, exp), 0)
+            exp_counts[(source, namespace, target_label, exp_key)] = (
+                exp_counts.get((source, namespace, target_label, exp_key), 0) + 1
+            )
+            if item["exploitation"] == "active":
+                active_exploitation_total += 1
+        for (source, namespace, target, exp), value in sorted(exp_counts.items()):
+            lines.append(
+                "nuage_ssvc_exploitation_findings{"
+                f'source="{_label_value(source)}",'
+                f'namespace="{_label_value(namespace)}",'
+                f'target="{_label_value(target)}",'
+                f'exploitation="{_label_value(exp)}"'
+                f"}} {value}"
+            )
+        lines.append(f"nuage_ssvc_active_exploitation_total {active_exploitation_total}")
 
     unregistered_count = sum(1 for reg in target_registration.values() if not reg)
     lines.append(f"nuage_ssvc_unregistered_targets_total {unregistered_count}")
@@ -1356,13 +1417,15 @@ def build_log_records(evaluated, target_registration, assets, expired_overrides,
         )
 
     unregistered_targets = sum(1 for reg in target_registration.values() if not reg)
+    active_exploitation = sum(1 for item in evaluated if item.get("exploitation") == "active")
     records.append(
         {
             "event": "eval_done",
-            "msg": f"SSVC 評価完了: {len(evaluated)} 件 (immediate={decision_totals['immediate']}, out-of-cycle={decision_totals['out-of-cycle']})",
+            "msg": f"SSVC 評価完了: {len(evaluated)} 件 (immediate={decision_totals['immediate']}, out-of-cycle={decision_totals['out-of-cycle']}, active={active_exploitation})",
             "run_id": run_id,
             "total_findings": len(evaluated),
             "counts_by_decision": decision_totals,
+            "active_exploitation": active_exploitation,
             "unregistered_targets": unregistered_targets,
             "unscanned_assets": unscanned_count,
             "expired_overrides": len(expired_overrides),
@@ -1423,6 +1486,7 @@ def run_evaluation(
     vulnrichment_base_url=DEFAULT_VULNRICHMENT_BASE_URL,
     epss_url=DEFAULT_EPSS_URL,
     repo_scan_lookback="7d",
+    base_table_path=_DEFAULT_BASE_TABLE,
 ):
     """一連の評価処理を実行し、終了コード (0 または 1) を返す。"""
     if now is None:
@@ -1431,11 +1495,16 @@ def run_evaluation(
         today = datetime.datetime.now(JST).date()
     if run_id is None:
         run_id = str(int(now))
+    if base_table_path is _DEFAULT_BASE_TABLE:
+        base_table_path = DEFAULT_BASE_TABLE_PATH
 
     assets = load_assets(assets_path)
     override_entries = load_overrides(overrides_path)
     active_overrides, expired_overrides = split_overrides(override_entries, today)
     decision_table = load_decision_table(decision_table_path)
+    base_decision_table = (
+        load_decision_table(base_table_path) if base_table_path else None
+    )
 
     if k8s_client is None:
         k8s_client = K8sClient()
@@ -1476,6 +1545,7 @@ def run_evaluation(
         epss_map,
         decision_table,
         vulnrichment_errors=vulnrichment_errors,
+        base_decision_table=base_decision_table,
     )
 
     for record in build_log_records(
@@ -1490,6 +1560,7 @@ def run_evaluation(
         expired_overrides,
         now,
         include_last_success=(not vulnrichment_errors),
+        evaluated=evaluated,
     )
     if push_url:
         push_metrics(push_url, metrics_body)
@@ -1514,11 +1585,13 @@ def main(argv=None):
     parser.add_argument("--overrides", required=True, help="例外ファイル YAML (overrides.yaml)")
     parser.add_argument(
         "--table",
-        default=os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "deployer_patch_application_priority_1_0_0.csv",
-        ),
-        help="CERT/CC SSVC Deployer 表 (CSV)",
+        default=DEFAULT_TABLE_PATH,
+        help="評価に使う SSVC Deployer 表 (CSV)",
+    )
+    parser.add_argument(
+        "--base-table",
+        default=DEFAULT_BASE_TABLE_PATH,
+        help="判定出所の比較に使う上流 SSVC Deployer 表 (CSV)",
     )
     parser.add_argument("--vlogs-url", required=True, help="VictoriaLogs の /select/logsql/query")
     destination = parser.add_mutually_exclusive_group(required=True)
@@ -1541,6 +1614,7 @@ def main(argv=None):
         metrics_file=args.metrics_file,
         run_id=args.run_id,
         repo_scan_lookback=args.repo_scan_lookback,
+        base_table_path=args.base_table,
     )
 
 

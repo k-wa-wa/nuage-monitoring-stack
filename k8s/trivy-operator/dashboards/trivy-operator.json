@@ -31,12 +31,1393 @@
   "liveNow": false,
   "panels": [
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
         "y": 0
+      },
+      "id": 100,
+      "panels": [],
+      "title": "SSVC Prioritization",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "悪用が確認済み (Exploitation = active) の脆弱性件数 (nuage_ssvc_active_exploitation_total)。判定や露出 (controlled・small を含む) に関わらず全件を数える。0 件は 0、評価停止時は — を表示する。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "—",
+                  "color": "semi-dark-gray",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "id": 110,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "last_over_time(nuage_ssvc_active_exploitation_total[36h]) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "legendFormat": "悪用が確認済み (Active)"
+        }
+      ],
+      "title": "SSVC: Active Exploitation",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "VictoriaLogs"
+      },
+      "description": "最新の SSVC 評価 (eval_done の最新 run_id) で悪用が確認済み (Exploitation = active) の脆弱性一覧。判定や露出 (controlled・small を含む) に関わらずすべて表示する。0 件のときは左の SSVC: Active Exploitation が 0 になる。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": true
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Decision"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "basic",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "immediate": {
+                        "color": "red",
+                        "index": 0,
+                        "text": "immediate"
+                      },
+                      "out-of-cycle": {
+                        "color": "orange",
+                        "index": 1,
+                        "text": "out-of-cycle"
+                      },
+                      "scheduled": {
+                        "color": "dark-yellow",
+                        "index": 2,
+                        "text": "scheduled"
+                      },
+                      "defer": {
+                        "color": "green",
+                        "index": 3,
+                        "text": "defer"
+                      },
+                      "unknown": {
+                        "color": "purple",
+                        "index": 4,
+                        "text": "unknown"
+                      },
+                      "unregistered": {
+                        "color": "blue",
+                        "index": 5,
+                        "text": "unregistered"
+                      },
+                      "not-affected": {
+                        "color": "semi-dark-gray",
+                        "index": 6,
+                        "text": "not-affected"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 20,
+        "x": 4,
+        "y": 1
+      },
+      "id": 109,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "editorMode": "code",
+          "expr": "kubernetes.pod_namespace:=\"ssvc\" event:=\"ssvc_finding\" exploitation:=\"active\" run_id:in(_time:36h kubernetes.pod_namespace:=\"ssvc\" event:=\"eval_done\" | sort by (_time desc) | limit 1 | keep run_id)\n| format \"7\" as _dec_rank\n| format if (decision:=\"immediate\") \"1\" as _dec_rank\n| format if (decision:=\"out-of-cycle\") \"2\" as _dec_rank\n| format if (decision:=\"scheduled\") \"3\" as _dec_rank\n| format if (decision:=\"defer\") \"4\" as _dec_rank\n| format if (decision:=\"unknown\") \"5\" as _dec_rank\n| format if (decision:=\"unregistered\") \"6\" as _dec_rank\n| fields source, target, container, cve_id, pkg_name, installed_version, fixed_version, decision, exploitation_source, exposure, human_impact, epss, _dec_rank\n| sort by (_dec_rank asc, epss desc, target asc, cve_id asc)\n| delete _dec_rank\n| limit 500",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "SSVC: Active Exploitation CVE Details",
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "format": "auto",
+            "source": "labels"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Line": true,
+              "Time": true,
+              "labels": true
+            },
+            "indexByName": {
+              "source": 0,
+              "target": 1,
+              "container": 2,
+              "cve_id": 3,
+              "pkg_name": 4,
+              "installed_version": 5,
+              "fixed_version": 6,
+              "decision": 7,
+              "exploitation_source": 8,
+              "exposure": 9,
+              "human_impact": 10,
+              "epss": 11
+            },
+            "renameByName": {
+              "source": "Source",
+              "target": "Target",
+              "container": "Container",
+              "cve_id": "CVE",
+              "pkg_name": "Package",
+              "installed_version": "Installed",
+              "fixed_version": "Fixed",
+              "decision": "Decision",
+              "exploitation_source": "Exploitation Source",
+              "exposure": "Exposure",
+              "human_impact": "Human Impact",
+              "epss": "EPSS"
+            }
+          }
+        }
+      ],
+      "type": "table",
+      "timeFrom": "36h",
+      "hideTimeOverride": false
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "k8s VulnerabilityReport と repo-scan の脆弱性を CERT/CC SSVC Deployer 表（nuage 用調整版）で毎日評価した結果 (nuage_ssvc_findings)。件数は 1 日 1 回送られるため last_over_time(...[36h]) で最新の値を取る。",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "—",
+                  "color": "semi-dark-gray",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Immediate"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Out-of-Cycle"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Scheduled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Defer"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unknown"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 10,
+        "x": 0,
+        "y": 8
+      },
+      "id": 101,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h])) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "legendFormat": "Immediate"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h])) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "legendFormat": "Out-of-Cycle"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h])) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "C",
+          "legendFormat": "Scheduled"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h])) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "D",
+          "legendFormat": "Defer"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "E",
+          "legendFormat": "Unknown"
+        }
+      ],
+      "title": "SSVC: Findings by Decision",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "SSVC 評価で人の確認や資産登録が要る項目。Unregistered (assets.yaml 未登録の対象にある指摘)・Unknown (決定点欠損や GHSA 等で判定不可)・Unscanned Assets (hosts に載せた未スキャン資産数)・Expired Overrides (期限切れの例外数)。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "—",
+                  "color": "semi-dark-gray",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 10,
+        "x": 10,
+        "y": 8
+      },
+      "id": 102,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h])) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "legendFormat": "Unregistered"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "legendFormat": "Unknown"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "last_over_time(nuage_ssvc_unscanned_assets_total[36h]) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "C",
+          "legendFormat": "Unscanned Assets"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "last_over_time(nuage_ssvc_expired_overrides_total[36h]) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "D",
+          "legendFormat": "Expired Overrides"
+        }
+      ],
+      "title": "SSVC: Governance & Coverage",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "SSVC 評価 CronJob が最後に完全成功してからの経過時間 (nuage_ssvc_last_success_timestamp_seconds)。36 時間以上成功が無いと赤になる。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 93600
+              },
+              {
+                "color": "red",
+                "value": 129600
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 8
+      },
+      "id": 108,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "time() - max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[7d]))",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "legendFormat": "経過時間"
+        }
+      ],
+      "title": "SSVC: Last Success Age",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "Immediate または Out-of-Cycle の脆弱性が 1 件以上ある対象 (k8s ワークロード・リポジトリ) の一覧。判定 (Immediate → Out-of-Cycle) の次に悪用の状況 (Active → Public PoC → None) の順で並べる。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Immediate"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Out-of-Cycle"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Active"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Public PoC"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "id": 103,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "instant": true,
+          "range": false,
+          "refId": "C",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "instant": true,
+          "range": false,
+          "refId": "D",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "instant": true,
+          "range": false,
+          "refId": "E",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"active\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "instant": true,
+          "range": false,
+          "refId": "F",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"public poc\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "instant": true,
+          "range": false,
+          "refId": "G",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"none\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "instant": true,
+          "range": false,
+          "refId": "H",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(\n  (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h])) * 1e12)\n  + ((sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"active\"}[36h])) or (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) * 0)) * 1e8)\n  + ((sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"public poc\"}[36h])) or (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) * 0)) * 1e4)\n  + sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h]))\n) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "instant": true,
+          "range": false,
+          "refId": "I",
+          "format": "table"
+        }
+      ],
+      "title": "SSVC: Immediate & Out-of-Cycle by Target",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Value #I",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value #I": true
+            },
+            "indexByName": {
+              "source": 0,
+              "namespace": 1,
+              "target": 2,
+              "Value #A": 3,
+              "Value #B": 4,
+              "Value #F": 5,
+              "Value #G": 6,
+              "Value #H": 7,
+              "Value #C": 8,
+              "Value #D": 9,
+              "Value #E": 10
+            },
+            "renameByName": {
+              "source": "Source",
+              "namespace": "Namespace",
+              "target": "Target",
+              "Value #A": "Immediate",
+              "Value #B": "Out-of-Cycle",
+              "Value #F": "Active",
+              "Value #G": "Public PoC",
+              "Value #H": "None",
+              "Value #C": "Scheduled",
+              "Value #D": "Defer",
+              "Value #E": "Unknown"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "VictoriaLogs"
+      },
+      "description": "最新の SSVC 評価 (eval_done の最新 run_id) で immediate または out-of-cycle と判定された脆弱性の一覧。判定 (immediate → out-of-cycle)、悪用の状況 (active → public poc → none)、EPSS の順に並べる。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": true
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Decision"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "basic",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "immediate": {
+                        "color": "red",
+                        "index": 0,
+                        "text": "immediate"
+                      },
+                      "out-of-cycle": {
+                        "color": "orange",
+                        "index": 1,
+                        "text": "out-of-cycle"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "id": 104,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "editorMode": "code",
+          "expr": "kubernetes.pod_namespace:=\"ssvc\" event:=\"ssvc_finding\" (decision:=\"immediate\" OR decision:=\"out-of-cycle\") run_id:in(_time:36h kubernetes.pod_namespace:=\"ssvc\" event:=\"eval_done\" | sort by (_time desc) | limit 1 | keep run_id)\n| format \"4\" as _exp_rank\n| format if (exploitation:=\"active\") \"1\" as _exp_rank\n| format if (exploitation:=\"public poc\") \"2\" as _exp_rank\n| format if (exploitation:=\"none\") \"3\" as _exp_rank\n| fields decision, source, target, container, cve_id, pkg_name, installed_version, fixed_version, exploitation, exposure, automatable, human_impact, epss, _exp_rank\n| sort by (decision asc, _exp_rank asc, epss desc, target asc)\n| delete _exp_rank\n| limit 500",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "SSVC: Immediate & Out-of-Cycle CVE Details",
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "format": "auto",
+            "source": "labels"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Line": true,
+              "Time": true,
+              "labels": true
+            },
+            "indexByName": {
+              "decision": 0,
+              "source": 1,
+              "target": 2,
+              "container": 3,
+              "cve_id": 4,
+              "pkg_name": 5,
+              "installed_version": 6,
+              "fixed_version": 7,
+              "exploitation": 8,
+              "exposure": 9,
+              "automatable": 10,
+              "human_impact": 11,
+              "epss": 12
+            },
+            "renameByName": {
+              "decision": "Decision",
+              "source": "Source",
+              "target": "Target",
+              "container": "Container",
+              "cve_id": "CVE",
+              "pkg_name": "Package",
+              "installed_version": "Installed",
+              "fixed_version": "Fixed",
+              "exploitation": "Exploitation",
+              "exposure": "Exposure",
+              "automatable": "Automatable",
+              "human_impact": "Human Impact",
+              "epss": "EPSS"
+            }
+          }
+        }
+      ],
+      "type": "table",
+      "timeFrom": "36h",
+      "hideTimeOverride": false
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "k8s/ssvc/declarations/assets.yaml の hosts に載せた未スキャン資産 (VM・LXC・Proxmox 等) の一覧。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 33
+      },
+      "id": 105,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "last_over_time(nuage_ssvc_unscanned_assets[36h])",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "format": "table"
+        }
+      ],
+      "title": "SSVC: Unscanned Assets",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true
+            },
+            "indexByName": {
+              "host": 0,
+              "kind": 1,
+              "human_impact": 2,
+              "exposure": 3
+            },
+            "renameByName": {
+              "host": "Host",
+              "kind": "Kind",
+              "human_impact": "Human Impact",
+              "exposure": "Exposure"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "k8s/ssvc/declarations/assets.yaml に未登録の Namespace またはリポジトリで見つかった指摘。既定値で埋めず未登録として出している。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 33
+      },
+      "id": 106,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Findings"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h])) > 0",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "format": "table"
+        }
+      ],
+      "title": "SSVC: Unregistered Targets",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "source": 0,
+              "namespace": 1,
+              "target": 2,
+              "Value": 3
+            },
+            "renameByName": {
+              "source": "Source",
+              "namespace": "Namespace",
+              "target": "Target",
+              "Value": "Findings"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "VictoriaLogs"
+      },
+      "description": "k8s/ssvc/declarations/overrides.yaml のうち期限切れになっている例外。期限切れの例外は無効化され、通常の評価に戻る。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": true
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 33
+      },
+      "id": 107,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "editorMode": "code",
+          "expr": "kubernetes.pod_namespace:=\"ssvc\" event:=\"expired_override\" run_id:in(_time:36h kubernetes.pod_namespace:=\"ssvc\" event:=\"eval_done\" | sort by (_time desc) | limit 1 | keep run_id)\n| fields target, cve_id, decision, expires, reason\n| sort by (expires asc, target asc)\n| limit 200",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "SSVC: Expired Overrides",
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "format": "auto",
+            "source": "labels"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Line": true,
+              "Time": true,
+              "labels": true
+            },
+            "indexByName": {
+              "target": 0,
+              "cve_id": 1,
+              "decision": 2,
+              "expires": 3,
+              "reason": 4
+            },
+            "renameByName": {
+              "target": "Target",
+              "cve_id": "CVE",
+              "decision": "Decision",
+              "expires": "Expires",
+              "reason": "Reason"
+            }
+          }
+        }
+      ],
+      "type": "table",
+      "timeFrom": "36h",
+      "hideTimeOverride": false
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 41
       },
       "id": 31,
       "panels": [
@@ -73,7 +1454,7 @@
             "h": 5,
             "w": 6,
             "x": 0,
-            "y": 1
+            "y": 42
           },
           "id": 32,
           "options": {
@@ -140,7 +1521,7 @@
             "h": 5,
             "w": 6,
             "x": 6,
-            "y": 1
+            "y": 42
           },
           "id": 33,
           "options": {
@@ -209,7 +1590,7 @@
             "h": 5,
             "w": 6,
             "x": 12,
-            "y": 1
+            "y": 42
           },
           "id": 40,
           "options": {
@@ -277,7 +1658,7 @@
             "h": 5,
             "w": 6,
             "x": 18,
-            "y": 1
+            "y": 42
           },
           "id": 41,
           "options": {
@@ -334,7 +1715,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 6
+            "y": 47
           },
           "id": 34,
           "options": {
@@ -449,7 +1830,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 6
+            "y": 47
           },
           "id": 42,
           "options": {
@@ -511,7 +1892,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 1
+        "y": 42
       },
       "id": 50,
       "panels": [],
@@ -632,7 +2013,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 2
+        "y": 43
       },
       "id": 51,
       "options": {
@@ -834,7 +2215,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 2
+        "y": 43
       },
       "id": 52,
       "options": {
@@ -1036,7 +2417,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 49
       },
       "id": 53,
       "options": {
@@ -1238,7 +2619,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 49
       },
       "id": 54,
       "options": {
@@ -1332,7 +2713,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 55
       },
       "id": 2,
       "panels": [],
@@ -1543,7 +2924,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 15
+        "y": 56
       },
       "id": 23,
       "options": {
@@ -1690,7 +3071,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 70
       },
       "id": 4,
       "panels": [],
@@ -1867,7 +3248,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 71
       },
       "id": 28,
       "options": {
@@ -1979,7 +3360,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 81
       },
       "id": 8,
       "panels": [],
@@ -2156,7 +3537,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 41
+        "y": 82
       },
       "id": 29,
       "options": {
@@ -2320,7 +3701,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 92
       },
       "id": 55,
       "options": {
@@ -2461,7 +3842,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 65
+        "y": 106
       },
       "id": 56,
       "options": {
@@ -2550,7 +3931,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 71
+        "y": 112
       },
       "id": 35,
       "panels": [],
@@ -2784,7 +4165,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 72
+        "y": 113
       },
       "id": 36,
       "options": {
@@ -2888,1010 +4269,6 @@
         }
       ],
       "type": "table"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 82
-      },
-      "id": 100,
-      "panels": [],
-      "title": "SSVC Prioritization",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "k8s VulnerabilityReport と repo-scan の脆弱性を CERT/CC SSVC Deployer 表で毎日評価した結果 (nuage_ssvc_findings)。件数は 1 日 1 回送られるため last_over_time(...[36h]) で最新の値を取る。",
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "-1": {
-                  "text": "—",
-                  "color": "semi-dark-gray",
-                  "index": 0
-                }
-              }
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Immediate"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Out-of-Cycle"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Scheduled"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "dark-yellow",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Defer"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Unknown"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "purple",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 10,
-        "x": 0,
-        "y": 83
-      },
-      "id": 101,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h])) or vector(-1)",
-          "instant": true,
-          "range": false,
-          "refId": "A",
-          "legendFormat": "Immediate"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h])) or vector(-1)",
-          "instant": true,
-          "range": false,
-          "refId": "B",
-          "legendFormat": "Out-of-Cycle"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h])) or vector(-1)",
-          "instant": true,
-          "range": false,
-          "refId": "C",
-          "legendFormat": "Scheduled"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h])) or vector(-1)",
-          "instant": true,
-          "range": false,
-          "refId": "D",
-          "legendFormat": "Defer"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) or vector(-1)",
-          "instant": true,
-          "range": false,
-          "refId": "E",
-          "legendFormat": "Unknown"
-        }
-      ],
-      "title": "SSVC: Findings by Decision",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "SSVC 評価で人の確認や資産登録が要る項目。Unregistered (assets.yaml 未登録の対象にある指摘)・Unknown (決定点欠損や GHSA 等で判定不可)・Unscanned Assets (hosts に載せた未スキャン資産数)・Expired Overrides (期限切れの例外数)。",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "-1": {
-                  "text": "—",
-                  "color": "semi-dark-gray",
-                  "index": 0
-                }
-              }
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 10,
-        "x": 10,
-        "y": 83
-      },
-      "id": 102,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h])) or vector(-1)",
-          "instant": true,
-          "range": false,
-          "refId": "A",
-          "legendFormat": "Unregistered"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) or vector(-1)",
-          "instant": true,
-          "range": false,
-          "refId": "B",
-          "legendFormat": "Unknown"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "last_over_time(nuage_ssvc_unscanned_assets_total[36h]) or vector(-1)",
-          "instant": true,
-          "range": false,
-          "refId": "C",
-          "legendFormat": "Unscanned Assets"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "last_over_time(nuage_ssvc_expired_overrides_total[36h]) or vector(-1)",
-          "instant": true,
-          "range": false,
-          "refId": "D",
-          "legendFormat": "Expired Overrides"
-        }
-      ],
-      "title": "SSVC: Governance & Coverage",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "SSVC 評価 CronJob が最後に完全成功してからの経過時間 (nuage_ssvc_last_success_timestamp_seconds)。36 時間以上成功が無いと赤になる。",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "noValue": "No data",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 93600
-              },
-              {
-                "color": "red",
-                "value": 129600
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 20,
-        "y": 83
-      },
-      "id": 108,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "time() - max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[7d]))",
-          "instant": true,
-          "range": false,
-          "refId": "A",
-          "legendFormat": "経過時間"
-        }
-      ],
-      "title": "SSVC: Last Success Age",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "Immediate または Out-of-Cycle の脆弱性が 1 件以上ある対象 (k8s ワークロード・リポジトリ) の一覧。",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "filterable": true,
-            "inspect": false
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Immediate"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "red",
-                      "value": 1
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Out-of-Cycle"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 1
-                    }
-                  ]
-                }
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 88
-      },
-      "id": 103,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "Immediate"
-          }
-        ]
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
-          "instant": true,
-          "range": false,
-          "refId": "A",
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
-          "instant": true,
-          "range": false,
-          "refId": "B",
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
-          "instant": true,
-          "range": false,
-          "refId": "C",
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
-          "instant": true,
-          "range": false,
-          "refId": "D",
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
-          "instant": true,
-          "range": false,
-          "refId": "E",
-          "format": "table"
-        }
-      ],
-      "title": "SSVC: Immediate & Out-of-Cycle by Target",
-      "transformations": [
-        {
-          "id": "merge",
-          "options": {}
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true
-            },
-            "indexByName": {
-              "source": 0,
-              "namespace": 1,
-              "target": 2,
-              "Value #A": 3,
-              "Value #B": 4,
-              "Value #C": 5,
-              "Value #D": 6,
-              "Value #E": 7
-            },
-            "renameByName": {
-              "source": "Source",
-              "namespace": "Namespace",
-              "target": "Target",
-              "Value #A": "Immediate",
-              "Value #B": "Out-of-Cycle",
-              "Value #C": "Scheduled",
-              "Value #D": "Defer",
-              "Value #E": "Unknown"
-            }
-          }
-        }
-      ],
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "victoriametrics-logs-datasource",
-        "uid": "VictoriaLogs"
-      },
-      "description": "最新の SSVC 評価 (eval_done の最新 run_id) で immediate または out-of-cycle と判定された脆弱性の一覧。EPSS は参考値。",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "filterable": true,
-            "inspect": true
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Decision"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "mode": "basic",
-                  "type": "color-background"
-                }
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "immediate": {
-                        "color": "red",
-                        "index": 0,
-                        "text": "immediate"
-                      },
-                      "out-of-cycle": {
-                        "color": "orange",
-                        "index": 1,
-                        "text": "out-of-cycle"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 98
-      },
-      "id": 104,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
-        "showHeader": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "victoriametrics-logs-datasource",
-            "uid": "VictoriaLogs"
-          },
-          "editorMode": "code",
-          "expr": "kubernetes.pod_namespace:=\"ssvc\" event:=\"ssvc_finding\" (decision:=\"immediate\" OR decision:=\"out-of-cycle\") run_id:in(_time:36h kubernetes.pod_namespace:=\"ssvc\" event:=\"eval_done\" | sort by (_time desc) | limit 1 | keep run_id)\n| fields decision, source, target, container, cve_id, pkg_name, installed_version, fixed_version, exploitation, exposure, automatable, human_impact, epss\n| sort by (decision asc, epss desc, target asc)\n| limit 500",
-          "queryType": "instant",
-          "refId": "A"
-        }
-      ],
-      "title": "SSVC: Immediate & Out-of-Cycle CVE Details",
-      "transformations": [
-        {
-          "id": "extractFields",
-          "options": {
-            "format": "auto",
-            "source": "labels"
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Line": true,
-              "Time": true,
-              "labels": true
-            },
-            "indexByName": {
-              "decision": 0,
-              "source": 1,
-              "target": 2,
-              "container": 3,
-              "cve_id": 4,
-              "pkg_name": 5,
-              "installed_version": 6,
-              "fixed_version": 7,
-              "exploitation": 8,
-              "exposure": 9,
-              "automatable": 10,
-              "human_impact": 11,
-              "epss": 12
-            },
-            "renameByName": {
-              "decision": "Decision",
-              "source": "Source",
-              "target": "Target",
-              "container": "Container",
-              "cve_id": "CVE",
-              "pkg_name": "Package",
-              "installed_version": "Installed",
-              "fixed_version": "Fixed",
-              "exploitation": "Exploitation",
-              "exposure": "Exposure",
-              "automatable": "Automatable",
-              "human_impact": "Human Impact",
-              "epss": "EPSS"
-            }
-          }
-        }
-      ],
-      "type": "table",
-      "timeFrom": "36h",
-      "hideTimeOverride": false
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "k8s/ssvc/declarations/assets.yaml の hosts に載せた未スキャン資産 (VM・LXC・Proxmox 等) の一覧。",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "filterable": true,
-            "inspect": false
-          },
-          "mappings": []
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 0,
-        "y": 108
-      },
-      "id": 105,
-      "options": {
-        "cellHeight": "sm",
-        "showHeader": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "last_over_time(nuage_ssvc_unscanned_assets[36h])",
-          "instant": true,
-          "range": false,
-          "refId": "A",
-          "format": "table"
-        }
-      ],
-      "title": "SSVC: Unscanned Assets",
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "Value": true,
-              "__name__": true
-            },
-            "indexByName": {
-              "host": 0,
-              "kind": 1,
-              "human_impact": 2,
-              "exposure": 3
-            },
-            "renameByName": {
-              "host": "Host",
-              "kind": "Kind",
-              "human_impact": "Human Impact",
-              "exposure": "Exposure"
-            }
-          }
-        }
-      ],
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "k8s/ssvc/declarations/assets.yaml に未登録の Namespace またはリポジトリで見つかった指摘。既定値で埋めず未登録として出している。",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "filterable": true,
-            "inspect": false
-          },
-          "mappings": [],
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 8,
-        "y": 108
-      },
-      "id": 106,
-      "options": {
-        "cellHeight": "sm",
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "Findings"
-          }
-        ]
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h])) > 0",
-          "instant": true,
-          "range": false,
-          "refId": "A",
-          "format": "table"
-        }
-      ],
-      "title": "SSVC: Unregistered Targets",
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true
-            },
-            "indexByName": {
-              "source": 0,
-              "namespace": 1,
-              "target": 2,
-              "Value": 3
-            },
-            "renameByName": {
-              "source": "Source",
-              "namespace": "Namespace",
-              "target": "Target",
-              "Value": "Findings"
-            }
-          }
-        }
-      ],
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "victoriametrics-logs-datasource",
-        "uid": "VictoriaLogs"
-      },
-      "description": "k8s/ssvc/declarations/overrides.yaml のうち期限切れになっている例外。期限切れの例外は無効化され、通常の評価に戻る。",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "filterable": true,
-            "inspect": true
-          },
-          "mappings": []
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 108
-      },
-      "id": 107,
-      "options": {
-        "cellHeight": "sm",
-        "showHeader": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "victoriametrics-logs-datasource",
-            "uid": "VictoriaLogs"
-          },
-          "editorMode": "code",
-          "expr": "kubernetes.pod_namespace:=\"ssvc\" event:=\"expired_override\" run_id:in(_time:36h kubernetes.pod_namespace:=\"ssvc\" event:=\"eval_done\" | sort by (_time desc) | limit 1 | keep run_id)\n| fields target, cve_id, decision, expires, reason\n| sort by (expires asc, target asc)\n| limit 200",
-          "queryType": "instant",
-          "refId": "A"
-        }
-      ],
-      "title": "SSVC: Expired Overrides",
-      "transformations": [
-        {
-          "id": "extractFields",
-          "options": {
-            "format": "auto",
-            "source": "labels"
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Line": true,
-              "Time": true,
-              "labels": true
-            },
-            "indexByName": {
-              "target": 0,
-              "cve_id": 1,
-              "decision": 2,
-              "expires": 3,
-              "reason": 4
-            },
-            "renameByName": {
-              "target": "Target",
-              "cve_id": "CVE",
-              "decision": "Decision",
-              "expires": "Expires",
-              "reason": "Reason"
-            }
-          }
-        }
-      ],
-      "type": "table",
-      "timeFrom": "36h",
-      "hideTimeOverride": false
     }
   ],
   "refresh": "1m",
