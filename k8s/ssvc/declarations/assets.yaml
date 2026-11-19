@@ -93,6 +93,11 @@ namespaces:
     reason: "毎日の一時 Job。止まってもスキャンが 1 日遅れるだけ"
     # 露出は自動で controlled
 
+  ssvc:
+    human_impact: low
+    reason: "毎日の一時 Job。止まっても評価が 1 日遅れるだけ"
+    # 露出は自動で controlled
+
   preview-isolation-test:
     human_impact: low
     reason: "PR プレビューの分離を確かめる試験用の CronJob"

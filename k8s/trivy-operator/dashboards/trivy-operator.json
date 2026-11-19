@@ -3666,7 +3666,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "k8s/ssvc/assets.yaml の hosts に載せた未スキャン資産 (VM・LXC・Proxmox 等) の一覧。",
+      "description": "k8s/ssvc/declarations/assets.yaml の hosts に載せた未スキャン資産 (VM・LXC・Proxmox 等) の一覧。",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -3739,7 +3739,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "k8s/ssvc/assets.yaml に未登録の Namespace またはリポジトリで見つかった指摘。既定値で埋めず未登録として出している。",
+      "description": "k8s/ssvc/declarations/assets.yaml に未登録の Namespace またはリポジトリで見つかった指摘。既定値で埋めず未登録として出している。",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -3817,7 +3817,7 @@
         "type": "victoriametrics-logs-datasource",
         "uid": "VictoriaLogs"
       },
-      "description": "k8s/ssvc/overrides.yaml のうち期限切れになっている例外。期限切れの例外は無効化され、通常の評価に戻る。",
+      "description": "k8s/ssvc/declarations/overrides.yaml のうち期限切れになっている例外。期限切れの例外は無効化され、通常の評価に戻る。",
       "fieldConfig": {
         "defaults": {
           "custom": {

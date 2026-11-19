@@ -13,6 +13,7 @@ spec:
     - toEntities:
         - kube-apiserver
     # 2. CoreDNS による名前解決 (kube-system の DNS ポート 53 UDP/TCP)
+    # toFQDNs を効かせるため、Cilium の DNS プロキシで名前解決を検査する。
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
@@ -23,15 +24,15 @@ spec:
               protocol: UDP
             - port: "53"
               protocol: TCP
-    # 3. 外部への HTTPS (443 のみ)
+          rules:
+            dns:
+              - matchPattern: "*"
+    # 3. 外部への HTTPS (443 のみ、宛先ドメインを限定)
     # CISA KEV (www.cisa.gov)、Vulnrichment (raw.githubusercontent.com)、EPSS (api.first.org) 用。
-    # 内部プライベート網への横展開を遮断する。
-    - toCIDRSet:
-        - cidr: 0.0.0.0/0
-          except:
-            - 192.168.0.0/16
-            - 10.0.0.0/8
-            - 172.16.0.0/12
+    - toFQDNs:
+        - matchName: "www.cisa.gov"
+        - matchName: "raw.githubusercontent.com"
+        - matchName: "api.first.org"
       toPorts:
         - ports:
             - port: "443"

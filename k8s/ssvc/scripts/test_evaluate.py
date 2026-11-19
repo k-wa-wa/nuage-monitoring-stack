@@ -127,8 +127,8 @@ overrides:
                 evaluate.parse_yaml(bad)
 
     def test_repo_manifests_parse_and_match_yq(self):
-        assets_path = os.path.join(SSVC_DIR, "assets.yaml")
-        overrides_path = os.path.join(SSVC_DIR, "overrides.yaml")
+        assets_path = os.path.join(SSVC_DIR, "declarations", "assets.yaml")
+        overrides_path = os.path.join(SSVC_DIR, "declarations", "overrides.yaml")
         assets = evaluate.load_assets(assets_path)
         overrides = evaluate.load_overrides(overrides_path)
         self.assertIn("nuage-honeytrap", assets["namespaces"])

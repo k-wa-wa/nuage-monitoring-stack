@@ -17,8 +17,8 @@ configMapGenerator:
   # 人が編集する資産の宣言と例外ファイル
   - name: ssvc-config
     files:
-      - assets.yaml
-      - overrides.yaml
+      - declarations/assets.yaml
+      - declarations/overrides.yaml
   # 評価スクリプトと CERT/CC SSVC Deployer 判定表。テスト (test_evaluate.py) は載せない
   #   python3 -m unittest discover -s k8s/ssvc/scripts
   - name: ssvc-scripts
