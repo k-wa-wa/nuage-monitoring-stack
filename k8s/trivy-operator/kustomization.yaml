@@ -59,13 +59,15 @@ helmCharts:
         # キャッシュ専用のため PVC を作らず emptyDir を使う (再起動時は起動時に trivy-db を再取得する)。
         storageClassEnabled: false
         server:
+          # requests は控えめにしつつ、limits.memory は trivy.db 展開や同時処理での OOMKilled を防ぐため
+          # チャート既定値の 1Gi にそろえる (operator 本体も 512Mi で OOMKilled になった経緯がある)。
           resources:
             requests:
-              cpu: 50m
+              cpu: 100m
               memory: 256Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: "1"
+              memory: 1Gi
         resources:
           requests:
             cpu: 100m
@@ -97,6 +99,7 @@ configMapGenerator:
   #   - nuage_ssvc_unscanned_assets{host, kind, human_impact, exposure} / nuage_ssvc_unscanned_assets_total
   #   - nuage_ssvc_no_scan_result_targets_total
   #   - nuage_ssvc_expired_overrides_total
+  #   - nuage_ssvc_last_run_timestamp_seconds
   #   - nuage_ssvc_last_success_timestamp_seconds
   #   - VictoriaLogs の kubernetes.pod_namespace="ssvc" (event="ssvc_finding" / "no_scan_result" / "expired_override" / "eval_done")
   # Grafana の sidecar は全 Namespace を見る (searchNamespace: ALL) ため、trivy-operator Namespace に置いても読み込まれる。

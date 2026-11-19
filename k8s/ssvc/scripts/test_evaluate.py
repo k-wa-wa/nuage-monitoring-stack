@@ -1123,6 +1123,7 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(finding["automatable_source"], "error")
         self.assertEqual(finding["decision"], "unknown")
         self.assertEqual(finding["decision_source"], "error")
+        self.assertIn("nuage_ssvc_last_run_timestamp_seconds 1700000000", metrics[0])
         self.assertNotIn("nuage_ssvc_last_success_timestamp_seconds", metrics[0])
 
     def test_epss_failure_continues_evaluation(self):
@@ -1164,6 +1165,7 @@ class EndToEndTest(unittest.TestCase):
         finding = next(json.loads(l) for l in stdout.splitlines() if '"ssvc_finding"' in l)
         self.assertIsNone(finding["epss"])
         self.assertEqual(finding["decision"], "scheduled")
+        self.assertIn("nuage_ssvc_last_run_timestamp_seconds 1700000000", metrics[0])
         self.assertIn("nuage_ssvc_last_success_timestamp_seconds 1700000000", metrics[0])
 
     def test_kev_failure_aborts_without_push(self):
@@ -1531,8 +1533,16 @@ class DashboardTest(unittest.TestCase):
                 self.assertIn("or vector(-1)", t["expr"])
         for pid in (101, 102, 103, 105, 106, 110):
             for t in by_id[pid]["targets"]:
-                self.assertIn("tlast_over_time(", t["expr"])
-                self.assertIn("nuage_ssvc_last_success_timestamp_seconds", t["expr"])
+                expr = t["expr"]
+                self.assertIn("tlast_over_time(", expr)
+                self.assertIn("nuage_ssvc_last_run_timestamp_seconds", expr)
+                self.assertIn("nuage_ssvc_last_success_timestamp_seconds", expr)
+                # 左辺が複数系列でも PromQL 実行時エラー (duplicate time series) にならない比較形を使う
+                self.assertTrue(
+                    ">= scalar(" in expr or "group_left" in expr,
+                    f"panel {pid} target {t.get('refId')} lacks scalar()/group_left: {expr}",
+                )
+                self.assertNotIn(">= on() max(", expr)
         p102_legends = {t.get("legendFormat") for t in by_id[102]["targets"]}
         self.assertIn("No Scan Result", p102_legends)
         self.assertIn(

@@ -1367,6 +1367,7 @@ def render_metrics(
         "# TYPE nuage_ssvc_unscanned_assets gauge",
         "# TYPE nuage_ssvc_unscanned_assets_total gauge",
         "# TYPE nuage_ssvc_expired_overrides_total gauge",
+        "# TYPE nuage_ssvc_last_run_timestamp_seconds gauge",
     ]
     if evaluated is not None:
         lines.append("# TYPE nuage_ssvc_exploitation_findings gauge")
@@ -1436,6 +1437,7 @@ def render_metrics(
             )
     lines.append(f"nuage_ssvc_unscanned_assets_total {unscanned_count}")
     lines.append(f"nuage_ssvc_expired_overrides_total {len(expired_overrides)}")
+    lines.append(f"nuage_ssvc_last_run_timestamp_seconds {int(now)}")
     if include_last_success:
         lines.append(f"nuage_ssvc_last_success_timestamp_seconds {int(now)}")
     return "\n".join(lines) + "\n"
