@@ -775,6 +775,29 @@ class EndToEndTest(unittest.TestCase):
             def list_all(self, path):
                 if path.endswith("/ingresses"):
                     return [{"metadata": {"namespace": "pechka", "name": "pechka-ing"}}]
+                if path.endswith("/pods"):
+                    return [
+                        # 稼働中だが VulnerabilityReport がある (rs-api-new と一致)
+                        {
+                            "metadata": {
+                                "namespace": "pechka",
+                                "name": "api-8f5c6b7d9-abcde",
+                                "ownerReferences": [{"kind": "ReplicaSet", "name": "api-8f5c6b7d9"}],
+                            },
+                            "status": {"phase": "Running"},
+                        },
+                        # PR 環境の Pod は除外される
+                        {
+                            "metadata": {
+                                "namespace": "pechka-pr-99",
+                                "name": "preview-pod",
+                                "ownerReferences": [{"kind": "ReplicaSet", "name": "api-7d9c8f4b5"}],
+                            },
+                            "status": {"phase": "Running"},
+                        },
+                    ]
+                if path.endswith("/jobs"):
+                    return []
                 if path.endswith("/vulnerabilityreports"):
                     return [
                         # PR 環境は除外される
@@ -1264,6 +1287,190 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(done["active_exploitation"], 1)
         self.assertIn("nuage_ssvc_active_exploitation_total 1", metrics[0])
 
+    def test_no_scan_result_detection_and_exclusions(self):
+        class CoverageK8s:
+            def list_all(self, path):
+                if path.endswith("/ingresses"):
+                    return [{"metadata": {"namespace": "pechka", "name": "pechka-ing"}}]
+                if path.endswith("/vulnerabilityreports"):
+                    return [
+                        # vulnerabilities が空配列でもレポートがあればスキャン済み扱い
+                        {
+                            "metadata": {
+                                "namespace": "pechka",
+                                "name": "rs-api",
+                                "labels": {
+                                    "trivy-operator.resource.kind": "ReplicaSet",
+                                    "trivy-operator.resource.name": "api-7d9c8f4b5",
+                                    "trivy-operator.container.name": "api",
+                                },
+                            },
+                            "report": {"vulnerabilities": []},
+                        },
+                        # CronJob 単位のレポート
+                        {
+                            "metadata": {
+                                "namespace": "ssvc",
+                                "name": "cronjob-ssvc",
+                                "labels": {
+                                    "trivy-operator.resource.kind": "CronJob",
+                                    "trivy-operator.resource.name": "ssvc",
+                                    "trivy-operator.container.name": "evaluate",
+                                },
+                            },
+                            "report": {"vulnerabilities": []},
+                        },
+                    ]
+                if path.endswith("/jobs"):
+                    return [
+                        {
+                            "metadata": {
+                                "namespace": "ssvc",
+                                "name": "ssvc-28857300",
+                                "ownerReferences": [{"kind": "CronJob", "name": "ssvc"}],
+                            }
+                        },
+                        {
+                            "metadata": {
+                                "namespace": "trivy-operator",
+                                "name": "scan-vulnerabilityreport-1234",
+                            }
+                        },
+                        {
+                            "metadata": {
+                                "namespace": "pechka",
+                                "name": "manual-job",
+                            }
+                        },
+                    ]
+                if path.endswith("/pods"):
+                    return [
+                        # 1. スキャン済み ReplicaSet (複数 Pod でも 1 ワークロード)
+                        {
+                            "metadata": {
+                                "namespace": "pechka",
+                                "name": "api-7d9c8f4b5-11111",
+                                "ownerReferences": [{"kind": "ReplicaSet", "name": "api-7d9c8f4b5"}],
+                            },
+                            "status": {"phase": "Running"},
+                        },
+                        # 2. スキャン済み CronJob の実行中 Pod (Job -> CronJob 解決)
+                        {
+                            "metadata": {
+                                "namespace": "ssvc",
+                                "name": "ssvc-28857300-abcde",
+                                "ownerReferences": [{"kind": "Job", "name": "ssvc-28857300"}],
+                            },
+                            "status": {"phase": "Running"},
+                        },
+                        # 3. 結果なし: aivisspeech (タイムアウトで VulnerabilityReport 無し)
+                        {
+                            "metadata": {
+                                "namespace": "pechka",
+                                "name": "aivisspeech-8cb67b947-xyz12",
+                                "ownerReferences": [{"kind": "ReplicaSet", "name": "aivisspeech-8cb67b947"}],
+                            },
+                            "status": {"phase": "Running"},
+                        },
+                        # 4. 結果なし: argocd-repo-server (キャッシュ競合で VulnerabilityReport 無し)
+                        {
+                            "metadata": {
+                                "namespace": "argocd",
+                                "name": "argocd-repo-server-6f7b8c9d5-1",
+                                "ownerReferences": [{"kind": "ReplicaSet", "name": "argocd-repo-server-6f7b8c9d5"}],
+                            },
+                            "status": {"phase": "Running"},
+                        },
+                        # 5. 結果なし: 稼働中単発 Job
+                        {
+                            "metadata": {
+                                "namespace": "pechka",
+                                "name": "manual-job-pod",
+                                "ownerReferences": [{"kind": "Job", "name": "manual-job"}],
+                            },
+                            "status": {"phase": "Running"},
+                        },
+                        # 6. 結果なし: trivy-server StatefulSet (trivy-operator Namespace でも Job 以外は対象)
+                        {
+                            "metadata": {
+                                "namespace": "trivy-operator",
+                                "name": "trivy-server-0",
+                                "ownerReferences": [{"kind": "StatefulSet", "name": "trivy-server"}],
+                            },
+                            "status": {"phase": "Running"},
+                        },
+                        # 除外 1: PR プレビュー Namespace
+                        {
+                            "metadata": {
+                                "namespace": "pechka-pr-101",
+                                "name": "aivisspeech-8cb67b947-pr",
+                                "ownerReferences": [{"kind": "ReplicaSet", "name": "aivisspeech-8cb67b947"}],
+                            },
+                            "status": {"phase": "Running"},
+                        },
+                        # 除外 2: 完了済み (Succeeded / Failed) Pod
+                        {
+                            "metadata": {
+                                "namespace": "pechka",
+                                "name": "finished-wf-1700000000-main-1",
+                                "ownerReferences": [{"kind": "Workflow", "name": "finished-wf"}],
+                            },
+                            "status": {"phase": "Succeeded"},
+                        },
+                        {
+                            "metadata": {
+                                "namespace": "pechka",
+                                "name": "failed-wf-1700000000-main-2",
+                                "ownerReferences": [{"kind": "Workflow", "name": "failed-wf"}],
+                            },
+                            "status": {"phase": "Failed"},
+                        },
+                        # 除外 3: Terminating Pod
+                        {
+                            "metadata": {
+                                "namespace": "pechka",
+                                "name": "old-rs-pod",
+                                "deletionTimestamp": "2026-11-19T12:00:00Z",
+                                "ownerReferences": [{"kind": "ReplicaSet", "name": "old-rs-123456"}],
+                            },
+                            "status": {"phase": "Running"},
+                        },
+                        # 除外 4: trivy-operator 自身のスキャン Job
+                        {
+                            "metadata": {
+                                "namespace": "trivy-operator",
+                                "name": "scan-vulnerabilityreport-1234-xyz",
+                                "ownerReferences": [{"kind": "Job", "name": "scan-vulnerabilityreport-1234"}],
+                            },
+                            "status": {"phase": "Running"},
+                        },
+                    ]
+                raise AssertionError(f"unexpected path: {path}")
+
+        routes = {
+            "/kev.json": (200, {"vulnerabilities": []}),
+            "/vulnrichment/2024/5xxx/CVE-2024-5555.json": (404, {}),
+            "/epss": (200, {"data": []}),
+        }
+        code, stdout, _, metrics = self._run_with_routes(routes, CoverageK8s())
+        self.assertEqual(code, 0)
+        records = [json.loads(l) for l in stdout.splitlines()]
+        no_scan = [r for r in records if r["event"] == "no_scan_result"]
+        self.assertEqual(
+            [(r["namespace"], r["resource_kind"], r["resource_name"], r["workload"]) for r in no_scan],
+            [
+                ("argocd", "ReplicaSet", "argocd-repo-server-6f7b8c9d5", "argocd-repo-server"),
+                ("pechka", "Job", "manual-job", "manual-job"),
+                ("pechka", "ReplicaSet", "aivisspeech-8cb67b947", "aivisspeech"),
+                ("trivy-operator", "StatefulSet", "trivy-server", "trivy-server"),
+            ],
+        )
+        done = next(r for r in records if r["event"] == "eval_done")
+        self.assertEqual(done["no_scan_result_targets"], 4)
+        self.assertEqual(done["unscanned_assets"], 0)
+        self.assertIn("nuage_ssvc_no_scan_result_targets_total 4", metrics[0])
+        self.assertIn("nuage_ssvc_unscanned_assets_total 0", metrics[0])
+
 
 class DashboardTest(unittest.TestCase):
     def test_security_dashboard_keeps_existing_panels_and_adds_ssvc(self):
@@ -1288,7 +1495,7 @@ class DashboardTest(unittest.TestCase):
         self.assertTrue(expected_existing_ids.issubset(set(all_ids)))
 
         by_id = {p["id"]: p for p in dash["panels"]}
-        for pid in (100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110):
+        for pid in (100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111):
             self.assertIn(pid, by_id)
 
         # SSVC Prioritization 行がダッシュボードの一番上で、既存の行がその下に元の順で並ぶ
@@ -1322,7 +1529,23 @@ class DashboardTest(unittest.TestCase):
             for t in by_id[pid]["targets"]:
                 self.assertNotIn("or vector(0)", t["expr"])
                 self.assertIn("or vector(-1)", t["expr"])
-        for pid in (104, 107, 109):
+        for pid in (101, 102, 103, 105, 106, 110):
+            for t in by_id[pid]["targets"]:
+                self.assertIn("tlast_over_time(", t["expr"])
+                self.assertIn("nuage_ssvc_last_success_timestamp_seconds", t["expr"])
+        p102_legends = {t.get("legendFormat") for t in by_id[102]["targets"]}
+        self.assertIn("No Scan Result", p102_legends)
+        self.assertIn(
+            "nuage_ssvc_no_scan_result_targets_total",
+            next(t["expr"] for t in by_id[102]["targets"] if t.get("legendFormat") == "No Scan Result"),
+        )
+        p111 = by_id[111]
+        self.assertEqual(p111["type"], "table")
+        self.assertEqual(p111.get("timeFrom"), "36h")
+        self.assertIn('event:="no_scan_result"', p111["targets"][0]["expr"])
+        self.assertIn('event:="eval_done"', p111["targets"][0]["expr"])
+        self.assertGreaterEqual(p111["gridPos"]["y"], by_id[105]["gridPos"]["y"])
+        for pid in (104, 107, 109, 111):
             self.assertEqual(by_id[pid].get("timeFrom"), "36h")
 
         # Immediate & Out-of-Cycle by Target (103): 悪用の状況列と Grafana 13.2.5 互換の単一列ソート

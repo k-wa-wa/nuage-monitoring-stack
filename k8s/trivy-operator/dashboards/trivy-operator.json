@@ -112,7 +112,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "last_over_time(nuage_ssvc_active_exploitation_total[36h]) or vector(-1)",
+          "expr": "(last_over_time(nuage_ssvc_active_exploitation_total[36h]) and (tlast_over_time(nuage_ssvc_active_exploitation_total[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -299,7 +299,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "k8s VulnerabilityReport と repo-scan の脆弱性を CERT/CC SSVC Deployer 表（nuage 用調整版）で毎日評価した結果 (nuage_ssvc_findings)。件数は 1 日 1 回送られるため last_over_time(...[36h]) で最新の値を取る。",
+      "description": "k8s VulnerabilityReport と repo-scan の脆弱性を CERT/CC SSVC Deployer 表（nuage 用調整版）で毎日評価した結果 (nuage_ssvc_findings)。最新の成功評価 (nuage_ssvc_last_success_timestamp_seconds) より古い系列は数えない。評価停止時は — を表示する。",
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -432,7 +432,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h])) or vector(-1)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -445,7 +445,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h])) or vector(-1)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "B",
@@ -458,7 +458,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h])) or vector(-1)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "C",
@@ -471,7 +471,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h])) or vector(-1)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "D",
@@ -484,7 +484,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) or vector(-1)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "E",
@@ -499,7 +499,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "SSVC 評価で人の確認や資産登録が要る項目。Unregistered (assets.yaml 未登録の対象にある指摘)・Unknown (決定点欠損や GHSA 等で判定不可)・Unscanned Assets (hosts に載せた未スキャン資産数)・Expired Overrides (期限切れの例外数)。",
+      "description": "SSVC 評価で人の確認や資産登録が要る項目。Unregistered (assets.yaml 未登録の対象にある指摘)・Unknown (決定点欠損や GHSA 等で判定不可)・Unscanned Assets (hosts に載せた未スキャン資産数)・Expired Overrides (期限切れの例外数)・No Scan Result (稼働中ワークロードのうち VulnerabilityReport が無い対象数)。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -563,7 +563,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h])) or vector(-1)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -576,7 +576,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) or vector(-1)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "B",
@@ -589,7 +589,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "last_over_time(nuage_ssvc_unscanned_assets_total[36h]) or vector(-1)",
+          "expr": "(last_over_time(nuage_ssvc_unscanned_assets_total[36h]) and (tlast_over_time(nuage_ssvc_unscanned_assets_total[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "C",
@@ -602,11 +602,24 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "last_over_time(nuage_ssvc_expired_overrides_total[36h]) or vector(-1)",
+          "expr": "(last_over_time(nuage_ssvc_expired_overrides_total[36h]) and (tlast_over_time(nuage_ssvc_expired_overrides_total[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "D",
           "legendFormat": "Expired Overrides"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(last_over_time(nuage_ssvc_no_scan_result_targets_total[36h]) and (tlast_over_time(nuage_ssvc_no_scan_result_targets_total[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) or vector(-1)",
+          "instant": true,
+          "range": false,
+          "refId": "E",
+          "legendFormat": "No Scan Result"
         }
       ],
       "title": "SSVC: Governance & Coverage",
@@ -863,7 +876,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "expr": "sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) and on (source, namespace, target) (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) > 0)",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -876,7 +889,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "expr": "sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) and on (source, namespace, target) (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) > 0)",
           "instant": true,
           "range": false,
           "refId": "B",
@@ -889,7 +902,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "expr": "sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) and on (source, namespace, target) (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) > 0)",
           "instant": true,
           "range": false,
           "refId": "C",
@@ -902,7 +915,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "expr": "sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) and on (source, namespace, target) (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) > 0)",
           "instant": true,
           "range": false,
           "refId": "D",
@@ -915,7 +928,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "expr": "sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) and on (source, namespace, target) (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) > 0)",
           "instant": true,
           "range": false,
           "refId": "E",
@@ -928,7 +941,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"active\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "expr": "sum by (source, namespace, target) ((last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"active\"}[36h]) and (tlast_over_time(nuage_ssvc_exploitation_findings{exploitation=\"active\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) and on (source, namespace, target) (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) > 0)",
           "instant": true,
           "range": false,
           "refId": "F",
@@ -941,7 +954,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"public poc\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "expr": "sum by (source, namespace, target) ((last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"public poc\"}[36h]) and (tlast_over_time(nuage_ssvc_exploitation_findings{exploitation=\"public poc\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) and on (source, namespace, target) (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) > 0)",
           "instant": true,
           "range": false,
           "refId": "G",
@@ -954,7 +967,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"none\"}[36h])) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "expr": "sum by (source, namespace, target) ((last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"none\"}[36h]) and (tlast_over_time(nuage_ssvc_exploitation_findings{exploitation=\"none\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) and on (source, namespace, target) (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) > 0)",
           "instant": true,
           "range": false,
           "refId": "H",
@@ -967,7 +980,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "(\n  (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h])) * 1e12)\n  + ((sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"active\"}[36h])) or (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) * 0)) * 1e8)\n  + ((sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"public poc\"}[36h])) or (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) * 0)) * 1e4)\n  + sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h]))\n) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "expr": "(\n  (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) * 1e12)\n  + ((sum by (source, namespace, target) ((last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"active\"}[36h]) and (tlast_over_time(nuage_ssvc_exploitation_findings{exploitation=\"active\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) or (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) * 0)) * 1e8)\n  + ((sum by (source, namespace, target) ((last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"public poc\"}[36h]) and (tlast_over_time(nuage_ssvc_exploitation_findings{exploitation=\"public poc\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) or (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) * 0)) * 1e4)\n  + sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))))\n) and on (source, namespace, target) (sum by (source, namespace, target) ((last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h]))))) > 0)",
           "instant": true,
           "range": false,
           "refId": "I",
@@ -1218,7 +1231,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "last_over_time(nuage_ssvc_unscanned_assets[36h])",
+          "expr": "last_over_time(nuage_ssvc_unscanned_assets[36h]) and (tlast_over_time(nuage_ssvc_unscanned_assets[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -1298,7 +1311,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h])) > 0",
+          "expr": "sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h]) and (tlast_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h]) >= on() max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[36h])))) > 0",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -1412,12 +1425,91 @@
       "hideTimeOverride": false
     },
     {
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "VictoriaLogs"
+      },
+      "description": "稼働中の k8s ワークロードのうち VulnerabilityReport が 1 つも無い対象 (最新の SSVC 評価の event=\"no_scan_result\")。trivy-operator のタイムアウトやスキャン失敗で評価から抜けた対象を検知する。hosts の scan: none (SSVC: Unscanned Assets) とは別に扱う。",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": true
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "hideTimeOverride": false,
+      "id": 111,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "editorMode": "code",
+          "expr": "kubernetes.pod_namespace:=\"ssvc\" event:=\"no_scan_result\" run_id:in(_time:36h kubernetes.pod_namespace:=\"ssvc\" event:=\"eval_done\" | sort by (_time desc) | limit 1 | keep run_id)\n| fields namespace, resource_kind, resource_name, workload\n| sort by (namespace asc, resource_kind asc, resource_name asc)\n| limit 200",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "36h",
+      "title": "SSVC: No Scan Result Targets",
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "format": "auto",
+            "source": "labels"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Line": true,
+              "Time": true,
+              "labels": true
+            },
+            "indexByName": {
+              "namespace": 0,
+              "resource_kind": 1,
+              "resource_name": 2,
+              "workload": 3
+            },
+            "renameByName": {
+              "namespace": "Namespace",
+              "resource_kind": "Kind",
+              "resource_name": "Resource",
+              "workload": "Workload"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
       "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 41
+        "y": 48
       },
       "id": 31,
       "panels": [
@@ -1454,7 +1546,7 @@
             "h": 5,
             "w": 6,
             "x": 0,
-            "y": 42
+            "y": 49
           },
           "id": 32,
           "options": {
@@ -1521,7 +1613,7 @@
             "h": 5,
             "w": 6,
             "x": 6,
-            "y": 42
+            "y": 49
           },
           "id": 33,
           "options": {
@@ -1590,7 +1682,7 @@
             "h": 5,
             "w": 6,
             "x": 12,
-            "y": 42
+            "y": 49
           },
           "id": 40,
           "options": {
@@ -1658,7 +1750,7 @@
             "h": 5,
             "w": 6,
             "x": 18,
-            "y": 42
+            "y": 49
           },
           "id": 41,
           "options": {
@@ -1715,7 +1807,7 @@
             "h": 7,
             "w": 12,
             "x": 0,
-            "y": 47
+            "y": 54
           },
           "id": 34,
           "options": {
@@ -1830,7 +1922,7 @@
             "h": 7,
             "w": 12,
             "x": 12,
-            "y": 47
+            "y": 54
           },
           "id": 42,
           "options": {
@@ -1892,7 +1984,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 42
+        "y": 49
       },
       "id": 50,
       "panels": [],
@@ -2013,7 +2105,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 43
+        "y": 50
       },
       "id": 51,
       "options": {
@@ -2215,7 +2307,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 43
+        "y": 50
       },
       "id": 52,
       "options": {
@@ -2417,7 +2509,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 49
+        "y": 56
       },
       "id": 53,
       "options": {
@@ -2619,7 +2711,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 49
+        "y": 56
       },
       "id": 54,
       "options": {
@@ -2713,7 +2805,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 55
+        "y": 62
       },
       "id": 2,
       "panels": [],
@@ -2924,7 +3016,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 56
+        "y": 63
       },
       "id": 23,
       "options": {
@@ -3071,7 +3163,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 77
       },
       "id": 4,
       "panels": [],
@@ -3248,7 +3340,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 71
+        "y": 78
       },
       "id": 28,
       "options": {
@@ -3360,7 +3452,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 81
+        "y": 88
       },
       "id": 8,
       "panels": [],
@@ -3537,7 +3629,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 82
+        "y": 89
       },
       "id": 29,
       "options": {
@@ -3701,7 +3793,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 92
+        "y": 99
       },
       "id": 55,
       "options": {
@@ -3842,7 +3934,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 106
+        "y": 113
       },
       "id": 56,
       "options": {
@@ -3931,7 +4023,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 112
+        "y": 119
       },
       "id": 35,
       "panels": [],
@@ -4165,7 +4257,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 113
+        "y": 120
       },
       "id": 36,
       "options": {

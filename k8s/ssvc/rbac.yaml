@@ -1,5 +1,5 @@
 # SSVC 評価 CronJob 用の最小権限。
-# VulnerabilityReport と Ingress (露出の自動判定用) の get / list だけを許す。
+# VulnerabilityReport・Ingress (露出の自動判定用)・Pod / Job (スキャン結果なしワークロードの検知用) の get / list だけを許す。
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -16,6 +16,12 @@ rules:
     verbs: ["get", "list"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
     verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
