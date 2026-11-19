@@ -460,11 +460,20 @@ func (db *DB) ListAlertHistory(limit int) ([]Alert, error) {
 
 // GetAlertByID は指定 ID のアラートを取得する。見つからない場合は nil, sql.ErrNoRows を返す。
 func (db *DB) GetAlertByID(id int64) (*Alert, error) {
+	return db.getAlertWhere("id = ?", id)
+}
+
+// GetAlertByFingerprint は指定 fingerprint のアラートを取得する。見つからない場合は nil, sql.ErrNoRows を返す。
+func (db *DB) GetAlertByFingerprint(fingerprint string) (*Alert, error) {
+	return db.getAlertWhere("fingerprint = ?", fingerprint)
+}
+
+func (db *DB) getAlertWhere(whereClause string, arg interface{}) (*Alert, error) {
 	row := db.conn.QueryRow(
 		`SELECT id, fingerprint, alertname, status, level, summary, description, url, details, fired_at, resolved_at, created_at, updated_at
 		 FROM alerts
-		 WHERE id = ?`,
-		id,
+		 WHERE `+whereClause,
+		arg,
 	)
 	a, err := scanAlert(row)
 	if err != nil {

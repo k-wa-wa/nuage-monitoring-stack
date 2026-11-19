@@ -150,7 +150,15 @@ func (h *HistoryHandler) UnifiedNotifications(c echo.Context) error {
 	firingItems := make([]UnifiedNotification, 0, len(activeAlerts))
 	for _, active := range activeAlerts {
 		activeFPSet[active.Fingerprint] = true
-		if dbAlert, ok := dbAlertByFP[active.Fingerprint]; ok {
+		dbAlert, ok := dbAlertByFP[active.Fingerprint]
+		if !ok {
+			// 直近 limit 件から漏れた古いアラートでも DB 上に存在すれば ID を引き継ぐ
+			if found, err := h.db.GetAlertByFingerprint(active.Fingerprint); err == nil && found != nil {
+				dbAlert = *found
+				ok = true
+			}
+		}
+		if ok {
 			// DB レコードの ID を引き継ぎ、ディープリンク (/alerts/:id) と一致させる
 			merged := active
 			merged.ID = dbAlert.ID
@@ -261,17 +269,23 @@ func alertToUnified(a push.Alert, uid string) UnifiedNotification {
 	}
 }
 
-func notificationToUnified(n push.Notification) UnifiedNotification {
-	source := n.Source
-	if source == "" {
-		if strings.HasPrefix(n.Title, "[Keel]") {
-			source = "keel"
-		} else if strings.Contains(strings.ToLower(n.Title), "argo") {
-			source = "argocd"
-		} else {
-			source = "generic"
-		}
+// inferNotificationSource は明示指定またはタイトルから通知の送信元種別を判定する。
+func inferNotificationSource(title, explicitSource string) string {
+	s := strings.TrimSpace(explicitSource)
+	if s != "" && s != "generic" {
+		return s
 	}
+	if strings.HasPrefix(title, "[Keel]") {
+		return "keel"
+	}
+	if strings.Contains(strings.ToLower(title), "argo") {
+		return "argocd"
+	}
+	return "generic"
+}
+
+func notificationToUnified(n push.Notification) UnifiedNotification {
+	source := inferNotificationSource(n.Title, n.Source)
 	return UnifiedNotification{
 		UID:       fmt.Sprintf("notification-%d", n.ID),
 		ID:        n.ID,

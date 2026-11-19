@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 )
 
 func TestGetActiveAlerts(t *testing.T) {
@@ -111,5 +113,12 @@ func TestGetActiveAlerts(t *testing.T) {
 	}
 	if a.ID == 0 {
 		t.Errorf("expected non-zero ID, got %d", a.ID)
+	}
+	expectedFP := push.GenerateFingerprint(map[string]string{
+		"severity":  "critical",
+		"alertname": "DiskSpaceLow",
+	})
+	if a.Fingerprint != expectedFP {
+		t.Errorf("expected fingerprint %q (matching push.GenerateFingerprint), got %q", expectedFP, a.Fingerprint)
 	}
 }

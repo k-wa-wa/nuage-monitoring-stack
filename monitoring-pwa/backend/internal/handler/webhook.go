@@ -192,10 +192,7 @@ func (h *WebhookHandler) GenericWebhook(c echo.Context) error {
 	if targetURL == "" {
 		targetURL = strings.TrimSpace(req.TargetURL)
 	}
-	source := strings.TrimSpace(req.Source)
-	if source == "" {
-		source = "generic"
-	}
+	source := inferNotificationSource(req.Title, req.Source)
 
 	// DBに履歴を保存
 	id, err := h.db.SaveNotificationWithSource(req.Title, req.Body, targetURL, level, req.Details, source)

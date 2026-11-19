@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Bell, Settings as SettingsIcon } from 'lucide-react'
 import Settings from './components/Settings'
 import NotificationItem from './components/NotificationItem'
@@ -12,6 +12,7 @@ export default function App() {
 
 	const [activeTab, setActiveTab] = useState<'notifications' | 'settings'>(initialRoute.tab)
 	const [expandedUid, setExpandedUid] = useState<string | null>(initialRoute.selectedUid)
+	const [routePath, setRoutePath] = useState(() => window.location.pathname)
 	const [online, setOnline] = useState(navigator.onLine)
 	const [notifications, setNotifications] = useState<UnifiedNotification[]>([])
 	const [deepLinkedItem, setDeepLinkedItem] = useState<UnifiedNotification | null>(null)
@@ -19,6 +20,8 @@ export default function App() {
 	const [isSubscribed, setIsSubscribed] = useState(false)
 	const [submitting, setSubmitting] = useState(false)
 	const [logs, setLogs] = useState<string[]>([])
+	const resolvedDeepLinkRef = useRef<string | null>(null)
+	const inFlightDeepLinkRef = useRef<string | null>(null)
 
 	// ローカル開発時に別ポートで動くバックエンドを指すように URL を切り替える。
 	const apiBase = import.meta.env.DEV ? 'http://localhost:8080' : ''
@@ -65,6 +68,7 @@ export default function App() {
 		const parsed = parseAppRoute(newPath)
 		setActiveTab(parsed.tab)
 		setExpandedUid(parsed.selectedUid)
+		setRoutePath(newPath)
 		if (parsed.selectedUid || parsed.legacyHistoryId !== null) {
 			setFilter('all')
 		}
@@ -114,12 +118,18 @@ export default function App() {
 		}
 	}, [activeTab, fetchNotifications])
 
-	// ディープリンク時に一覧へ含まれない通知を単体取得し、対象要素へスクロールする。
+	// ディープリンク時に一覧へ含まれない通知を1回だけ単体取得して解決する。
 	useEffect(() => {
-		const route = parseAppRoute(window.location.pathname)
-		if (route.tab !== 'notifications') return
+		if (resolvedDeepLinkRef.current === routePath) return
 
-		if (route.legacyHistoryId !== null && notifications.length > 0) {
+		const route = parseAppRoute(routePath)
+		if (route.tab !== 'notifications') {
+			resolvedDeepLinkRef.current = routePath
+			return
+		}
+
+		if (route.legacyHistoryId !== null) {
+			if (notifications.length === 0) return
 			const alertMatch = notifications.find((n) => n.uid === `alert-${route.legacyHistoryId}`)
 			const noteMatch = notifications.find((n) => n.uid === `notification-${route.legacyHistoryId}`)
 			const target = alertMatch || noteMatch
@@ -127,26 +137,42 @@ export default function App() {
 				setExpandedUid(target.uid)
 				setFilter('all')
 			}
+			resolvedDeepLinkRef.current = routePath
 			return
 		}
 
 		if (route.detailKind && route.detailId !== null) {
 			const targetUid = `${route.detailKind}-${route.detailId}`
-			const existsInList = notifications.some((n) => n.uid === targetUid)
-			if (!existsInList) {
-				fetch(`${apiBase}/api/notifications/${route.detailKind}/${route.detailId}`)
-					.then((res) => (res.ok ? res.json() : null))
-					.then((item: UnifiedNotification | null) => {
-						if (item) {
-							setDeepLinkedItem(item)
-							setExpandedUid(item.uid)
-							setFilter('all')
-						}
-					})
-					.catch((err) => console.error('Failed to fetch notification detail:', err))
+			const existsInList =
+				notifications.some((n) => n.uid === targetUid) || deepLinkedItem?.uid === targetUid
+			if (existsInList) {
+				resolvedDeepLinkRef.current = routePath
+				return
 			}
+			if (inFlightDeepLinkRef.current === routePath) return
+			inFlightDeepLinkRef.current = routePath
+
+			fetch(`${apiBase}/api/notifications/${route.detailKind}/${route.detailId}`)
+				.then((res) => (res.ok ? res.json() : null))
+				.then((item: UnifiedNotification | null) => {
+					if (item) {
+						setDeepLinkedItem(item)
+						setExpandedUid(item.uid)
+						setFilter('all')
+					}
+				})
+				.catch((err) => console.error('Failed to fetch notification detail:', err))
+				.finally(() => {
+					resolvedDeepLinkRef.current = routePath
+					if (inFlightDeepLinkRef.current === routePath) {
+						inFlightDeepLinkRef.current = null
+					}
+				})
+			return
 		}
-	}, [apiBase, notifications, expandedUid])
+
+		resolvedDeepLinkRef.current = routePath
+	}, [apiBase, routePath, notifications, deepLinkedItem])
 
 	// 展開中の要素へ自動スクロールする。
 	useEffect(() => {
@@ -163,9 +189,11 @@ export default function App() {
 	// 戻る・進むボタン (popstate) と Service Worker からの通知クリックメッセージを受信する。
 	useEffect(() => {
 		const handlePopState = () => {
-			const parsed = parseAppRoute(window.location.pathname)
+			const newPath = window.location.pathname
+			const parsed = parseAppRoute(newPath)
 			setActiveTab(parsed.tab)
 			setExpandedUid(parsed.selectedUid)
+			setRoutePath(newPath)
 		}
 		const handleSwMessage = (event: MessageEvent) => {
 			if (event.data?.type === 'NOTIFICATION_CLICK' && typeof event.data.url === 'string') {
@@ -305,6 +333,8 @@ export default function App() {
 		const isClosing = expandedUid === item.uid
 		if (isClosing) {
 			setExpandedUid(null)
+			resolvedDeepLinkRef.current = '/'
+			setRoutePath('/')
 			if (window.location.pathname !== '/') {
 				window.history.pushState(null, '', '/')
 			}
@@ -312,10 +342,16 @@ export default function App() {
 		}
 
 		setExpandedUid(item.uid)
+		let nextPath = window.location.pathname
 		if (item.uid.startsWith('alert-')) {
-			window.history.pushState(null, '', `/alerts/${item.id}`)
+			nextPath = `/alerts/${item.id}`
 		} else if (item.uid.startsWith('notification-')) {
-			window.history.pushState(null, '', `/notifications/${item.id}`)
+			nextPath = `/notifications/${item.id}`
+		}
+		if (nextPath !== window.location.pathname) {
+			resolvedDeepLinkRef.current = nextPath
+			setRoutePath(nextPath)
+			window.history.pushState(null, '', nextPath)
 		}
 	}
 

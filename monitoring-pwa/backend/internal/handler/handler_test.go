@@ -13,6 +13,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/alertmanager"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 )
 
@@ -251,5 +252,116 @@ func TestUnifiedNotificationsAndDetail(t *testing.T) {
 	}
 	if detailN.UID != "notification-1" || detailN.Title != "Argo CD Synced" {
 		t.Fatalf("unexpected notification detail: %+v", detailN)
+	}
+}
+
+func TestSourceInferenceConsistency(t *testing.T) {
+	db := setupTestDB(t)
+	sender := &mockSender{}
+	wh := NewWebhookHandler(sender, db)
+	hh := NewHistoryHandler(db, &mockActiveFetcher{})
+	e := echo.New()
+
+	// source 未指定の Argo CD 通知を GenericWebhook に送信
+	body := `{"title": "[ArgoCD] nuage-app synced", "body": "Deployment completed", "url": "https://argocd.wpcapp.net"}`
+	req := httptest.NewRequest(http.MethodPost, "/webhook/generic", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	if err := wh.GenericWebhook(e.NewContext(req, rec)); err != nil {
+		t.Fatalf("GenericWebhook failed: %v", err)
+	}
+
+	// すでに "generic" として保存された既存データ相当のレコードも混在させる
+	if _, err := db.SaveNotificationWithSource("[ArgoCD] legacy synced", "body", "", "info", "", "generic"); err != nil {
+		t.Fatalf("SaveNotificationWithSource failed: %v", err)
+	}
+
+	listRec := httptest.NewRecorder()
+	if err := hh.UnifiedNotifications(e.NewContext(httptest.NewRequest(http.MethodGet, "/api/notifications", nil), listRec)); err != nil {
+		t.Fatalf("UnifiedNotifications failed: %v", err)
+	}
+	var items []UnifiedNotification
+	if err := json.Unmarshal(listRec.Body.Bytes(), &items); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+	for _, it := range items {
+		if it.Source != "argocd" {
+			t.Fatalf("expected source argocd for %q, got %q", it.Title, it.Source)
+		}
+	}
+}
+
+func TestAlertmanagerEndToEndFingerprintAndOutOfLimitMatch(t *testing.T) {
+	db := setupTestDB(t)
+	sender := &mockSender{}
+	wh := NewWebhookHandler(sender, db)
+	e := echo.New()
+
+	// 1) AlertmanagerWebhook でアラート1（古い）を firing として保存
+	whBody1 := `{
+		"status": "firing",
+		"alerts": [{
+			"status": "firing",
+			"labels": {"alertname": "OldAlert", "namespace": "kube-system", "severity": "critical"},
+			"annotations": {"summary": "Old alert firing"},
+			"generatorURL": "http://vm-grafana.nuage-monitoring-stack.svc/explore"
+		}]
+	}`
+	req1 := httptest.NewRequest(http.MethodPost, "/webhook/alertmanager", strings.NewReader(whBody1))
+	req1.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	if err := wh.AlertmanagerWebhook(e.NewContext(req1, httptest.NewRecorder())); err != nil {
+		t.Fatalf("AlertmanagerWebhook 1 failed: %v", err)
+	}
+
+	// 2) より新しい別アラートを2件追加して、OldAlert を limit=1 の範囲外に押し出す
+	time.Sleep(5 * time.Millisecond)
+	whBody2 := `{
+		"status": "resolved",
+		"alerts": [
+			{"status": "resolved", "labels": {"alertname": "NewResolved1"}, "annotations": {"summary": "ok1"}},
+			{"status": "resolved", "labels": {"alertname": "NewResolved2"}, "annotations": {"summary": "ok2"}}
+		]
+	}`
+	req2 := httptest.NewRequest(http.MethodPost, "/webhook/alertmanager", strings.NewReader(whBody2))
+	req2.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	if err := wh.AlertmanagerWebhook(e.NewContext(req2, httptest.NewRecorder())); err != nil {
+		t.Fatalf("AlertmanagerWebhook 2 failed: %v", err)
+	}
+
+	// 3) 実物の alertmanager.Client が Alertmanager API (16進fingerprint・ラベル順違い) を取得
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{
+			"fingerprint": "deadbeef12345678",
+			"labels": {"severity": "critical", "namespace": "kube-system", "alertname": "OldAlert"},
+			"annotations": {"summary": "Old alert firing"},
+			"generatorURL": "http://vm-grafana.nuage-monitoring-stack.svc/explore",
+			"startsAt": "2026-11-19T00:00:00Z",
+			"updatedAt": "2026-11-19T00:05:00Z",
+			"status": {"state": "active"}
+		}]`))
+	}))
+	defer ts.Close()
+
+	amClient := alertmanager.NewClient(ts.URL)
+	hh := NewHistoryHandler(db, amClient)
+
+	// limit=1 で取得しても OldAlert が DB の ID=1 (uid: "alert-1") と照合されること
+	listRec := httptest.NewRecorder()
+	if err := hh.UnifiedNotifications(e.NewContext(httptest.NewRequest(http.MethodGet, "/api/notifications?limit=1", nil), listRec)); err != nil {
+		t.Fatalf("UnifiedNotifications failed: %v", err)
+	}
+	var items []UnifiedNotification
+	if err := json.Unmarshal(listRec.Body.Bytes(), &items); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item with limit=1, got %d", len(items))
+	}
+	if items[0].UID != "alert-1" || items[0].ID != 1 || items[0].Status != "firing" {
+		t.Fatalf("expected active OldAlert to merge with DB record alert-1, got %+v", items[0])
 	}
 }
