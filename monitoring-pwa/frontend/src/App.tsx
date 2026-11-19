@@ -1,74 +1,87 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Activity, History, Settings as SettingsIcon } from 'lucide-react'
-import Dashboard from './components/Dashboard'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { Bell, Settings as SettingsIcon } from 'lucide-react'
 import Settings from './components/Settings'
-import HistoryItem from './components/HistoryItem'
-import type { AlertItem } from './types/alert'
+import NotificationItem from './components/NotificationItem'
+import { GRAFANA_BASE_URL, parseAppRoute } from './utils/url'
+import type { UnifiedNotification } from './types/notification'
+
+type NotificationFilter = 'all' | 'firing' | 'resolved' | 'notice'
 
 export default function App() {
-	// パスからタブを取得するヘルパーである。
-	const getTabFromPath = (path: string): 'dashboard' | 'history' | 'settings' => {
-		if (path.startsWith('/history')) return 'history'
-		if (path.startsWith('/settings')) return 'settings'
-		return 'dashboard'
-	}
+	const initialRoute = useMemo(() => parseAppRoute(window.location.pathname), [])
 
-	const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'settings'>(() =>
-		getTabFromPath(window.location.pathname)
-	)
-	const [expandedId, setExpandedId] = useState<number | null>(null)
+	const [activeTab, setActiveTab] = useState<'notifications' | 'settings'>(initialRoute.tab)
+	const [expandedUid, setExpandedUid] = useState<string | null>(initialRoute.selectedUid)
+	const [routePath, setRoutePath] = useState(() => window.location.pathname)
 	const [online, setOnline] = useState(navigator.onLine)
-	const [activeAlerts, setActiveAlerts] = useState<AlertItem[]>([])
-	const [alertHistory, setAlertHistory] = useState<AlertItem[]>([])
-	const [historyFilter, setHistoryFilter] = useState<'all' | 'firing' | 'resolved'>('all')
+	const [notifications, setNotifications] = useState<UnifiedNotification[]>([])
+	const [deepLinkedItem, setDeepLinkedItem] = useState<UnifiedNotification | null>(null)
+	const [filter, setFilter] = useState<NotificationFilter>('all')
 	const [isSubscribed, setIsSubscribed] = useState(false)
 	const [submitting, setSubmitting] = useState(false)
 	const [logs, setLogs] = useState<string[]>([])
-	const [copied, setCopied] = useState(false)
+	const resolvedDeepLinkRef = useRef<string | null>(null)
+	const inFlightDeepLinkRef = useRef<string | null>(null)
 
-	// 現在発生中のアラートと履歴アラートをマージする。
-	const mergedAlerts = useMemo(() => {
-		const activeFpSet = new Set(activeAlerts.map((a) => a.fingerprint))
-		// alertHistory のうち、activeAlerts と重複しないものだけを残す
-		const filteredHistory = alertHistory.filter((h) => !activeFpSet.has(h.fingerprint))
-		// 発生中（firing）を先頭、続いて過去の解決済み履歴を配置する
-		return [...activeAlerts, ...filteredHistory]
-	}, [activeAlerts, alertHistory])
-
-	// 選択されたフィルターに応じて表示用アラートを絞り込む。
-	const displayedAlerts = useMemo(() => {
-		if (historyFilter === 'firing') {
-			return mergedAlerts.filter((a) => a.status === 'firing')
-		}
-		if (historyFilter === 'resolved') {
-			return mergedAlerts.filter((a) => a.status === 'resolved')
-		}
-		return mergedAlerts
-	}, [mergedAlerts, historyFilter])
-
-	const firingCount = useMemo(() => mergedAlerts.filter((a) => a.status === 'firing').length, [mergedAlerts])
-	const resolvedCount = useMemo(() => mergedAlerts.filter((a) => a.status === 'resolved').length, [mergedAlerts])
-
-	// ローカル開発時に別ポートで動くバックエンドを指すように、Viteの環境変数でURLを定義する。
+	// ローカル開発時に別ポートで動くバックエンドを指すように URL を切り替える。
 	const apiBase = import.meta.env.DEV ? 'http://localhost:8080' : ''
-	// 開発環境と本番環境で Grafana のベースURLを切り替える。
-	const grafanaBase = import.meta.env.DEV ? 'https://monitoring.cluster.wpc' : ''
 
-	// システムログの追加用メソッドである。
 	const log = useCallback((msg: string) => {
 		setLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev])
 	}, [])
 
-	// ルーティングを処理する navigateTo メソッドである。
-	const navigateTo = (tab: 'dashboard' | 'history' | 'settings', extraPath = '') => {
-		setActiveTab(tab)
-		const newPath = tab === 'dashboard' ? '/' : `/${tab}${extraPath}`
+	// 一覧に無い古いディープリンク対象も表示できるようにマージする。
+	const allNotifications = useMemo(() => {
+		if (!deepLinkedItem || notifications.some((n) => n.uid === deepLinkedItem.uid)) {
+			return notifications
+		}
+		return [deepLinkedItem, ...notifications]
+	}, [notifications, deepLinkedItem])
+
+	const displayedNotifications = useMemo(() => {
+		switch (filter) {
+			case 'firing':
+				return allNotifications.filter((n) => n.kind === 'alert' && n.status === 'firing')
+			case 'resolved':
+				return allNotifications.filter((n) => n.kind === 'alert' && n.status === 'resolved')
+			case 'notice':
+				return allNotifications.filter((n) => n.kind === 'notification')
+			default:
+				return allNotifications
+		}
+	}, [allNotifications, filter])
+
+	const firingCount = useMemo(
+		() => allNotifications.filter((n) => n.kind === 'alert' && n.status === 'firing').length,
+		[allNotifications]
+	)
+	const resolvedCount = useMemo(
+		() => allNotifications.filter((n) => n.kind === 'alert' && n.status === 'resolved').length,
+		[allNotifications]
+	)
+	const noticeCount = useMemo(
+		() => allNotifications.filter((n) => n.kind === 'notification').length,
+		[allNotifications]
+	)
+
+	const navigateToPath = useCallback((newPath: string) => {
+		const parsed = parseAppRoute(newPath)
+		setActiveTab(parsed.tab)
+		setExpandedUid(parsed.selectedUid)
+		setRoutePath(newPath)
+		if (parsed.selectedUid || parsed.legacyHistoryId !== null) {
+			setFilter('all')
+		}
 		if (window.location.pathname !== newPath) {
 			window.history.pushState(null, '', newPath)
 		}
+	}, [])
+
+	const navigateToTab = (tab: 'notifications' | 'settings') => {
+		navigateToPath(tab === 'settings' ? '/settings' : '/')
 	}
 
-	// ブラウザ of オンライン・オフライン監視を設定する。
+	// ブラウザのオンライン・オフライン監視を設定する。
 	useEffect(() => {
 		const handleOnline = () => setOnline(true)
 		const handleOffline = () => setOnline(false)
@@ -80,81 +93,125 @@ export default function App() {
 		}
 	}, [])
 
-	// アラートデータ（アクティブ・履歴）の取得処理である。
-	const fetchAlertData = useCallback(async () => {
+	// 統合通知一覧の取得処理である。
+	const fetchNotifications = useCallback(async () => {
 		try {
-			const [activeRes, historyRes] = await Promise.all([
-				fetch(`${apiBase}/api/alerts/active`),
-				fetch(`${apiBase}/api/alerts/history`),
-			])
-			if (activeRes.ok) {
-				const activeData = await activeRes.json()
-				setActiveAlerts(activeData)
+			const res = await fetch(`${apiBase}/api/notifications`)
+			if (res.ok) {
+				const data: UnifiedNotification[] = await res.json()
+				setNotifications(data)
 			}
-			if (historyRes.ok) {
-				const historyData = await historyRes.json()
-				setAlertHistory(historyData)
-			}
-		} catch (err: any) {
-			console.error('Failed to fetch alert data:', err)
+		} catch (err) {
+			console.error('Failed to fetch notifications:', err)
 		}
 	}, [apiBase])
 
-	// 初期処理および定期更新である。
 	useEffect(() => {
-		fetchAlertData()
-		const timer = setInterval(fetchAlertData, 15000)
+		fetchNotifications()
+		const timer = setInterval(fetchNotifications, 15000)
 		return () => clearInterval(timer)
-	}, [fetchAlertData])
+	}, [fetchNotifications])
 
-	// 履歴タブを開いた際に最新のデータをフェッチする。
 	useEffect(() => {
-		if (activeTab === 'history' || activeTab === 'dashboard') {
-			fetchAlertData()
+		if (activeTab === 'notifications') {
+			fetchNotifications()
 		}
-	}, [activeTab, fetchAlertData])
+	}, [activeTab, fetchNotifications])
 
-	// URL パスのディープリンク（/history/:id）を検知して表示を更新する。
+	// ディープリンク時に一覧へ含まれない通知を1回だけ単体取得して解決する。
 	useEffect(() => {
-		const path = window.location.pathname
-		if (path.startsWith('/history/')) {
-			const idStr = path.substring('/history/'.length)
-			const id = parseInt(idStr, 10)
-			if (!isNaN(id)) {
-				setActiveTab('history')
-				setExpandedId(id)
+		if (resolvedDeepLinkRef.current === routePath) return
 
-				if (mergedAlerts.length > 0) {
-					setTimeout(() => {
-						const el = document.getElementById(`history-item-${id}`)
-						if (el) {
-							el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-						}
-					}, 150)
-				}
+		const route = parseAppRoute(routePath)
+		if (route.tab !== 'notifications') {
+			resolvedDeepLinkRef.current = routePath
+			return
+		}
+
+		if (route.legacyHistoryId !== null) {
+			if (notifications.length === 0) return
+			const alertMatch = notifications.find((n) => n.uid === `alert-${route.legacyHistoryId}`)
+			const noteMatch = notifications.find((n) => n.uid === `notification-${route.legacyHistoryId}`)
+			const target = alertMatch || noteMatch
+			if (target) {
+				setExpandedUid(target.uid)
+				setFilter('all')
 			}
+			resolvedDeepLinkRef.current = routePath
+			return
 		}
-	}, [mergedAlerts])
 
-	// 戻る・進むボタンのイベント（popstate）を監視して state を同期する。
+		if (route.detailKind && route.detailId !== null) {
+			const targetUid = `${route.detailKind}-${route.detailId}`
+			const existsInList =
+				notifications.some((n) => n.uid === targetUid) || deepLinkedItem?.uid === targetUid
+			if (existsInList) {
+				resolvedDeepLinkRef.current = routePath
+				return
+			}
+			if (inFlightDeepLinkRef.current === routePath) return
+			inFlightDeepLinkRef.current = routePath
+
+			fetch(`${apiBase}/api/notifications/${route.detailKind}/${route.detailId}`)
+				.then((res) => (res.ok ? res.json() : null))
+				.then((item: UnifiedNotification | null) => {
+					if (item) {
+						setDeepLinkedItem(item)
+						setExpandedUid(item.uid)
+						setFilter('all')
+					}
+				})
+				.catch((err) => console.error('Failed to fetch notification detail:', err))
+				.finally(() => {
+					resolvedDeepLinkRef.current = routePath
+					if (inFlightDeepLinkRef.current === routePath) {
+						inFlightDeepLinkRef.current = null
+					}
+				})
+			return
+		}
+
+		resolvedDeepLinkRef.current = routePath
+	}, [apiBase, routePath, notifications, deepLinkedItem])
+
+	// 展開中の要素へ自動スクロールする。
+	useEffect(() => {
+		if (!expandedUid || activeTab !== 'notifications') return
+		const timer = setTimeout(() => {
+			const el = document.getElementById(`notification-item-${expandedUid}`)
+			if (el) {
+				el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+			}
+		}, 150)
+		return () => clearTimeout(timer)
+	}, [expandedUid, activeTab, allNotifications.length])
+
+	// 戻る・進むボタン (popstate) と Service Worker からの通知クリックメッセージを受信する。
 	useEffect(() => {
 		const handlePopState = () => {
-			const path = window.location.pathname
-			const tab = getTabFromPath(path)
-			setActiveTab(tab)
-			if (path.startsWith('/history/')) {
-				const idStr = path.substring('/history/'.length)
-				const id = parseInt(idStr, 10)
-				if (!isNaN(id)) {
-					setExpandedId(id)
-				}
-			} else {
-				setExpandedId(null)
+			const newPath = window.location.pathname
+			const parsed = parseAppRoute(newPath)
+			setActiveTab(parsed.tab)
+			setExpandedUid(parsed.selectedUid)
+			setRoutePath(newPath)
+		}
+		const handleSwMessage = (event: MessageEvent) => {
+			if (event.data?.type === 'NOTIFICATION_CLICK' && typeof event.data.url === 'string') {
+				navigateToPath(event.data.url)
+				fetchNotifications()
 			}
 		}
 		window.addEventListener('popstate', handlePopState)
-		return () => window.removeEventListener('popstate', handlePopState)
-	}, [])
+		if ('serviceWorker' in navigator) {
+			navigator.serviceWorker.addEventListener('message', handleSwMessage)
+		}
+		return () => {
+			window.removeEventListener('popstate', handlePopState)
+			if ('serviceWorker' in navigator) {
+				navigator.serviceWorker.removeEventListener('message', handleSwMessage)
+			}
+		}
+	}, [navigateToPath, fetchNotifications])
 
 	// プッシュ通知の購読状態チェックである。
 	const checkSubscription = useCallback(async () => {
@@ -163,8 +220,9 @@ export default function App() {
 				const reg = await navigator.serviceWorker.ready
 				const sub = await reg.pushManager.getSubscription()
 				setIsSubscribed(!!sub)
-			} catch (err: any) {
-				log(`購読チェック失敗: ${err.message}`)
+			} catch (err: unknown) {
+				const message = err instanceof Error ? err.message : String(err)
+				log(`購読チェック失敗: ${message}`)
 			}
 		}
 	}, [log])
@@ -173,7 +231,6 @@ export default function App() {
 		checkSubscription()
 	}, [checkSubscription])
 
-	// Base64文字列を Uint8Array にデコードするヘルパーである。
 	const urlBase64ToUint8Array = (base64String: string) => {
 		const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
 		const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
@@ -185,7 +242,6 @@ export default function App() {
 		return outputArray
 	}
 
-	// プッシュ通知の購読処理である。
 	const subscribe = async () => {
 		if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
 			alert('Web Push未対応ブラウザである(iOSの場合はホーム画面にPWAを追加する必要がある)。')
@@ -220,14 +276,14 @@ export default function App() {
 
 			setIsSubscribed(true)
 			log('通知の購読登録が完了した。')
-		} catch (err: any) {
-			log(`エラー: ${err.message}`)
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : String(err)
+			log(`エラー: ${message}`)
 		} finally {
 			setSubmitting(false)
 		}
 	}
 
-	// 購読解除処理である。
 	const unsubscribe = async () => {
 		setSubmitting(true)
 		try {
@@ -243,14 +299,14 @@ export default function App() {
 			}
 			setIsSubscribed(false)
 			log('通知の購読を解除した。')
-		} catch (err: any) {
-			log(`エラー: ${err.message}`)
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : String(err)
+			log(`エラー: ${message}`)
 		} finally {
 			setSubmitting(false)
 		}
 	}
 
-	// テスト通知の送信要求である。
 	const sendTestNotify = async () => {
 		try {
 			const res = await fetch(`${apiBase}/api/test-notify`, {
@@ -258,7 +314,7 @@ export default function App() {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					title: 'テスト通知',
-					body: 'これは monitoring-pwa からのテスト通知である。',
+					body: 'これは Nuage Notify からのテスト通知である。',
 					level: 'success'
 				})
 			})
@@ -267,24 +323,43 @@ export default function App() {
 			} else {
 				log(`送信要求失敗: ${res.status}`)
 			}
-		} catch (err: any) {
-			log(`エラー: ${err.message}`)
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : String(err)
+			log(`エラー: ${message}`)
 		}
 	}
 
-	// Webhook の curl コマンドをクリップボードにコピーする。
-	const copyWebhookCommand = () => {
-		const cmd = `curl -X POST https://monitoring.cluster.wpc/webhook/generic \\\n  -H "Content-Type: application/json" \\\n  -d '{"title": "エラー検知", "body": "エラーが発生した。", "level": "error", "details": "Error: something went wrong\\n  at main.js:10:5"}'`
-		navigator.clipboard.writeText(cmd)
-		setCopied(true)
-		setTimeout(() => setCopied(false), 2000)
+	const handleToggleItem = (item: UnifiedNotification) => {
+		const isClosing = expandedUid === item.uid
+		if (isClosing) {
+			setExpandedUid(null)
+			resolvedDeepLinkRef.current = '/'
+			setRoutePath('/')
+			if (window.location.pathname !== '/') {
+				window.history.pushState(null, '', '/')
+			}
+			return
+		}
+
+		setExpandedUid(item.uid)
+		let nextPath = window.location.pathname
+		if (item.uid.startsWith('alert-')) {
+			nextPath = `/alerts/${item.id}`
+		} else if (item.uid.startsWith('notification-')) {
+			nextPath = `/notifications/${item.id}`
+		}
+		if (nextPath !== window.location.pathname) {
+			resolvedDeepLinkRef.current = nextPath
+			setRoutePath(nextPath)
+			window.history.pushState(null, '', nextPath)
+		}
 	}
 
 	// iframe 内で読み込まれた場合は描画を制限する（無限ネスト防止）。
 	if (window.self !== window.top) {
 		return (
-			<div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-				Nuage Monitor is loaded inside an iframe.
+			<div className="iframe-fallback">
+				Nuage Notify is loaded inside an iframe.
 			</div>
 		)
 	}
@@ -293,73 +368,85 @@ export default function App() {
 		<>
 			<header className="app-header">
 				<h1 className="app-title">
-					<span className="app-logo"></span>Nuage Monitor
+					<span className="app-logo" aria-hidden="true"></span>Nuage Notify
 				</h1>
-				<div className="connection-badge">
+				<div className={`connection-badge ${online ? 'online' : ''}`}>
 					<span className={`connection-dot ${online ? 'online' : ''}`}></span>
 					{online ? 'オンライン' : 'オフライン'}
 				</div>
 			</header>
 
 			<main className="app-content">
-				{activeTab === 'dashboard' && (
-					<Dashboard grafanaBase={grafanaBase} activeAlerts={activeAlerts} />
-				)}
-
-				{activeTab === 'history' && (
-					<div className="card">
-						<div className="panel-header history-panel-header">
-							<h2 className="panel-title">
-								<History size={16} />
-								アラート履歴 (スレッド)
+				{activeTab === 'notifications' && (
+					<section className="notifications-view" aria-label="通知一覧">
+						<div className="notifications-toolbar">
+							<h2 className="section-title">
+								<Bell size={16} />
+								通知一覧
 							</h2>
-							<div className="filter-pill-group">
+							<div className="filter-pill-group" role="tablist" aria-label="通知フィルタ">
 								<button
-									className={`filter-pill ${historyFilter === 'all' ? 'active' : ''}`}
-									onClick={() => setHistoryFilter('all')}
+									type="button"
+									role="tab"
+									aria-selected={filter === 'all'}
+									className={`filter-pill ${filter === 'all' ? 'active' : ''}`}
+									onClick={() => setFilter('all')}
 								>
-									すべて ({mergedAlerts.length})
+									すべて ({allNotifications.length})
 								</button>
 								<button
-									className={`filter-pill ${historyFilter === 'firing' ? 'active' : ''} ${firingCount > 0 ? 'pill-firing' : ''}`}
-									onClick={() => setHistoryFilter('firing')}
+									type="button"
+									role="tab"
+									aria-selected={filter === 'firing'}
+									className={`filter-pill ${filter === 'firing' ? 'active' : ''} ${firingCount > 0 ? 'pill-firing' : ''}`}
+									onClick={() => setFilter('firing')}
 								>
 									発生中 ({firingCount})
 								</button>
 								<button
-									className={`filter-pill ${historyFilter === 'resolved' ? 'active' : ''}`}
-									onClick={() => setHistoryFilter('resolved')}
+									type="button"
+									role="tab"
+									aria-selected={filter === 'resolved'}
+									className={`filter-pill ${filter === 'resolved' ? 'active' : ''}`}
+									onClick={() => setFilter('resolved')}
 								>
 									解決済み ({resolvedCount})
+								</button>
+								<button
+									type="button"
+									role="tab"
+									aria-selected={filter === 'notice'}
+									className={`filter-pill ${filter === 'notice' ? 'active' : ''}`}
+									onClick={() => setFilter('notice')}
+								>
+									一般通知 ({noticeCount})
 								</button>
 							</div>
 						</div>
 						<div className="history-list">
-							{displayedAlerts.length === 0 ? (
+							{displayedNotifications.length === 0 ? (
 								<div className="empty-state">
-									{historyFilter === 'firing'
+									{filter === 'firing'
 										? '現在発生中のアラートは存在しない。'
-										: historyFilter === 'resolved'
+										: filter === 'resolved'
 										? '解決済みのアラートは存在しない。'
-										: '履歴は存在しない。'}
+										: filter === 'notice'
+										? '一般通知は存在しない。'
+										: '通知履歴は存在しない。'}
 								</div>
 							) : (
-								displayedAlerts.map((item) => (
-									<HistoryItem
-										key={item.id}
+								displayedNotifications.map((item) => (
+									<NotificationItem
+										key={item.uid}
 										item={item}
-										isExpanded={expandedId === item.id}
-										onToggle={() => {
-											const nextId = expandedId === item.id ? null : item.id
-											setExpandedId(nextId)
-											navigateTo('history', nextId ? `/${nextId}` : '')
-										}}
-										grafanaBase={grafanaBase}
+										isExpanded={expandedUid === item.uid}
+										onToggle={() => handleToggleItem(item)}
+										grafanaBase={GRAFANA_BASE_URL}
 									/>
 								))
 							)}
 						</div>
-					</div>
+					</section>
 				)}
 
 				{activeTab === 'settings' && (
@@ -368,30 +455,23 @@ export default function App() {
 						submitting={submitting}
 						onSubscribeToggle={isSubscribed ? unsubscribe : subscribe}
 						onSendTestNotify={sendTestNotify}
-						copyWebhookCommand={copyWebhookCommand}
-						copied={copied}
 						logs={logs}
 					/>
 				)}
 			</main>
 
-			<nav className="app-nav">
+			<nav className="app-nav" aria-label="メインナビゲーション">
 				<button
-					onClick={() => navigateTo('dashboard')}
-					className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+					type="button"
+					onClick={() => navigateToTab('notifications')}
+					className={`nav-item ${activeTab === 'notifications' ? 'active' : ''}`}
 				>
-					<Activity size={20} />
-					ダッシュボード
+					<Bell size={20} />
+					通知一覧
 				</button>
 				<button
-					onClick={() => navigateTo('history')}
-					className={`nav-item ${activeTab === 'history' ? 'active' : ''}`}
-				>
-					<History size={20} />
-					履歴
-				</button>
-				<button
-					onClick={() => navigateTo('settings')}
+					type="button"
+					onClick={() => navigateToTab('settings')}
 					className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
 				>
 					<SettingsIcon size={20} />

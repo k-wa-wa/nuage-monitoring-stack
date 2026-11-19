@@ -5,7 +5,7 @@
 #   PRごとに複製しても意味がなく重いだけ。base/ ごと取り込まず monitoring-pwa だけを取り込む。
 # - VMRule / Grafana ダッシュボードも入れない。特に VMRule は vmalert が全namespaceを対象にするため、
 #   preview namespace に置くと prod の vmalert に同じアラートが二重登録される。
-# - Grafana (/grafana) は ExternalName shim で prod namespace の実体に転送する。
+# - PWA は通知専用であり、Grafana 等のリンクは本番 URL (https://monitoring.wpcapp.net/grafana/...) を直接参照する。
 #
 # VAPIDキーはpreview用のダミーを平文で持つため、pechkaと違い
 # argocd-vault-plugin を使う別Applicationは不要で、このoverlay 1本で完結する。
@@ -19,8 +19,6 @@ resources:
   - namespace.yaml
   - ../../base/monitoring-pwa
   - local-secrets.yaml
-  - grafana-shim.yaml
-  - chaos-monitor-shim.yaml
   - ingress.yaml
 
 patches:

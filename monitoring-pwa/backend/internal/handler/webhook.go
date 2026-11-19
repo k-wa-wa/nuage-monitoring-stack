@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sort"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -13,13 +12,18 @@ import (
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 )
 
+// PushSender は Web Push 通知を送信するインターフェースである。
+type PushSender interface {
+	Broadcast(payload []byte)
+}
+
 // WebhookHandler は Alertmanager および汎用 Webhook リクエストを処理する構造体である。
 type WebhookHandler struct {
-	sender *push.Sender
+	sender PushSender
 	db     *push.DB
 }
 
-func NewWebhookHandler(sender *push.Sender, db *push.DB) *WebhookHandler {
+func NewWebhookHandler(sender PushSender, db *push.DB) *WebhookHandler {
 	return &WebhookHandler{
 		sender: sender,
 		db:     db,
@@ -28,10 +32,13 @@ func NewWebhookHandler(sender *push.Sender, db *push.DB) *WebhookHandler {
 
 // notificationPayload はサービスワーカーが受信するプッシュ通知ペイロードの形式である。
 type notificationPayload struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	URL   string `json:"url,omitempty"`
-	Level string `json:"level,omitempty"` // info, warning, error, success
+	Title      string `json:"title"`
+	Body       string `json:"body"`
+	URL        string `json:"url,omitempty"`
+	TargetURL  string `json:"target_url,omitempty"`
+	DirectOpen bool   `json:"direct_open,omitempty"`
+	Level      string `json:"level,omitempty"` // info, warning, error, success
+	Tag        string `json:"tag,omitempty"`
 }
 
 // alertmanagerWebhook は Alertmanager の webhook_config からのペイロードを表現する。
@@ -48,11 +55,14 @@ type alertmanagerWebhook struct {
 
 // genericWebhook は汎用通知 Webhook のリクエストボディを表現する。
 type genericWebhook struct {
-	Title   string `json:"title"`
-	Body    string `json:"body"`
-	URL     string `json:"url,omitempty"`
-	Level   string `json:"level,omitempty"`
-	Details string `json:"details,omitempty"`
+	Title      string `json:"title"`
+	Body       string `json:"body"`
+	URL        string `json:"url,omitempty"`
+	TargetURL  string `json:"target_url,omitempty"`
+	DirectOpen bool   `json:"direct_open,omitempty"`
+	Level      string `json:"level,omitempty"`
+	Details    string `json:"details,omitempty"`
+	Source     string `json:"source,omitempty"`
 }
 
 // keelWebhook は Keel からの通知 Webhook のリクエストボディを表現する。
@@ -69,29 +79,6 @@ type keelWebhook struct {
 // checkAuth は Webhook の認証チェックを行う。
 func (h *WebhookHandler) checkAuth(c echo.Context) error {
 	return nil
-}
-
-// generateFingerprint はラベルからアラートを一意に識別するキーを生成する。
-func generateFingerprint(labels map[string]string) string {
-	alertname := labels["alertname"]
-	if alertname == "" {
-		alertname = "Alert"
-	}
-	keys := make([]string, 0, len(labels))
-	for k := range labels {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var sb strings.Builder
-	sb.WriteString(alertname)
-	for _, k := range keys {
-		if k == "alertname" {
-			continue
-		}
-		sb.WriteString(fmt.Sprintf(";%s=%s", k, labels[k]))
-	}
-	return sb.String()
 }
 
 // AlertmanagerWebhook は Alertmanager の通知を受信し、状態保存およびプッシュ通知を処理する。
@@ -115,7 +102,7 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 			name = "Alert"
 		}
 
-		fingerprint := generateFingerprint(alert.Labels)
+		fingerprint := push.GenerateFingerprint(alert.Labels)
 
 		title := fmt.Sprintf("[%s] %s", alert.Status, name)
 		summary := alert.Annotations["summary"]
@@ -138,7 +125,7 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 
 		alertDetails, _ := json.Marshal(alert)
 
-		// DBにアラート状態を保存・更新
+		// DBにアラート状態を保存・更新（統合一覧と /alerts/:id ディープリンクのソース）
 		savedAlert, err := h.db.UpsertAlert(
 			fingerprint,
 			name,
@@ -153,12 +140,6 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 			slog.Error("failed to upsert alert", "fingerprint", fingerprint, "error", err)
 		}
 
-		// 互換性のため既存の notification にも保存
-		id, err := h.db.SaveNotification(title, summary, alert.GeneratorURL, level, string(alertDetails))
-		if err != nil {
-			id = 0
-		}
-
 		// resolved の場合は Push 通知（バイブ・通知音）を送信しない
 		if alert.Status == "resolved" {
 			continue
@@ -166,15 +147,15 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 
 		// firing の場合のみ Push 通知をブロードキャストする
 		payloadObj := notificationPayload{
-			Title: title,
-			Body:  summary,
-			URL:   "/",
-			Level: level,
+			Title:     title,
+			Body:      summary,
+			URL:       "/",
+			TargetURL: alert.GeneratorURL,
+			Level:     level,
 		}
 		if savedAlert != nil {
-			payloadObj.URL = fmt.Sprintf("/history/%d", savedAlert.ID)
-		} else if id > 0 {
-			payloadObj.URL = fmt.Sprintf("/history/%d", id)
+			payloadObj.URL = fmt.Sprintf("/alerts/%d", savedAlert.ID)
+			payloadObj.Tag = fmt.Sprintf("alert-%d", savedAlert.ID)
 		}
 
 		payload, err := json.Marshal(payloadObj)
@@ -207,18 +188,26 @@ func (h *WebhookHandler) GenericWebhook(c echo.Context) error {
 	if level == "" {
 		level = "info"
 	}
+	targetURL := strings.TrimSpace(req.URL)
+	if targetURL == "" {
+		targetURL = strings.TrimSpace(req.TargetURL)
+	}
+	source := inferNotificationSource(req.Title, req.Source)
 
 	// DBに履歴を保存
-	id, err := h.db.SaveNotification(req.Title, req.Body, req.URL, level, req.Details)
+	id, err := h.db.SaveNotificationWithSource(req.Title, req.Body, targetURL, level, req.Details, source)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save notification history")
 	}
 
 	payloadObj := notificationPayload{
-		Title: req.Title,
-		Body:  req.Body,
-		URL:   fmt.Sprintf("/history/%d", id),
-		Level: level,
+		Title:      req.Title,
+		Body:       req.Body,
+		URL:        fmt.Sprintf("/notifications/%d", id),
+		TargetURL:  targetURL,
+		DirectOpen: req.DirectOpen,
+		Level:      level,
+		Tag:        fmt.Sprintf("notification-%d", id),
 	}
 
 	payload, err := json.Marshal(payloadObj)
@@ -256,7 +245,7 @@ func (h *WebhookHandler) KeelWebhook(c echo.Context) error {
 	detailsObj, _ := json.Marshal(req)
 
 	// DBに履歴を保存
-	id, err := h.db.SaveNotification(title, body, "", level, string(detailsObj))
+	id, err := h.db.SaveNotificationWithSource(title, body, "", level, string(detailsObj), "keel")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save notification history")
 	}
@@ -264,8 +253,9 @@ func (h *WebhookHandler) KeelWebhook(c echo.Context) error {
 	payloadObj := notificationPayload{
 		Title: title,
 		Body:  body,
-		URL:   fmt.Sprintf("/history/%d", id),
+		URL:   fmt.Sprintf("/notifications/%d", id),
 		Level: level,
+		Tag:   fmt.Sprintf("notification-%d", id),
 	}
 
 	payload, err := json.Marshal(payloadObj)
@@ -291,6 +281,9 @@ func (h *WebhookHandler) TestNotify(c echo.Context) error {
 	}
 	if req.Level == "" {
 		req.Level = "info"
+	}
+	if req.URL == "" {
+		req.URL = "/"
 	}
 
 	payload, err := json.Marshal(req)

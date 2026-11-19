@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -23,7 +25,31 @@ type Notification struct {
 	URL       string    `json:"url,omitempty"`
 	Level     string    `json:"level"`
 	Details   string    `json:"details,omitempty"`
+	Source    string    `json:"source,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// GenerateFingerprint はアラートラベルから一意に識別するキーを生成する。
+func GenerateFingerprint(labels map[string]string) string {
+	alertname := labels["alertname"]
+	if alertname == "" {
+		alertname = "Alert"
+	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var sb strings.Builder
+	sb.WriteString(alertname)
+	for _, k := range keys {
+		if k == "alertname" {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf(";%s=%s", k, labels[k]))
+	}
+	return sb.String()
 }
 
 // Alert はスレッド化されたアラートの状態を表す構造体である。
@@ -90,6 +116,7 @@ func (db *DB) migrate() error {
 			url TEXT,
 			level TEXT NOT NULL,
 			details TEXT,
+			source TEXT,
 			created_at DATETIME NOT NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS alerts (
@@ -115,36 +142,49 @@ func (db *DB) migrate() error {
 		}
 	}
 
-	// details カラムが未追加の場合はマイグレーションを実行する。
-	rows, err := db.conn.Query(`PRAGMA table_info(notifications)`)
-	if err == nil {
-		defer rows.Close()
-		hasDetails := false
-		for rows.Next() {
-			var cid int
-			var name string
-			var typeStr string
-			var notnull int
-			var dfltVal interface{}
-			var pk int
-			if err := rows.Scan(&cid, &name, &typeStr, &notnull, &dfltVal, &pk); err == nil {
-				if name == "details" {
-					hasDetails = true
-					break
-				}
-			}
-		}
-		if !hasDetails {
-			if _, err := db.conn.Exec(`ALTER TABLE notifications ADD COLUMN details TEXT`); err != nil {
-				return err
-			}
-		}
+	// details / source カラムが未追加の場合はマイグレーションを実行する。
+	if err := db.ensureNotificationColumns([]string{"details", "source"}); err != nil {
+		return err
 	}
 
 	// 過去の取りこぼしアラート（firing のまま残存していたゴーストアラート）を resolved に更新する。
 	// アクティブアラートは Alertmanager API からリアルタイム取得するため、DB 上の未解決レコードを解消する。
 	_, _ = db.conn.Exec(`UPDATE alerts SET status = 'resolved', level = 'success', resolved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE status = 'firing'`)
 
+	return nil
+}
+
+// ensureNotificationColumns は notifications テーブルに不足している TEXT カラムを追加する。
+func (db *DB) ensureNotificationColumns(requiredCols []string) error {
+	rows, err := db.conn.Query(`PRAGMA table_info(notifications)`)
+	if err != nil {
+		return err
+	}
+
+	existing := make(map[string]bool)
+	for rows.Next() {
+		var cid int
+		var name, typeStr string
+		var notnull int
+		var dfltVal interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &typeStr, &notnull, &dfltVal, &pk); err == nil {
+			existing[name] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, col := range requiredCols {
+		if !existing[col] {
+			if _, err := db.conn.Exec(fmt.Sprintf(`ALTER TABLE notifications ADD COLUMN %s TEXT`, col)); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -193,10 +233,15 @@ func (db *DB) List() []webpush.Subscription {
 
 // SaveNotification は通知履歴を保存し、自動生成された ID を返す。
 func (db *DB) SaveNotification(title, body, url, level, details string) (int64, error) {
+	return db.SaveNotificationWithSource(title, body, url, level, details, "")
+}
+
+// SaveNotificationWithSource は送信元（source）付きで通知履歴を保存し、自動生成された ID を返す。
+func (db *DB) SaveNotificationWithSource(title, body, url, level, details, source string) (int64, error) {
 	res, err := db.conn.Exec(
-		`INSERT INTO notifications (title, body, url, level, details, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		title, body, url, level, details, time.Now(),
+		`INSERT INTO notifications (title, body, url, level, details, source, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		title, body, url, level, details, source, time.Now(),
 	)
 	if err != nil {
 		return 0, err
@@ -207,9 +252,9 @@ func (db *DB) SaveNotification(title, body, url, level, details string) (int64, 
 // ListNotifications は通知履歴を指定件数ロードする。
 func (db *DB) ListNotifications(limit int) ([]Notification, error) {
 	rows, err := db.conn.Query(
-		`SELECT id, title, body, url, level, details, created_at
+		`SELECT id, title, body, url, level, details, source, created_at
 		 FROM notifications
-		 ORDER BY created_at DESC LIMIT ?`,
+		 ORDER BY created_at DESC, id DESC LIMIT ?`,
 		limit,
 	)
 	if err != nil {
@@ -219,21 +264,50 @@ func (db *DB) ListNotifications(limit int) ([]Notification, error) {
 
 	var notes []Notification
 	for rows.Next() {
-		var n Notification
-		var urlVal sql.NullString
-		var detailsVal sql.NullString
-		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &urlVal, &n.Level, &detailsVal, &n.CreatedAt); err != nil {
+		n, err := scanNotification(rows)
+		if err != nil {
 			return nil, err
-		}
-		if urlVal.Valid {
-			n.URL = urlVal.String
-		}
-		if detailsVal.Valid {
-			n.Details = detailsVal.String
 		}
 		notes = append(notes, n)
 	}
-	return notes, nil
+	return notes, rows.Err()
+}
+
+// GetNotificationByID は指定 ID の通知履歴を取得する。見つからない場合は nil, sql.ErrNoRows を返す。
+func (db *DB) GetNotificationByID(id int64) (*Notification, error) {
+	row := db.conn.QueryRow(
+		`SELECT id, title, body, url, level, details, source, created_at
+		 FROM notifications
+		 WHERE id = ?`,
+		id,
+	)
+	n, err := scanNotification(row)
+	if err != nil {
+		return nil, err
+	}
+	return &n, nil
+}
+
+type rowScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func scanNotification(s rowScanner) (Notification, error) {
+	var n Notification
+	var urlVal, detailsVal, sourceVal sql.NullString
+	if err := s.Scan(&n.ID, &n.Title, &n.Body, &urlVal, &n.Level, &detailsVal, &sourceVal, &n.CreatedAt); err != nil {
+		return Notification{}, err
+	}
+	if urlVal.Valid {
+		n.URL = urlVal.String
+	}
+	if detailsVal.Valid {
+		n.Details = detailsVal.String
+	}
+	if sourceVal.Valid {
+		n.Source = sourceVal.String
+	}
+	return n, nil
 }
 
 // UpsertAlert はアラートの状態（firing / resolved）を保存・更新し、Alert レコードを返す。
@@ -384,36 +458,67 @@ func (db *DB) ListAlertHistory(limit int) ([]Alert, error) {
 	return scanAlerts(rows)
 }
 
+// GetAlertByID は指定 ID のアラートを取得する。見つからない場合は nil, sql.ErrNoRows を返す。
+func (db *DB) GetAlertByID(id int64) (*Alert, error) {
+	return db.getAlertWhere("id = ?", id)
+}
+
+// GetAlertByFingerprint は指定 fingerprint のアラートを取得する。見つからない場合は nil, sql.ErrNoRows を返す。
+func (db *DB) GetAlertByFingerprint(fingerprint string) (*Alert, error) {
+	return db.getAlertWhere("fingerprint = ?", fingerprint)
+}
+
+func (db *DB) getAlertWhere(whereClause string, arg interface{}) (*Alert, error) {
+	row := db.conn.QueryRow(
+		`SELECT id, fingerprint, alertname, status, level, summary, description, url, details, fired_at, resolved_at, created_at, updated_at
+		 FROM alerts
+		 WHERE `+whereClause,
+		arg,
+	)
+	a, err := scanAlert(row)
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
 func scanAlerts(rows *sql.Rows) ([]Alert, error) {
 	var alerts []Alert
 	for rows.Next() {
-		var a Alert
-		var descVal, urlVal, detailsVal sql.NullString
-		var resolvedAtVal sql.NullTime
-
-		if err := rows.Scan(
-			&a.ID, &a.Fingerprint, &a.Alertname, &a.Status, &a.Level, &a.Summary,
-			&descVal, &urlVal, &detailsVal, &a.FiredAt, &resolvedAtVal, &a.CreatedAt, &a.UpdatedAt,
-		); err != nil {
+		a, err := scanAlert(rows)
+		if err != nil {
 			return nil, err
 		}
-
-		if descVal.Valid {
-			a.Description = descVal.String
-		}
-		if urlVal.Valid {
-			a.URL = urlVal.String
-		}
-		if detailsVal.Valid {
-			a.Details = detailsVal.String
-		}
-		if resolvedAtVal.Valid {
-			a.ResolvedAt = &resolvedAtVal.Time
-		}
-
 		alerts = append(alerts, a)
 	}
-	return alerts, nil
+	return alerts, rows.Err()
+}
+
+func scanAlert(s rowScanner) (Alert, error) {
+	var a Alert
+	var descVal, urlVal, detailsVal sql.NullString
+	var resolvedAtVal sql.NullTime
+
+	if err := s.Scan(
+		&a.ID, &a.Fingerprint, &a.Alertname, &a.Status, &a.Level, &a.Summary,
+		&descVal, &urlVal, &detailsVal, &a.FiredAt, &resolvedAtVal, &a.CreatedAt, &a.UpdatedAt,
+	); err != nil {
+		return Alert{}, err
+	}
+
+	if descVal.Valid {
+		a.Description = descVal.String
+	}
+	if urlVal.Valid {
+		a.URL = urlVal.String
+	}
+	if detailsVal.Valid {
+		a.Details = detailsVal.String
+	}
+	if resolvedAtVal.Valid {
+		a.ResolvedAt = &resolvedAtVal.Time
+	}
+	return a, nil
 }
 
 // checkWritable はデータベースが書き込み可能であるかを検査する。
