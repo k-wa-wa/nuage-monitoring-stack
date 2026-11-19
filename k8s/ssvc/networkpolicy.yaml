@@ -1,0 +1,59 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: ssvc-egress-guard
+  namespace: ssvc
+spec:
+  endpointSelector: {} # ssvc namespace 内の全 Pod
+  # ingress は 1 つも許さない (CronJob の Pod は外から呼ばれない)。
+  ingress:
+    - {}
+  egress:
+    # 1. Kubernetes API Server へのアクセス (VulnerabilityReport・Ingress の取得)
+    - toEntities:
+        - kube-apiserver
+    # 2. CoreDNS による名前解決 (kube-system の DNS ポート 53 UDP/TCP)
+    # toFQDNs を効かせるため、Cilium の DNS プロキシで名前解決を検査する。
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"
+    # 3. 外部への HTTPS (443 のみ、宛先ドメインを限定)
+    # CISA KEV (www.cisa.gov)、Vulnrichment (raw.githubusercontent.com)、EPSS (api.first.org) 用。
+    - toFQDNs:
+        - matchName: "www.cisa.gov"
+        - matchName: "raw.githubusercontent.com"
+        - matchName: "api.first.org"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # 4. メトリクスの送り先 (vmagent の import API)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: nuage-monitoring-stack
+            app.kubernetes.io/name: vmagent
+            app.kubernetes.io/instance: vm
+      toPorts:
+        - ports:
+            - port: "8429"
+              protocol: TCP
+    # 5. repo-scan 指摘の読み取り先 (vmauth 経由の VictoriaLogs LogsQL API)
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: nuage-monitoring-stack
+            app.kubernetes.io/name: vmauth
+            app.kubernetes.io/instance: vm
+      toPorts:
+        - ports:
+            - port: "8427"
+              protocol: TCP

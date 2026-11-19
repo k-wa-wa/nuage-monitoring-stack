@@ -70,6 +70,11 @@ configMapGenerator:
   #   - nuage_repo_scan_target{repo} (対象のリポジトリ)
   # メトリクス名・ラベルを変えるとき (k8s/repo-scan/scripts/aggregate.py) は、このダッシュボードのクエリもあわせて直す。
   # 指摘の一覧 (VictoriaLogs の kubernetes.pod_namespace="repo-scan" の JSON 行) はこのダッシュボードには出さない。Explore で見る。
+  # SSVC Prioritization 行は k8s/ssvc の CronJob が送る次のメトリクスとログに依存する。
+  #   - nuage_ssvc_findings{source, namespace, target, decision}
+  #   - nuage_ssvc_unscanned_assets{host, kind, human_impact, exposure} / nuage_ssvc_unscanned_assets_total
+  #   - nuage_ssvc_expired_overrides_total
+  #   - VictoriaLogs の kubernetes.pod_namespace="ssvc" (event="ssvc_finding" / "expired_override" / "eval_done")
   # Grafana の sidecar は全 Namespace を見る (searchNamespace: ALL) ため、trivy-operator Namespace に置いても読み込まれる。
   - name: trivy-operator-dashboard
     files:
