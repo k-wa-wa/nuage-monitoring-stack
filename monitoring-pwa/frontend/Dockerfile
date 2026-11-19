@@ -5,7 +5,7 @@ RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run build
 
-FROM nginxinc/nginx-unprivileged:alpine
+FROM nginx/nginx-unprivileged:1.31.9-alpine
 USER root
 RUN apk --no-cache upgrade brotli-libs
 USER 101
