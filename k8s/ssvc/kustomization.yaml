@@ -1,0 +1,27 @@
+# SSVC 脆弱性評価一式 (k8s VulnerabilityReport と repo-scan の指摘を毎日評価する CronJob)。
+# 結果は Security ダッシュボード (k8s/trivy-operator/dashboards/trivy-operator.json、uid trivy-operator) の SSVC 行に出る。
+# prod overlay だけが読む。preview overlay には入れない (ClusterRole を持ち、本番メトリクスを送るため)。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ssvc
+
+resources:
+  # Argo CD の CreateNamespace=true は destination の nuage-monitoring-stack にしか効かないため、Namespace をリソースとして持つ
+  - namespace.yaml
+  - rbac.yaml
+  - networkpolicy.yaml
+  - cronjob.yaml
+
+configMapGenerator:
+  # 人が編集する資産の宣言と例外ファイル
+  - name: ssvc-config
+    files:
+      - assets.yaml
+      - overrides.yaml
+  # 評価スクリプトと CERT/CC SSVC Deployer 判定表。テスト (test_evaluate.py) は載せない
+  #   python3 -m unittest discover -s k8s/ssvc/scripts
+  - name: ssvc-scripts
+    files:
+      - scripts/evaluate.py
+      - scripts/deployer_patch_application_priority_1_0_0.csv

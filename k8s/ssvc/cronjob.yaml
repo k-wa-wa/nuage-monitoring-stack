@@ -1,0 +1,84 @@
+# k8s VulnerabilityReport と repo-scan の脆弱性を SSVC で毎日評価し、
+# メトリクス (vmagent) とログ (標準出力 → vlagent → VictoriaLogs) に出す。
+# repo-scan が毎日 日本時間 4:00 に動くため、5:00 に実行して最新の結果を拾う。
+#
+# 手動で動かすとき: kubectl -n ssvc create job --from=cronjob/ssvc ssvc-manual-$(date +%s)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ssvc
+  namespace: ssvc
+spec:
+  # 毎日 日本時間 5:00
+  schedule: "0 5 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 7200
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ssvc
+        spec:
+          restartPolicy: Never
+          serviceAccountName: ssvc
+          automountServiceAccountToken: true
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: evaluate
+              # python 3.14.10-slim (repo-scan の aggregate と同じイメージ)
+              image: python:3.14.10-slim@sha256:930e1abba7c4e8f96ed93e8012c35d174d7732752731bbd5e8e757d7ec6f3966
+              command:
+                - python3
+                - /scripts/evaluate.py
+                - --assets=/etc/ssvc/assets.yaml
+                - --overrides=/etc/ssvc/overrides.yaml
+                - --table=/scripts/deployer_patch_application_priority_1_0_0.csv
+                - --vlogs-url=http://vmauth-vm.nuage-monitoring-stack.svc:8427/select/logsql/query
+                - --push-url=http://vmagent-vm.nuage-monitoring-stack.svc:8429/api/v1/import/prometheus
+              env:
+                - name: PYTHONDONTWRITEBYTECODE
+                  value: "1"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: config
+                  mountPath: /etc/ssvc
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 256Mi
+            - name: scripts
+              configMap:
+                name: ssvc-scripts
+            - name: config
+              configMap:
+                name: ssvc-config

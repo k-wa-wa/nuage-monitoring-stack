@@ -13,3 +13,4 @@ resources:
   - secrets/secrets.yaml
   - ../../trivy-operator
   - ../../repo-scan
+  - ../../ssvc

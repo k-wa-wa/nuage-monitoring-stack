@@ -1,0 +1,16 @@
+# SSVC の例外ファイル (人が判断した CVE ごとの評価・判定不可の判断を書く)。
+#
+# 書き方:
+#   overrides:
+#     - cve: CVE-2024-1234
+#       namespace: pechka        # k8s ワークロードの場合は namespace + workload を書く
+#       workload: api
+#       decision: defer          # defer / scheduled / out-of-cycle / immediate / not-affected
+#       reason: "該当機能を使用していない"
+#       expires: "2026-12-31"    # YYYY-MM-DD (この日を過ぎると無効になり、期限切れとして表示される)
+#     - cve: GHSA-xxxx-yyyy-zzzz
+#       repository: nix-config   # リポジトリの場合は repository を書く
+#       decision: not-affected
+#       reason: "ビルド専用ツールで実行環境に含まれない"
+#       expires: "2026-12-31"
+overrides: []

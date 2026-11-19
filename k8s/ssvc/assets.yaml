@@ -1,0 +1,51 @@
+# SSVC 評価で使う資産の宣言 (人が編集する)。
+#
+# 注意: ここはテスト用・仮の中身である。本番用の資産一覧が確定したら置き換える。
+#
+# 書き方:
+#   - 重要度 (human_impact) は Namespace 単位で書く (low / medium / high / very high)。
+#     必要なら workloads.<workload> で上書きする。キーは既存の workload ラベルと同じ。
+#   - 露出 (exposure: small / controlled / open) は自動判定する:
+#     Ingress を持つ Namespace は open、持たない Namespace は controlled。
+#     自動判定と違う値にしたいときだけ exposure を書き、reason を必ず付ける。
+namespaces:
+  pechka:
+    human_impact: medium
+    workloads:
+      mongodb:
+        exposure: controlled
+        reason: "ClusterIP だけで api からしか使わない"
+  nuage-honeytrap:
+    human_impact: low
+    exposure: open
+    reason: "Cloudflare トンネルが Service を直接指す (Ingress を通らない)"
+  nuage-monitoring-stack:
+    human_impact: medium
+  trivy-operator:
+    human_impact: low
+  repo-scan:
+    human_impact: low
+  ssvc:
+    human_impact: low
+
+# repo-scan の repos.txt の <repo> 部分をキーにする。
+# namespaces を書いたら、その Namespace の重要度・露出を使う (複数なら最も重い値)。
+# 動いていないリポジトリは human_impact と exposure を直接書く。
+repositories:
+  pechka:
+    namespaces: [pechka]
+  nuage-monitoring-stack:
+    namespaces: [nuage-monitoring-stack, trivy-operator, repo-scan, ssvc]
+  nix-config:
+    human_impact: medium
+    exposure: small
+    reason: "ホスト構成管理 (外部公開サービスではなく直接接続されない)"
+
+# スキャンは未対応。資産として載せ、ダッシュボードに未スキャンとして出す。
+hosts:
+  nuc-1:
+    kind: proxmox
+    human_impact: very high
+    exposure: controlled
+    scan: none
+    reason: "Proxmox ハイパーバイザ (スキャン未対応)"

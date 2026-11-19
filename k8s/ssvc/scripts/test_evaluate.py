@@ -1,0 +1,791 @@
+"""evaluate.py のテスト。標準ライブラリの unittest で動く。
+
+    python3 -m unittest discover -s k8s/ssvc/scripts
+"""
+
+import contextlib
+import csv
+import datetime
+import http.server
+import io
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import threading
+import unittest
+import urllib.parse
+
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import evaluate  # noqa: E402
+
+SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(SCRIPTS_DIR, "deployer_patch_application_priority_1_0_0.csv")
+SSVC_DIR = os.path.dirname(SCRIPTS_DIR)
+
+
+class DecisionTableTest(unittest.TestCase):
+    def test_all_72_combinations_match_csv(self):
+        table = evaluate.load_decision_table(CSV_PATH)
+        self.assertEqual(len(table), 72)
+
+        with open(CSV_PATH, encoding="utf-8", newline="") as f:
+            rows = list(csv.DictReader(f))
+        self.assertEqual(len(rows), 72)
+
+        seen = set()
+        for row in rows:
+            exp = row["Exploitation v1.1.0"].strip()
+            expo = row["System Exposure v1.0.1"].strip()
+            auto = row["Automatable v2.0.0"].strip()
+            hi = row["Human Impact v2.0.2"].strip()
+            expected = row["Defer, Scheduled, Out-of-Cycle, Immediate v1.0.0"].strip()
+            seen.add((exp, expo, auto, hi))
+            self.assertEqual(
+                evaluate.evaluate_ssvc(exp, expo, auto, hi, table),
+                expected,
+                f"mismatch for {(exp, expo, auto, hi)}",
+            )
+        self.assertEqual(len(seen), 72)
+
+    def test_missing_or_invalid_inputs_return_unknown(self):
+        table = evaluate.load_decision_table(CSV_PATH)
+        self.assertEqual(evaluate.evaluate_ssvc(None, "open", "yes", "high", table), "unknown")
+        self.assertEqual(evaluate.evaluate_ssvc("active", None, "yes", "high", table), "unknown")
+        self.assertEqual(evaluate.evaluate_ssvc("active", "open", None, "high", table), "unknown")
+        self.assertEqual(evaluate.evaluate_ssvc("active", "open", "yes", None, table), "unknown")
+        self.assertEqual(evaluate.evaluate_ssvc("bogus", "open", "yes", "high", table), "unknown")
+
+
+class YamlParserTest(unittest.TestCase):
+    def test_parse_nested_maps_lists_comments_and_quotes(self):
+        text = """
+# 先頭コメント
+namespaces:
+  pechka:
+    human_impact: medium # インラインコメント
+    workloads:
+      mongodb:
+        exposure: controlled
+        reason: "ClusterIP だけで #api からしか使わない"
+  nuage-honeytrap:
+    human_impact: very high
+    exposure: open
+    reason: 'single ''quoted'' value'
+
+repositories:
+  pechka:
+    namespaces: [pechka, nuage-honeytrap]
+  nix-config:
+    human_impact: medium
+    exposure: small
+    reason: "host config"
+
+overrides:
+  - cve: CVE-2024-1234
+    namespace: pechka
+    workload: api
+    decision: defer
+    reason: "not reachable"
+    expires: "2026-12-31"
+  - cve: GHSA-1111-2222-3333
+    repository: nix-config
+    decision: not-affected
+    reason: "build only"
+    expires: 2026-11-30
+"""
+        parsed = evaluate.parse_yaml(text)
+        self.assertEqual(parsed["namespaces"]["pechka"]["human_impact"], "medium")
+        self.assertEqual(
+            parsed["namespaces"]["pechka"]["workloads"]["mongodb"]["reason"],
+            "ClusterIP だけで #api からしか使わない",
+        )
+        self.assertEqual(
+            parsed["namespaces"]["nuage-honeytrap"]["reason"],
+            "single 'quoted' value",
+        )
+        self.assertEqual(
+            parsed["repositories"]["pechka"]["namespaces"],
+            ["pechka", "nuage-honeytrap"],
+        )
+        self.assertEqual(len(parsed["overrides"]), 2)
+        self.assertEqual(parsed["overrides"][1]["expires"], "2026-11-30")
+
+    def test_unsupported_yaml_syntax_raises(self):
+        for bad in (
+            "a:\n\tb: 1\n",
+            "a: &anchor 1\n",
+            "a: |\n  multiline\n",
+            "a: !custom foo\n",
+        ):
+            with self.assertRaises(ValueError, msg=bad):
+                evaluate.parse_yaml(bad)
+
+    def test_repo_manifests_parse_and_match_yq(self):
+        assets_path = os.path.join(SSVC_DIR, "assets.yaml")
+        overrides_path = os.path.join(SSVC_DIR, "overrides.yaml")
+        assets = evaluate.load_assets(assets_path)
+        overrides = evaluate.load_overrides(overrides_path)
+        self.assertIsInstance(assets["namespaces"], dict)
+        self.assertIsInstance(overrides, list)
+
+        yq = shutil.which("yq")
+        if yq:
+            for path in (assets_path, overrides_path):
+                res = subprocess.run([yq, ".", path], capture_output=True, text=True, check=True)
+                with open(path, encoding="utf-8") as f:
+                    self.assertEqual(evaluate.parse_yaml(f.read()), json.loads(res.stdout))
+
+
+class AssetAndOverrideValidationTest(unittest.TestCase):
+    def _write_temp(self, content):
+        f = tempfile.NamedTemporaryFile("w", delete=False, suffix=".yaml", encoding="utf-8")
+        f.write(content)
+        f.close()
+        self.addCleanup(os.unlink, f.name)
+        return f.name
+
+    def test_exposure_override_requires_reason(self):
+        path = self._write_temp(
+            "namespaces:\n  pechka:\n    human_impact: high\n    exposure: controlled\n"
+        )
+        with self.assertRaises(ValueError):
+            evaluate.load_assets(path)
+
+        path_wl = self._write_temp(
+            "namespaces:\n  pechka:\n    human_impact: high\n    workloads:\n      api:\n        exposure: small\n"
+        )
+        with self.assertRaises(ValueError):
+            evaluate.load_assets(path_wl)
+
+    def test_repo_unknown_namespace_raises(self):
+        path = self._write_temp(
+            "namespaces:\n  pechka:\n    human_impact: medium\n"
+            "repositories:\n  pechka:\n    namespaces: [pechka, missing-ns]\n"
+        )
+        with self.assertRaises(ValueError):
+            evaluate.load_assets(path)
+
+    def test_exposure_resolution_and_repo_max(self):
+        path = self._write_temp(
+            """
+namespaces:
+  ns-ingress:
+    human_impact: low
+  ns-internal:
+    human_impact: high
+  ns-forced-open:
+    human_impact: medium
+    exposure: open
+    reason: "tunnel"
+  ns-with-wl:
+    human_impact: medium
+    workloads:
+      db:
+        exposure: small
+        reason: "internal only"
+      admin:
+        human_impact: very high
+repositories:
+  multi:
+    namespaces: [ns-ingress, ns-internal]
+  forced:
+    namespaces: [ns-internal, ns-forced-open]
+  direct:
+    human_impact: high
+    exposure: small
+    reason: "offline"
+"""
+        )
+        assets = evaluate.load_assets(path)
+        ingress_ns = {"ns-ingress", "ns-with-wl"}
+
+        # Ingress 有無の自動判定
+        self.assertEqual(
+            evaluate.resolve_asset_for_k8s("ns-ingress", "web", assets, ingress_ns)["exposure"],
+            "open",
+        )
+        self.assertEqual(
+            evaluate.resolve_asset_for_k8s("ns-internal", "worker", assets, ingress_ns)["exposure"],
+            "controlled",
+        )
+        # Namespace 上書き
+        self.assertEqual(
+            evaluate.resolve_asset_for_k8s("ns-forced-open", "app", assets, set())["exposure"],
+            "open",
+        )
+        # Workload 上書き
+        db = evaluate.resolve_asset_for_k8s("ns-with-wl", "db", assets, ingress_ns)
+        self.assertEqual(db["exposure"], "small")
+        self.assertEqual(db["exposure_source"], "declared_workload")
+        self.assertEqual(db["human_impact"], "medium")
+
+        admin = evaluate.resolve_asset_for_k8s("ns-with-wl", "admin", assets, ingress_ns)
+        self.assertEqual(admin["exposure"], "open")
+        self.assertEqual(admin["human_impact"], "very high")
+        self.assertEqual(admin["human_impact_source"], "declared_workload")
+
+        # 未登録 Namespace
+        self.assertFalse(
+            evaluate.resolve_asset_for_k8s("unregistered-ns", "app", assets, ingress_ns)["registered"]
+        )
+
+        # リポジトリ: 複数 Namespace は最も重い値 (high + open)
+        multi = evaluate.resolve_asset_for_repo("multi", assets, ingress_ns)
+        self.assertEqual(multi["human_impact"], "high")
+        self.assertEqual(multi["exposure"], "open")
+
+        forced = evaluate.resolve_asset_for_repo("forced", assets, set())
+        self.assertEqual(forced["human_impact"], "high")
+        self.assertEqual(forced["exposure"], "open")
+
+        direct = evaluate.resolve_asset_for_repo("direct", assets, set())
+        self.assertEqual(direct["human_impact"], "high")
+        self.assertEqual(direct["exposure"], "small")
+
+        self.assertFalse(
+            evaluate.resolve_asset_for_repo("unknown-repo", assets, set())["registered"]
+        )
+
+    def test_override_validation_and_expiration(self):
+        path = self._write_temp(
+            """
+overrides:
+  - cve: CVE-2024-0001
+    namespace: pechka
+    workload: api
+    decision: defer
+    reason: "valid today"
+    expires: "2026-11-19"
+  - cve: CVE-2024-0002
+    repository: nix-config
+    decision: not-affected
+    reason: "expired yesterday"
+    expires: "2026-11-18"
+"""
+        )
+        entries = evaluate.load_overrides(path)
+        active, expired = evaluate.split_overrides(entries, datetime.date(2026, 11, 19))
+        self.assertIn(("CVE-2024-0001", "k8s", "pechka", "api", ""), active)
+        self.assertEqual(len(expired), 1)
+        self.assertEqual(expired[0]["cve"], "CVE-2024-0002")
+
+        # 翌日になると両方期限切れ
+        active2, expired2 = evaluate.split_overrides(entries, datetime.date(2026, 11, 20))
+        self.assertEqual(len(active2), 0)
+        self.assertEqual(len(expired2), 2)
+
+
+class VulnrichmentAndWorkloadTest(unittest.TestCase):
+    def test_vulnrichment_path_and_extraction(self):
+        self.assertEqual(evaluate.vulnrichment_path("CVE-2023-44487"), "2023/44xxx/CVE-2023-44487.json")
+        self.assertEqual(evaluate.vulnrichment_path("CVE-2024-0001"), "2024/0xxx/CVE-2024-0001.json")
+        self.assertEqual(evaluate.vulnrichment_path("CVE-2026-39824"), "2026/39xxx/CVE-2026-39824.json")
+        self.assertIsNone(evaluate.vulnrichment_path("GHSA-abcd-efgh-ijkl"))
+
+        doc_poc = {
+            "containers": {
+                "adp": [
+                    {
+                        "metrics": [
+                            {
+                                "other": {
+                                    "type": "ssvc",
+                                    "content": {
+                                        "options": [
+                                            {"Exploitation": "poc"},
+                                            {"Automatable": "yes"},
+                                        ]
+                                    },
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        self.assertEqual(evaluate.extract_vulnrichment_ssvc(doc_poc), ("public poc", "yes"))
+
+        doc_missing = {"containers": {"adp": [{"metrics": [{"other": {"type": "kev"}}]}]}}
+        self.assertEqual(evaluate.extract_vulnrichment_ssvc(doc_missing), (None, None))
+
+    def test_normalize_workload(self):
+        self.assertEqual(evaluate.normalize_workload("ReplicaSet", "api-7d9c8f4b5"), "api")
+        self.assertEqual(evaluate.normalize_workload("StatefulSet", "mongodb"), "mongodb")
+        self.assertEqual(evaluate.normalize_workload("Pod", "backup-1700000000-dump-1"), "backup-dump")
+        self.assertEqual(evaluate.normalize_workload("Pod", "nightly-1700000000-1"), "nightly")
+
+
+class EvaluateFindingsTest(unittest.TestCase):
+    def setUp(self):
+        self.table = evaluate.load_decision_table(CSV_PATH)
+        f = tempfile.NamedTemporaryFile("w", delete=False, suffix=".yaml", encoding="utf-8")
+        f.write(
+            """
+namespaces:
+  pechka:
+    human_impact: very high
+    workloads:
+      worker:
+        exposure: controlled
+        reason: "no ingress"
+repositories:
+  pechka:
+    namespaces: [pechka]
+hosts:
+  nuc-1:
+    kind: proxmox
+    human_impact: very high
+    exposure: controlled
+    scan: none
+    reason: "hypervisor"
+"""
+        )
+        f.close()
+        self.addCleanup(os.unlink, f.name)
+        self.assets = evaluate.load_assets(f.name)
+
+    def test_kev_unknown_unregistered_and_override(self):
+        findings = [
+            # 1. KEV (Vulnrichment では none だが KEV で active -> open + yes + very high => immediate)
+            {
+                "source": "k8s",
+                "namespace": "pechka",
+                "workload": "api",
+                "container": "api",
+                "repository": "",
+                "target": "pechka/api",
+                "cve_id": "CVE-2024-1001",
+                "pkg_name": "pkg-a",
+                "installed_version": "1.0",
+                "fixed_version": "1.1",
+                "trivy_severity": "HIGH",
+                "title": "kev test",
+                "url": "",
+            },
+            # 2. GHSA (CVE ID でないので unknown)
+            {
+                "source": "k8s",
+                "namespace": "pechka",
+                "workload": "api",
+                "container": "api",
+                "repository": "",
+                "target": "pechka/api",
+                "cve_id": "GHSA-1234-5678-9012",
+                "pkg_name": "pkg-b",
+                "installed_version": "1.0",
+                "fixed_version": "",
+                "trivy_severity": "HIGH",
+                "title": "ghsa test",
+                "url": "",
+            },
+            # 3. Vulnrichment 欠損 CVE -> 例外で上書き (有効)
+            {
+                "source": "k8s",
+                "namespace": "pechka",
+                "workload": "worker",
+                "container": "worker",
+                "repository": "",
+                "target": "pechka/worker",
+                "cve_id": "CVE-2024-9999",
+                "pkg_name": "pkg-c",
+                "installed_version": "1.0",
+                "fixed_version": "",
+                "trivy_severity": "MEDIUM",
+                "title": "overridden missing",
+                "url": "",
+            },
+            # 4. 期限切れ例外 -> 効かず通常の評価 (none + open + no + very high => scheduled)
+            {
+                "source": "repo",
+                "namespace": "",
+                "workload": "",
+                "container": "",
+                "repository": "pechka",
+                "target": "pechka",
+                "cve_id": "CVE-2024-2002",
+                "pkg_name": "pkg-d",
+                "installed_version": "1.0",
+                "fixed_version": "",
+                "trivy_severity": "LOW",
+                "title": "expired override",
+                "url": "",
+            },
+            # 5. 未登録 Namespace -> unregistered
+            {
+                "source": "k8s",
+                "namespace": "shadow-ns",
+                "workload": "rogue",
+                "container": "rogue",
+                "repository": "",
+                "target": "shadow-ns/rogue",
+                "cve_id": "CVE-2024-1001",
+                "pkg_name": "pkg-a",
+                "installed_version": "1.0",
+                "fixed_version": "",
+                "trivy_severity": "CRITICAL",
+                "title": "unregistered ns",
+                "url": "",
+            },
+            # 6. 未登録リポジトリ -> unregistered
+            {
+                "source": "repo",
+                "namespace": "",
+                "workload": "",
+                "container": "",
+                "repository": "unknown-repo",
+                "target": "unknown-repo",
+                "cve_id": "CVE-2024-1001",
+                "pkg_name": "pkg-a",
+                "installed_version": "1.0",
+                "fixed_version": "",
+                "trivy_severity": "CRITICAL",
+                "title": "unregistered repo",
+                "url": "",
+            },
+        ]
+        targets = {
+            ("k8s", "pechka", "api"),
+            ("k8s", "pechka", "worker"),
+            ("k8s", "shadow-ns", "rogue"),
+            ("repo", "", "pechka"),
+            ("repo", "", "unknown-repo"),
+        }
+        active_ovr = {
+            ("CVE-2024-9999", "k8s", "pechka", "worker", ""): {
+                "cve": "CVE-2024-9999",
+                "target_type": "k8s",
+                "namespace": "pechka",
+                "workload": "worker",
+                "repository": "",
+                "target": "pechka/worker",
+                "decision": "not-affected",
+                "reason": "false positive",
+                "expires": "2026-12-31",
+            }
+        }
+        expired_ovr = [
+            {
+                "cve": "CVE-2024-2002",
+                "target_type": "repo",
+                "namespace": "",
+                "workload": "",
+                "repository": "pechka",
+                "target": "pechka",
+                "decision": "defer",
+                "reason": "old exception",
+                "expires": "2026-11-01",
+            }
+        ]
+        kev_set = {"CVE-2024-1001"}
+        vuln_map = {
+            "CVE-2024-1001": ("none", "yes"),
+            "CVE-2024-2002": ("none", "no"),
+        }
+        epss_map = {"CVE-2024-1001": (0.95, 0.99)}
+
+        evaluated, counts, reg = evaluate.evaluate_findings(
+            findings,
+            targets,
+            self.assets,
+            {"pechka"},
+            active_ovr,
+            kev_set,
+            vuln_map,
+            epss_map,
+            self.table,
+        )
+
+        by_title = {r["title"]: r for r in evaluated}
+        self.assertEqual(by_title["kev test"]["exploitation"], "active")
+        self.assertEqual(by_title["kev test"]["exploitation_source"], "KEV")
+        self.assertEqual(by_title["kev test"]["decision"], "immediate")
+        self.assertEqual(by_title["kev test"]["epss"], 0.95)
+
+        self.assertEqual(by_title["ghsa test"]["decision"], "unknown")
+        self.assertEqual(by_title["ghsa test"]["decision_source"], "missing_data")
+
+        self.assertEqual(by_title["overridden missing"]["decision"], "not-affected")
+        self.assertEqual(by_title["overridden missing"]["decision_source"], "override")
+
+        self.assertEqual(by_title["expired override"]["decision"], "scheduled")
+        self.assertEqual(by_title["expired override"]["decision_source"], "ssvc_table")
+
+        self.assertEqual(by_title["unregistered ns"]["decision"], "unregistered")
+        self.assertEqual(by_title["unregistered repo"]["decision"], "unregistered")
+
+        metrics = evaluate.render_metrics(counts, reg, self.assets, expired_ovr, 1700000000)
+        # CVE ID はメトリクスに出ない
+        self.assertNotIn("CVE-", metrics)
+        self.assertNotIn("GHSA-", metrics)
+        self.assertIn("nuage_ssvc_unregistered_targets_total 2", metrics)
+        self.assertIn("nuage_ssvc_unscanned_assets_total 1", metrics)
+        self.assertIn("nuage_ssvc_expired_overrides_total 1", metrics)
+        self.assertIn(
+            'nuage_ssvc_unscanned_assets{host="nuc-1",kind="proxmox",human_impact="very high",exposure="controlled"} 1',
+            metrics,
+        )
+
+
+class EndToEndTest(unittest.TestCase):
+    def test_end_to_end_with_mock_http(self):
+        received_metrics = []
+
+        class MockK8sClient:
+            def list_all(self, path):
+                if path.endswith("/ingresses"):
+                    return [{"metadata": {"namespace": "pechka", "name": "pechka-ing"}}]
+                if path.endswith("/vulnerabilityreports"):
+                    return [
+                        # PR 環境は除外される
+                        {
+                            "metadata": {
+                                "namespace": "pechka-pr-99",
+                                "name": "rs-api",
+                                "labels": {
+                                    "trivy-operator.resource.kind": "ReplicaSet",
+                                    "trivy-operator.resource.name": "api-7d9c8f4b5",
+                                    "trivy-operator.container.name": "api",
+                                },
+                            },
+                            "report": {
+                                "vulnerabilities": [
+                                    {
+                                        "vulnerabilityID": "CVE-2023-44487",
+                                        "resource": "pkg",
+                                        "installedVersion": "1.0",
+                                        "fixedVersion": "1.1",
+                                        "severity": "HIGH",
+                                        "title": "pr should be ignored",
+                                    }
+                                ]
+                            },
+                        },
+                        # 本番ワークロード (同じ ReplicaSet がロールアウトで 2 つあっても重複排除)
+                        {
+                            "metadata": {
+                                "namespace": "pechka",
+                                "name": "rs-api-old",
+                                "labels": {
+                                    "trivy-operator.resource.kind": "ReplicaSet",
+                                    "trivy-operator.resource.name": "api-7d9c8f4b5",
+                                    "trivy-operator.container.name": "api",
+                                },
+                            },
+                            "report": {
+                                "artifact": {"repository": "pechka/api", "tag": "v1"},
+                                "vulnerabilities": [
+                                    {
+                                        "vulnerabilityID": "CVE-2023-44487",
+                                        "resource": "h2",
+                                        "installedVersion": "1.0",
+                                        "fixedVersion": "1.1",
+                                        "severity": "HIGH",
+                                        "title": "rapid reset",
+                                    }
+                                ],
+                            },
+                        },
+                        {
+                            "metadata": {
+                                "namespace": "pechka",
+                                "name": "rs-api-new",
+                                "labels": {
+                                    "trivy-operator.resource.kind": "ReplicaSet",
+                                    "trivy-operator.resource.name": "api-8f5c6b7d9",
+                                    "trivy-operator.container.name": "api",
+                                },
+                            },
+                            "report": {
+                                "artifact": {"repository": "pechka/api", "tag": "v1"},
+                                "vulnerabilities": [
+                                    {
+                                        "vulnerabilityID": "CVE-2023-44487",
+                                        "resource": "h2",
+                                        "installedVersion": "1.0",
+                                        "fixedVersion": "1.1",
+                                        "severity": "HIGH",
+                                        "title": "rapid reset",
+                                    }
+                                ],
+                            },
+                        },
+                    ]
+                raise AssertionError(f"unexpected path: {path}")
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, fmt, *args):
+                pass
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(length).decode("utf-8")
+                if self.path == "/select/logsql/query":
+                    params = urllib.parse.parse_qs(body)
+                    q = params["query"][0]
+                    if 'event:="scan_done"' in q:
+                        lines = [
+                            json.dumps({"_time": "2026-11-17T19:00:00Z", "repo": "pechka", "run_id": "100"}),
+                            json.dumps({"_time": "2026-11-18T19:00:00Z", "repo": "pechka", "run_id": "200"}),
+                        ]
+                        resp = "\n".join(lines).encode("utf-8")
+                    else:
+                        lines = [
+                            # 古い run_id は無視される
+                            json.dumps({
+                                "repo": "pechka", "run_id": "100", "rule_id": "CVE-2023-44487",
+                                "pkg_name": "old", "installed_version": "0.1", "severity": "HIGH",
+                            }),
+                            # 最新 run_id (Vulnrichment 404 -> unknown)
+                            json.dumps({
+                                "repo": "pechka", "run_id": "200", "rule_id": "CVE-2024-99999",
+                                "pkg_name": "new-lib", "installed_version": "0.2", "fixed_version": "0.3",
+                                "severity": "MEDIUM", "title": "missing vulnrichment", "file": "go.mod",
+                            }),
+                        ]
+                        resp = "\n".join(lines).encode("utf-8")
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(resp)
+                elif self.path == "/api/v1/import/prometheus":
+                    received_metrics.append(body)
+                    self.send_response(204)
+                    self.end_headers()
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def do_GET(self):
+                if self.path == "/kev.json":
+                    payload = {"vulnerabilities": [{"cveID": "CVE-2023-44487"}]}
+                elif self.path == "/vulnrichment/2023/44xxx/CVE-2023-44487.json":
+                    payload = {
+                        "containers": {
+                            "adp": [
+                                {
+                                    "metrics": [
+                                        {
+                                            "other": {
+                                                "type": "ssvc",
+                                                "content": {
+                                                    "options": [
+                                                        {"Exploitation": "active"},
+                                                        {"Automatable": "yes"},
+                                                    ]
+                                                },
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                elif self.path.startswith("/epss"):
+                    payload = {
+                        "data": [
+                            {"cve": "CVE-2023-44487", "epss": "0.99", "percentile": "0.999"}
+                        ]
+                    }
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.shutdown)
+        self.addCleanup(server.server_close)
+        base = f"http://127.0.0.1:{server.server_port}"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            assets_path = os.path.join(tmp, "assets.yaml")
+            with open(assets_path, "w", encoding="utf-8") as f:
+                f.write("namespaces:\n  pechka:\n    human_impact: very high\nrepositories:\n  pechka:\n    namespaces: [pechka]\n")
+            overrides_path = os.path.join(tmp, "overrides.yaml")
+            with open(overrides_path, "w", encoding="utf-8") as f:
+                f.write("overrides: []\n")
+
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = evaluate.run_evaluation(
+                    assets_path=assets_path,
+                    overrides_path=overrides_path,
+                    decision_table_path=CSV_PATH,
+                    vlogs_url=f"{base}/select/logsql/query",
+                    push_url=f"{base}/api/v1/import/prometheus",
+                    run_id="999",
+                    today=datetime.date(2026, 11, 19),
+                    now=1700000000,
+                    k8s_client=MockK8sClient(),
+                    kev_url=f"{base}/kev.json",
+                    vulnrichment_base_url=f"{base}/vulnrichment",
+                    epss_url=f"{base}/epss",
+                )
+
+        self.assertEqual(code, 0, stderr.getvalue())
+        records = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        findings = [r for r in records if r["event"] == "ssvc_finding"]
+        self.assertEqual(len(findings), 2)
+        by_src = {r["source"]: r for r in findings}
+        self.assertEqual(by_src["k8s"]["decision"], "immediate")
+        self.assertEqual(by_src["k8s"]["workload"], "api")
+        self.assertEqual(by_src["k8s"]["epss"], 0.99)
+        self.assertEqual(by_src["repo"]["decision"], "unknown")
+        self.assertEqual(by_src["repo"]["cve_id"], "CVE-2024-99999")
+
+        done = next(r for r in records if r["event"] == "eval_done")
+        self.assertEqual(done["run_id"], "999")
+        self.assertEqual(done["counts_by_decision"]["immediate"], 1)
+        self.assertEqual(done["counts_by_decision"]["unknown"], 1)
+
+        self.assertEqual(len(received_metrics), 1)
+        self.assertIn(
+            'nuage_ssvc_findings{source="k8s",namespace="pechka",target="api",decision="immediate"} 1',
+            received_metrics[0],
+        )
+        self.assertIn(
+            'nuage_ssvc_findings{source="repo",namespace="",target="pechka",decision="unknown"} 1',
+            received_metrics[0],
+        )
+        self.assertNotIn("pechka-pr-99", received_metrics[0])
+
+
+class DashboardTest(unittest.TestCase):
+    def test_security_dashboard_keeps_existing_panels_and_adds_ssvc(self):
+        dash_path = os.path.join(
+            os.path.dirname(SSVC_DIR), "trivy-operator", "dashboards", "trivy-operator.json"
+        )
+        with open(dash_path, encoding="utf-8") as f:
+            dash = json.load(f)
+
+        all_ids = []
+
+        def collect_ids(panels):
+            for p in panels:
+                all_ids.append(p["id"])
+                if p.get("panels"):
+                    collect_ids(p["panels"])
+
+        collect_ids(dash["panels"])
+        self.assertEqual(len(all_ids), len(set(all_ids)), "panel id duplicated")
+
+        expected_existing_ids = {2, 4, 8, 23, 28, 29, 31, 32, 33, 34, 35, 36, 40, 41, 42, 50, 51, 52, 53, 54, 55, 56}
+        self.assertTrue(expected_existing_ids.issubset(set(all_ids)))
+
+        titles = [p.get("title") for p in dash["panels"]]
+        self.assertIn("SSVC Prioritization", titles)
+        self.assertIn("SSVC: Findings by Decision", titles)
+        self.assertIn("SSVC: Governance & Coverage", titles)
+        self.assertIn("SSVC: Immediate & Out-of-Cycle by Target", titles)
+
+
+if __name__ == "__main__":
+    unittest.main()
