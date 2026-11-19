@@ -43,6 +43,7 @@ export default function Settings({
 							<span className="label-desc">この端末でクラスタの通知を受信する。</span>
 						</div>
 						<button
+							type="button"
 							onClick={onSubscribeToggle}
 							disabled={submitting}
 							className={`btn ${submitting ? 'btn-disabled' : 'btn-primary'}`}
@@ -53,7 +54,7 @@ export default function Settings({
 
 					{isSubscribed && (
 						<div className="settings-actions">
-							<button onClick={onSendTestNotify} className="btn btn-secondary">
+							<button type="button" onClick={onSendTestNotify} className="btn btn-secondary">
 								テスト通知を送信
 							</button>
 						</div>
@@ -72,7 +73,7 @@ export default function Settings({
 					</span>
 					<div className="webhook-code-block">
 						<pre>{WEBHOOK_CURL_EXAMPLE}</pre>
-						<button onClick={copyWebhookCommand} className="copy-btn" aria-label="Webhookコマンドをコピー">
+						<button type="button" onClick={copyWebhookCommand} className="copy-btn" aria-label="Webhookコマンドをコピー">
 							{copied ? <Check size={12} /> : <Copy size={12} />}
 						</button>
 					</div>

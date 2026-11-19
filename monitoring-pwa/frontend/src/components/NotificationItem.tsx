@@ -142,7 +142,7 @@ export default function NotificationItem({ item, isExpanded, onToggle, grafanaBa
 				{(hasExpandableDetail || externalLinks.length > 0) && (
 					<div className="history-actions">
 						{hasExpandableDetail && (
-							<button onClick={onToggle} className="history-detail-toggle-btn">
+							<button type="button" onClick={onToggle} className="history-detail-toggle-btn">
 								{isExpanded ? '詳細を閉じる' : '詳細を表示'}
 							</button>
 						)}

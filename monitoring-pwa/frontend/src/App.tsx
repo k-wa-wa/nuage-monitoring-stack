@@ -358,7 +358,7 @@ export default function App() {
 	// iframe 内で読み込まれた場合は描画を制限する（無限ネスト防止）。
 	if (window.self !== window.top) {
 		return (
-			<div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+			<div className="iframe-fallback">
 				Nuage Notify is loaded inside an iframe.
 			</div>
 		)
@@ -368,9 +368,9 @@ export default function App() {
 		<>
 			<header className="app-header">
 				<h1 className="app-title">
-					<span className="app-logo"></span>Nuage Notify
+					<span className="app-logo" aria-hidden="true"></span>Nuage Notify
 				</h1>
-				<div className="connection-badge">
+				<div className={`connection-badge ${online ? 'online' : ''}`}>
 					<span className={`connection-dot ${online ? 'online' : ''}`}></span>
 					{online ? 'オンライン' : 'オフライン'}
 				</div>
@@ -378,32 +378,44 @@ export default function App() {
 
 			<main className="app-content">
 				{activeTab === 'notifications' && (
-					<div className="card">
-						<div className="panel-header history-panel-header">
-							<h2 className="panel-title">
+					<section className="notifications-view" aria-label="通知一覧">
+						<div className="notifications-toolbar">
+							<h2 className="section-title">
 								<Bell size={16} />
 								通知一覧
 							</h2>
-							<div className="filter-pill-group">
+							<div className="filter-pill-group" role="tablist" aria-label="通知フィルタ">
 								<button
+									type="button"
+									role="tab"
+									aria-selected={filter === 'all'}
 									className={`filter-pill ${filter === 'all' ? 'active' : ''}`}
 									onClick={() => setFilter('all')}
 								>
 									すべて ({allNotifications.length})
 								</button>
 								<button
+									type="button"
+									role="tab"
+									aria-selected={filter === 'firing'}
 									className={`filter-pill ${filter === 'firing' ? 'active' : ''} ${firingCount > 0 ? 'pill-firing' : ''}`}
 									onClick={() => setFilter('firing')}
 								>
 									発生中 ({firingCount})
 								</button>
 								<button
+									type="button"
+									role="tab"
+									aria-selected={filter === 'resolved'}
 									className={`filter-pill ${filter === 'resolved' ? 'active' : ''}`}
 									onClick={() => setFilter('resolved')}
 								>
 									解決済み ({resolvedCount})
 								</button>
 								<button
+									type="button"
+									role="tab"
+									aria-selected={filter === 'notice'}
 									className={`filter-pill ${filter === 'notice' ? 'active' : ''}`}
 									onClick={() => setFilter('notice')}
 								>
@@ -434,7 +446,7 @@ export default function App() {
 								))
 							)}
 						</div>
-					</div>
+					</section>
 				)}
 
 				{activeTab === 'settings' && (
@@ -448,8 +460,9 @@ export default function App() {
 				)}
 			</main>
 
-			<nav className="app-nav">
+			<nav className="app-nav" aria-label="メインナビゲーション">
 				<button
+					type="button"
 					onClick={() => navigateToTab('notifications')}
 					className={`nav-item ${activeTab === 'notifications' ? 'active' : ''}`}
 				>
@@ -457,6 +470,7 @@ export default function App() {
 					通知一覧
 				</button>
 				<button
+					type="button"
 					onClick={() => navigateToTab('settings')}
 					className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
 				>
