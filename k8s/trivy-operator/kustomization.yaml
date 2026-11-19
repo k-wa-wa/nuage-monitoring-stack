@@ -33,10 +33,10 @@ helmCharts:
         # Job 終了後に即削除するとタイムアウトや OOMKilled の理由・イベントを追えないため、短時間だけ残す。
         # LimitChecker は完了済み Job も同時実行数 (scanJobsConcurrentLimit) に数えるため、長時間の TTL は
         # 後続スキャンを詰まらせる。2m の保持と並行数 2 の組み合わせで、ログ回収の猶予と進行を両立する。
+        # なお logDevMode: true は本番ログ形式の変化 (console 化) や DPanic での panic リスクがあるため入れない
+        # (失敗コンテナの終了理由は通常モードでも completedContainers() が Error 水準で出力する)。
         scanJobTTL: "2m"
         scanJobsConcurrentLimit: 2
-        # 失敗・スキップ時の経緯 (V(1) ログを含む) を VictoriaLogs に残して原因を追えるようにする。
-        logDevMode: true
         # aivisspeech (pechka) のスキャンが既定の 5m (activeDeadlineSeconds: 300) で打ち切られ、
         # VulnerabilityReport が作られないまま評価から落ちていたため 30m に延ばす。
         # 実スキャン所要時間は未計測のため、大きな ML イメージでも収まるよう余裕を持たせた。
@@ -95,7 +95,9 @@ helmCharts:
         resources:
           requests:
             cpu: 100m
-            memory: 256Mi
+            # cilium が 512Mi 上限で OOMKilled になった実績に合わせ、requests も実使用量に近づける。
+            # なお rootfs モードは nodeName 直指定でスケジューラを通らないため、対象ノード側の空きメモリ確認を要する。
+            memory: 512Mi
           limits:
             # cilium (apply-sysctl-overwrites) が 512Mi で OOMKilled になったこと、および 4GB 超の
             # aivisspeech イメージを rootfs でローカル走査 (--list-all-pkgs 含む) する負荷を見込み、2Gi に上げる。
