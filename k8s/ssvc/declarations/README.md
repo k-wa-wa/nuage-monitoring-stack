@@ -12,7 +12,7 @@ k8s の Namespace・`repo-scan` のリポジトリ・未スキャン機器（VM�
   - Security ダッシュボードの **SSVC: Unregistered Targets** に未登録の対象が出たとき
   - 新しい機器やアプリを増やしたとき、または役割・公開範囲が変わったとき
 - **重要度 (`human_impact`) の目安と露出 (`exposure`) の規則**:
-  - `assets.yaml` 先頭コメントの基準に従う。露出は Ingress の有無で自動判定されるため、自動判定と違う値にしたいときだけ `reason` 付きで上書きする。
+  - `assets.yaml` 先頭コメントの基準に従う。露出は Ingress の有無で自動判定されるため、自動判定と違う値にしたいときだけ上書きする（Namespace は `exposure_reason`、`workloads` は `reason` を必須とする。`nuage-honeytrap` や `argocd-redis` の記述例を参照）。
 
 ## `overrides.yaml`（例外・人手判断）
 
