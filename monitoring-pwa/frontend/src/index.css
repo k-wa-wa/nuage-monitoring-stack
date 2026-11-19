@@ -234,7 +234,7 @@ a {
 /* メインコンテンツエリア */
 .app-content {
   flex: 1;
-  padding: 16px 16px calc(72px + var(--safe-bottom));
+  padding: 16px 16px calc(88px + var(--safe-bottom));
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -333,7 +333,8 @@ a {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  padding-bottom: 4px;
+  padding: 4px;
+  margin: -4px;
 }
 
 .filter-pill-group::-webkit-scrollbar {
