@@ -13,9 +13,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       injectRegister: 'inline',
       manifest: {
-        name: 'Nuage Cluster Monitor',
-        short_name: 'Monitor',
-        description: 'Nuage cluster monitoring dashboard & notification receiver.',
+        name: 'Nuage Notify',
+        short_name: 'Notify',
+        description: 'Nuage cluster notification receiver.',
         theme_color: '#111217',
         background_color: '#111217',
         display: 'standalone',

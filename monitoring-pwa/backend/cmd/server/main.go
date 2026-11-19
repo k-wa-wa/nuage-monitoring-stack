@@ -57,6 +57,8 @@ func main() {
 	api.GET("/history", historyH.History)
 	api.GET("/alerts/active", historyH.ActiveAlerts)
 	api.GET("/alerts/history", historyH.AlertHistory)
+	api.GET("/notifications", historyH.UnifiedNotifications)
+	api.GET("/notifications/:kind/:id", historyH.GetNotificationDetail)
 
 	e.POST("/webhook/alertmanager", webhookH.AlertmanagerWebhook)
 	e.POST("/webhook/generic", webhookH.GenericWebhook)

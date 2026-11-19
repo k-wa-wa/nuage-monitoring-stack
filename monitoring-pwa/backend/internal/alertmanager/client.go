@@ -111,11 +111,15 @@ func (c *Client) GetActiveAlerts(ctx context.Context) ([]push.Alert, error) {
 
 		detailsBytes, _ := json.Marshal(a)
 
-		id := idFromFingerprint(a.Fingerprint)
+		fp := a.Fingerprint
+		if len(a.Labels) > 0 {
+			fp = push.GenerateFingerprint(a.Labels)
+		}
+		id := idFromFingerprint(fp)
 
 		activeAlerts = append(activeAlerts, push.Alert{
 			ID:          id,
-			Fingerprint: a.Fingerprint,
+			Fingerprint: fp,
 			Alertname:   alertname,
 			Status:      "firing",
 			Level:       level,

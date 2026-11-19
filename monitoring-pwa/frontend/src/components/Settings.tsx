@@ -1,12 +1,15 @@
+import { useState } from 'react'
 import { Settings as SettingsIcon, Bell, Copy, Check } from 'lucide-react'
+
+const WEBHOOK_CURL_EXAMPLE = `curl -X POST https://monitoring.wpcapp.net/webhook/generic \\
+  -H "Content-Type: application/json" \\
+  -d '{"title": "デプロイ完了", "body": "アプリを更新した。", "level": "info", "url": "https://argocd.wpcapp.net", "details": "revision: abc1234"}'`
 
 interface SettingsProps {
 	isSubscribed: boolean
 	submitting: boolean
 	onSubscribeToggle: () => void
 	onSendTestNotify: () => void
-	copyWebhookCommand: () => void
-	copied: boolean
 	logs: string[]
 }
 
@@ -16,10 +19,16 @@ export default function Settings({
 	submitting,
 	onSubscribeToggle,
 	onSendTestNotify,
-	copyWebhookCommand,
-	copied,
 	logs
 }: SettingsProps) {
+	const [copied, setCopied] = useState(false)
+
+	const copyWebhookCommand = () => {
+		navigator.clipboard.writeText(WEBHOOK_CURL_EXAMPLE)
+		setCopied(true)
+		setTimeout(() => setCopied(false), 2000)
+	}
+
 	return (
 		<>
 			<div className="card">
@@ -31,7 +40,7 @@ export default function Settings({
 					<div className="settings-row">
 						<div className="settings-label">
 							<span className="label-title">プッシュ通知</span>
-							<span className="label-desc">この端末でクラスタのアラートを受信する。</span>
+							<span className="label-desc">この端末でクラスタの通知を受信する。</span>
 						</div>
 						<button
 							onClick={onSubscribeToggle}
@@ -59,15 +68,11 @@ export default function Settings({
 				</h2>
 				<div className="settings-section">
 					<span className="label-desc">
-						GitHub Actions や任意の Cron ジョブ等から、以下のエンドポイントを叩くことでプッシュ通知をトリガーできる。
+						Argo CD・GitHub Actions・Cron ジョブ等から以下のエンドポイントを叩くことでプッシュ通知を送信できる。url を指定すると通知詳細から対象アプリへ遷移できる。
 					</span>
 					<div className="webhook-code-block">
-						<pre>
-							{`curl -X POST https://monitoring.cluster.wpc/webhook/generic \\
-  -H "Content-Type: application/json" \\
-  -d '{"title": "エラータイトル", "body": "エラーメッセージ", "level": "error", "details": "詳細ログまたはスタックトレース"}'`}
-						</pre>
-						<button onClick={copyWebhookCommand} className="copy-btn">
+						<pre>{WEBHOOK_CURL_EXAMPLE}</pre>
+						<button onClick={copyWebhookCommand} className="copy-btn" aria-label="Webhookコマンドをコピー">
 							{copied ? <Check size={12} /> : <Copy size={12} />}
 						</button>
 					</div>
