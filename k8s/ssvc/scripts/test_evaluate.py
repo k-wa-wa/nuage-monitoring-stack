@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import threading
 import unittest
+from unittest import mock
 import urllib.parse
 
 import sys
@@ -130,7 +131,11 @@ overrides:
         overrides_path = os.path.join(SSVC_DIR, "overrides.yaml")
         assets = evaluate.load_assets(assets_path)
         overrides = evaluate.load_overrides(overrides_path)
-        self.assertIsInstance(assets["namespaces"], dict)
+        self.assertIn("nuage-honeytrap", assets["namespaces"])
+        self.assertEqual(assets["namespaces"]["nuage-honeytrap"]["exposure"], "open")
+        self.assertTrue(assets["namespaces"]["nuage-honeytrap"]["exposure_reason"])
+        self.assertTrue(assets["namespaces"]["nuage-honeytrap"]["reason"])
+        self.assertIn("nuc-1", assets["hosts"])
         self.assertIsInstance(overrides, list)
 
         yq = shutil.which("yq")
@@ -150,11 +155,20 @@ class AssetAndOverrideValidationTest(unittest.TestCase):
         return f.name
 
     def test_exposure_override_requires_reason(self):
+        # Namespace 直下の exposure 上書きは exposure_reason が必須 (reason だけでは不可)
         path = self._write_temp(
-            "namespaces:\n  pechka:\n    human_impact: high\n    exposure: controlled\n"
+            "namespaces:\n  pechka:\n    human_impact: high\n    reason: 'impact'\n    exposure: controlled\n"
         )
         with self.assertRaises(ValueError):
             evaluate.load_assets(path)
+
+        path_ok = self._write_temp(
+            "namespaces:\n  pechka:\n    human_impact: high\n    reason: 'impact'\n"
+            "    exposure: controlled\n    exposure_reason: 'no ingress'\n"
+        )
+        loaded = evaluate.load_assets(path_ok)
+        self.assertEqual(loaded["namespaces"]["pechka"]["exposure"], "controlled")
+        self.assertEqual(loaded["namespaces"]["pechka"]["exposure_reason"], "no ingress")
 
         path_wl = self._write_temp(
             "namespaces:\n  pechka:\n    human_impact: high\n    workloads:\n      api:\n        exposure: small\n"
@@ -181,7 +195,7 @@ namespaces:
   ns-forced-open:
     human_impact: medium
     exposure: open
-    reason: "tunnel"
+    exposure_reason: "tunnel"
   ns-with-wl:
     human_impact: medium
     workloads:
@@ -525,6 +539,18 @@ hosts:
         self.assertIn("nuage_ssvc_unregistered_targets_total 2", metrics)
         self.assertIn("nuage_ssvc_unscanned_assets_total 1", metrics)
         self.assertIn("nuage_ssvc_expired_overrides_total 1", metrics)
+        self.assertIn("nuage_ssvc_last_success_timestamp_seconds 1700000000", metrics)
+        # 未登録対象にも全 7 種の decision が 0 で送られる (前日の残存と二重カウントしない)
+        for dec in evaluate.ALL_METRIC_DECISIONS:
+            expected_val = 1 if dec == "unregistered" else 0
+            self.assertIn(
+                f'nuage_ssvc_findings{{source="k8s",namespace="shadow-ns",target="rogue",decision="{dec}"}} {expected_val}',
+                metrics,
+            )
+            self.assertIn(
+                f'nuage_ssvc_findings{{source="repo",namespace="",target="unknown-repo",decision="{dec}"}} {expected_val}',
+                metrics,
+            )
         self.assertIn(
             'nuage_ssvc_unscanned_assets{host="nuc-1",kind="proxmox",human_impact="very high",exposure="controlled"} 1',
             metrics,
@@ -628,19 +654,22 @@ class EndToEndTest(unittest.TestCase):
                     params = urllib.parse.parse_qs(body)
                     q = params["query"][0]
                     if 'event:="scan_done"' in q:
+                        if 'scanner:="trivy"' not in q:
+                            self.send_response(400)
+                            self.end_headers()
+                            return
                         lines = [
                             json.dumps({"_time": "2026-11-17T19:00:00Z", "repo": "pechka", "run_id": "100"}),
                             json.dumps({"_time": "2026-11-18T19:00:00Z", "repo": "pechka", "run_id": "200"}),
                         ]
                         resp = "\n".join(lines).encode("utf-8")
                     else:
+                        if 'category:="vulnerability"' not in q or 'run_id:in("200")' not in q:
+                            self.send_response(400)
+                            self.end_headers()
+                            return
                         lines = [
-                            # 古い run_id は無視される
-                            json.dumps({
-                                "repo": "pechka", "run_id": "100", "rule_id": "CVE-2023-44487",
-                                "pkg_name": "old", "installed_version": "0.1", "severity": "HIGH",
-                            }),
-                            # 最新 run_id (Vulnrichment 404 -> unknown)
+                            # クエリ条件で run_id="200" のみ返ることを再現しつつ、念のため 100 は返さない
                             json.dumps({
                                 "repo": "pechka", "run_id": "200", "rule_id": "CVE-2024-99999",
                                 "pkg_name": "new-lib", "installed_version": "0.2", "fixed_version": "0.3",
@@ -757,6 +786,227 @@ class EndToEndTest(unittest.TestCase):
         )
         self.assertNotIn("pechka-pr-99", received_metrics[0])
 
+    def _run_with_routes(self, routes, k8s_client, overrides_yaml="overrides: []\n"):
+        received_metrics = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, fmt, *args):
+                pass
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(length).decode("utf-8")
+                if self.path == "/select/logsql/query":
+                    params = urllib.parse.parse_qs(body)
+                    q = params["query"][0]
+                    if 'event:="scan_done"' in q:
+                        resp = json.dumps(
+                            {"_time": "2026-11-18T19:00:00Z", "repo": "pechka", "run_id": "200"}
+                        ).encode("utf-8")
+                    else:
+                        resp = json.dumps(
+                            {
+                                "repo": "pechka",
+                                "run_id": "200",
+                                "rule_id": "CVE-2024-5555",
+                                "pkg_name": "lib",
+                                "installed_version": "1.0",
+                                "fixed_version": "1.1",
+                                "severity": "HIGH",
+                                "title": "repo vuln",
+                                "file": "go.mod",
+                            }
+                        ).encode("utf-8")
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(resp)
+                elif self.path == "/api/v1/import/prometheus":
+                    received_metrics.append(body)
+                    self.send_response(204)
+                    self.end_headers()
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def do_GET(self):
+                key = self.path.split("?", 1)[0]
+                status, payload = routes.get(key, (404, {}))
+                self.send_response(status)
+                self.end_headers()
+                if payload is not None:
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.shutdown)
+        self.addCleanup(server.server_close)
+        base = f"http://127.0.0.1:{server.server_port}"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            assets_path = os.path.join(tmp, "assets.yaml")
+            with open(assets_path, "w", encoding="utf-8") as f:
+                f.write(
+                    "namespaces:\n  pechka:\n    human_impact: very high\n"
+                    "repositories:\n  pechka:\n    namespaces: [pechka]\n"
+                )
+            overrides_path = os.path.join(tmp, "overrides.yaml")
+            with open(overrides_path, "w", encoding="utf-8") as f:
+                f.write(overrides_yaml)
+
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with mock.patch("time.sleep"), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = evaluate.run_evaluation(
+                    assets_path=assets_path,
+                    overrides_path=overrides_path,
+                    decision_table_path=CSV_PATH,
+                    vlogs_url=f"{base}/select/logsql/query",
+                    push_url=f"{base}/api/v1/import/prometheus",
+                    run_id="999",
+                    today=datetime.date(2026, 11, 19),
+                    now=1700000000,
+                    k8s_client=k8s_client,
+                    kev_url=f"{base}/kev.json",
+                    vulnrichment_base_url=f"{base}/vulnrichment",
+                    epss_url=f"{base}/epss",
+                )
+        return code, stdout.getvalue(), stderr.getvalue(), received_metrics
+
+    def test_vulnrichment_5xx_returns_exit_1_and_omits_last_success(self):
+        class EmptyK8s:
+            def list_all(self, path):
+                return []
+
+        routes = {
+            "/kev.json": (200, {"vulnerabilities": []}),
+            "/vulnrichment/2024/5xxx/CVE-2024-5555.json": (500, {"error": "upstream"}),
+            "/epss": (200, {"data": []}),
+        }
+        code, stdout, stderr, metrics = self._run_with_routes(routes, EmptyK8s())
+        self.assertEqual(code, 1)
+        self.assertIn("vulnrichment_error", stderr)
+        finding = next(json.loads(l) for l in stdout.splitlines() if '"ssvc_finding"' in l)
+        self.assertEqual(finding["exploitation_source"], "error")
+        self.assertEqual(finding["automatable_source"], "error")
+        self.assertEqual(finding["decision"], "unknown")
+        self.assertEqual(finding["decision_source"], "error")
+        self.assertNotIn("nuage_ssvc_last_success_timestamp_seconds", metrics[0])
+
+    def test_epss_failure_continues_evaluation(self):
+        class EmptyK8s:
+            def list_all(self, path):
+                return []
+
+        routes = {
+            "/kev.json": (200, {"vulnerabilities": []}),
+            "/vulnrichment/2024/5xxx/CVE-2024-5555.json": (
+                200,
+                {
+                    "containers": {
+                        "adp": [
+                            {
+                                "metrics": [
+                                    {
+                                        "other": {
+                                            "type": "ssvc",
+                                            "content": {
+                                                "options": [
+                                                    {"Exploitation": "none"},
+                                                    {"Automatable": "no"},
+                                                ]
+                                            },
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                },
+            ),
+            "/epss": (503, {"error": "unavailable"}),
+        }
+        code, stdout, stderr, metrics = self._run_with_routes(routes, EmptyK8s())
+        self.assertEqual(code, 0)
+        self.assertIn("epss_error", stderr)
+        finding = next(json.loads(l) for l in stdout.splitlines() if '"ssvc_finding"' in l)
+        self.assertIsNone(finding["epss"])
+        self.assertEqual(finding["decision"], "scheduled")
+        self.assertIn("nuage_ssvc_last_success_timestamp_seconds 1700000000", metrics[0])
+
+    def test_kev_failure_aborts_without_push(self):
+        class EmptyK8s:
+            def list_all(self, path):
+                return []
+
+        routes = {
+            "/kev.json": (500, {"error": "kev down"}),
+        }
+        with self.assertRaises(RuntimeError):
+            self._run_with_routes(routes, EmptyK8s())
+
+    def test_repository_override_applies_in_end_to_end(self):
+        class EmptyK8s:
+            def list_all(self, path):
+                return []
+
+        routes = {
+            "/kev.json": (200, {"vulnerabilities": []}),
+            "/vulnrichment/2024/5xxx/CVE-2024-5555.json": (404, {}),
+            "/epss": (200, {"data": []}),
+        }
+        ovr = (
+            "overrides:\n"
+            "  - cve: CVE-2024-5555\n"
+            "    repository: pechka\n"
+            "    decision: defer\n"
+            "    reason: 'repo exception'\n"
+            "    expires: '2026-12-31'\n"
+        )
+        code, stdout, _, metrics = self._run_with_routes(routes, EmptyK8s(), overrides_yaml=ovr)
+        self.assertEqual(code, 0)
+        finding = next(json.loads(l) for l in stdout.splitlines() if '"ssvc_finding"' in l)
+        self.assertEqual(finding["decision"], "defer")
+        self.assertEqual(finding["decision_source"], "override")
+        self.assertIn(
+            'nuage_ssvc_findings{source="repo",namespace="",target="pechka",decision="defer"} 1',
+            metrics[0],
+        )
+
+    def test_k8s_client_pagination_iter_items(self):
+        seen_queries = []
+
+        class PagedHandler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, fmt, *args):
+                pass
+
+            def do_GET(self):
+                parsed = urllib.parse.urlparse(self.path)
+                params = urllib.parse.parse_qs(parsed.query)
+                seen_queries.append(params)
+                if "continue" not in params:
+                    payload = {"metadata": {"continue": "tok2"}, "items": [{"id": 1}, {"id": 2}]}
+                else:
+                    payload = {"metadata": {}, "items": [{"id": 3}]}
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), PagedHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.shutdown)
+        self.addCleanup(server.server_close)
+
+        client = evaluate.K8sClient(
+            api_server=f"http://127.0.0.1:{server.server_port}",
+            token="test-token",
+            ca_file=None,
+        )
+        items = list(client.iter_items("/apis/test/v1/things", page_size=2))
+        self.assertEqual([i["id"] for i in items], [1, 2, 3])
+        self.assertEqual(seen_queries[0]["limit"], ["2"])
+        self.assertEqual(seen_queries[1]["continue"], ["tok2"])
+
 
 class DashboardTest(unittest.TestCase):
     def test_security_dashboard_keeps_existing_panels_and_adds_ssvc(self):
@@ -780,11 +1030,16 @@ class DashboardTest(unittest.TestCase):
         expected_existing_ids = {2, 4, 8, 23, 28, 29, 31, 32, 33, 34, 35, 36, 40, 41, 42, 50, 51, 52, 53, 54, 55, 56}
         self.assertTrue(expected_existing_ids.issubset(set(all_ids)))
 
-        titles = [p.get("title") for p in dash["panels"]]
-        self.assertIn("SSVC Prioritization", titles)
-        self.assertIn("SSVC: Findings by Decision", titles)
-        self.assertIn("SSVC: Governance & Coverage", titles)
-        self.assertIn("SSVC: Immediate & Out-of-Cycle by Target", titles)
+        by_id = {p["id"]: p for p in dash["panels"]}
+        self.assertIn(100, by_id)
+        self.assertIn(108, by_id)
+        self.assertIn("nuage_ssvc_last_success_timestamp_seconds", by_id[108]["targets"][0]["expr"])
+        for pid in (101, 102):
+            for t in by_id[pid]["targets"]:
+                self.assertNotIn("or vector(0)", t["expr"])
+                self.assertIn("or vector(-1)", t["expr"])
+        for pid in (104, 107):
+            self.assertEqual(by_id[pid].get("timeFrom"), "36h")
 
 
 if __name__ == "__main__":

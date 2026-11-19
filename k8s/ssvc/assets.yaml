@@ -1,51 +1,195 @@
-# SSVC 評価で使う資産の宣言 (人が編集する)。
+# SSVC の評価に使う資産の宣言。人が書いて PR でレビューする。
+# 調べた時点: 2026-11-19（クラスターの実物、nuage-cluster の origin/master 830bf2f、各リポジトリの既定ブランチ）。
 #
-# 注意: ここはテスト用・仮の中身である。本番用の資産一覧が確定したら置き換える。
+# 重要度 (human_impact) の目安:
+#   very high  クラスター全体・全サービスが止まる、または全体を乗っ取られる
+#   high       複数のサービスに効く (監視・デプロイ・証明書・データの置き場所・強い権限を持つもの)
+#   medium     人が使うアプリが 1 つ止まる、または鍵・トークンが漏れる
+#   low        止まっても困らない (囮・試験・一時 Job)
 #
-# 書き方:
-#   - 重要度 (human_impact) は Namespace 単位で書く (low / medium / high / very high)。
-#     必要なら workloads.<workload> で上書きする。キーは既存の workload ラベルと同じ。
-#   - 露出 (exposure: small / controlled / open) は自動判定する:
-#     Ingress を持つ Namespace は open、持たない Namespace は controlled。
-#     自動判定と違う値にしたいときだけ exposure を書き、reason を必ず付ける。
+# 露出 (exposure) の規則:
+#   - 自動判定: Ingress を持つ Namespace は open、持たない Namespace は controlled。
+#     *.wpcapp.net は家の中からしか届かないが、運用上は公開と同じリスクとして open に扱う。
+#   - 自動判定と違う値にするときだけ exposure を書き、reason を必ず付ける。
+#   - 下げるのは「同じ Namespace のアプリからしか使わないデータストア」に限る。迷ったら下げない。
+
 namespaces:
+  kube-system:
+    human_impact: very high
+    reason: "Cilium (CNI・Ingress)・CoreDNS・API サーバー。止まると全サービスが止まる"
+    # 露出は自動で open (hubble-ui の Ingress、cilium-ingress の NodePort 30080/30443 が LB の宛先)
+
+  argocd:
+    human_impact: high
+    reason: "GitOps でクラスター全体を書き換えられる"
+    # 露出は自動で open (argocd.wpcapp.net)
+    workloads:
+      argocd-redis:
+        exposure: controlled
+        reason: "Argo CD の部品からしか使わないキャッシュ"
+
+  cert-manager:
+    human_impact: high
+    reason: "全 Ingress の TLS 証明書を発行する。クラスター全体の Secret を書ける"
+    # 露出は自動で controlled
+
+  local-path-storage:
+    human_impact: high
+    reason: "ノードの hostPath にボリュームを作る特権を持つ"
+    # 露出は自動で controlled
+
+  keel:
+    human_impact: high
+    reason: "Deployment のイメージを書き換えて自動更新する権限を持つ"
+    # 露出は自動で controlled
+
+  nuage-monitoring-stack:
+    human_impact: high
+    reason: "監視・ログ・security ダッシュボードの土台。止まると他の異常に気づけない"
+    # 露出は自動で open (grafana.wpcapp.net、monitoring.wpcapp.net)。
+    # vmsingle・vlsingle は vmauth-external (NodePort 30427、LB の 8427 から LAN に開く) の先にあるので下げない。
+
+  trivy-operator:
+    human_impact: medium
+    reason: "クラスター全体を読む ClusterRole を持つ"
+    # 露出は自動で controlled
+
   pechka:
     human_impact: medium
+    reason: "ホームメディア。止まると閲覧・配信ができない"
+    # 露出は自動で open (pechka.wpcapp.net・pechka-workflow.wpcapp.net・s3.wpcapp.net → nginx・argo-server。
+    # nginx が /api/ を api、/ を frontend に転送する)
     workloads:
       mongodb:
         exposure: controlled
-        reason: "ClusterIP だけで api からしか使わない"
+        reason: "ClusterIP だけで、pechka のアプリからしか使わない"
+      elasticsearch-green:
+        exposure: controlled
+        reason: "ClusterIP だけで、pechka のアプリからしか使わない"
+
+  litellm:
+    human_impact: medium
+    reason: "LLM のプロキシ。外部 API の鍵を持つ"
+    # 露出は自動で open (litellm.wpcapp.net)
+
+  bare-web-proxy:
+    human_impact: medium
+    reason: "エージェントの検索・ページ取得の経路"
+    # 露出は自動で open (bwproxy.wpcapp.net)
+
+  searxng:
+    human_impact: low
+    reason: "検索。止まっても bare-web-proxy などで代わりが利く"
+    # 露出は自動で open (searxng.wpcapp.net)
+
   nuage-honeytrap:
     human_impact: low
+    reason: "囮。止まっても困らない (ただし外から実際に届く唯一の入口なので、乗っ取りの足がかりにはなりうる)"
     exposure: open
-    reason: "Cloudflare トンネルが Service を直接指す (Ingress を通らない)"
-  nuage-monitoring-stack:
-    human_impact: medium
-  trivy-operator:
-    human_impact: low
+    exposure_reason: "Cloudflare トンネル (cloudflared) が Service を直接指す。Ingress を通らないので自動判定では controlled になる"
+
   repo-scan:
     human_impact: low
-  ssvc:
+    reason: "毎日の一時 Job。止まってもスキャンが 1 日遅れるだけ"
+    # 露出は自動で controlled
+
+  preview-isolation-test:
     human_impact: low
+    reason: "PR プレビューの分離を確かめる試験用の CronJob"
+    # 露出は自動で controlled
+
+# 載せていない Namespace (2026-11-19 時点でワークロードが無い):
+#   autopilot, nuage-home, external-service (外部ホストを指す Service だけ), default, kube-node-lease, kube-public, cilium-secrets
+#   ワークロードが置かれたら「未登録」として出るので、そのときに足す。
 
 # repo-scan の repos.txt の <repo> 部分をキーにする。
 # namespaces を書いたら、その Namespace の重要度・露出を使う (複数なら最も重い値)。
-# 動いていないリポジトリは human_impact と exposure を直接書く。
+# 動いていないリポジトリ・k8s の外で動くリポジトリは human_impact と exposure を直接書く。
 repositories:
+  nuage-monitoring-stack:
+    namespaces: [nuage-monitoring-stack]
+    reason: "依存を持つのは monitoring-pwa (backend の go.mod、frontend の bun.lock) だけで、nuage-monitoring-stack で動く"
+
   pechka:
     namespaces: [pechka]
-  nuage-monitoring-stack:
-    namespaces: [nuage-monitoring-stack, trivy-operator, repo-scan, ssvc]
-  nix-config:
+    reason: "api・batch・batch-tech-feed の go.mod・requirements.txt・package-lock.json は pechka の Namespace で動く"
+
+  bare-web-proxy:
+    namespaces: [bare-web-proxy]
+    reason: "go.mod・frontend の package-lock.json は bare-web-proxy で動く"
+
+  nuage-cluster:
+    human_impact: low
+    exposure: small
+    reason: "依存の脆弱性が出うるのは docs/playbooks-old の go.mod だけで、どこでも動いていない (nix/flake.lock は trivy の対象外)"
+
+  nuage-autopilot5:
     human_impact: medium
     exposure: small
-    reason: "ホスト構成管理 (外部公開サービスではなく直接接続されない)"
+    reason: "bun.lock の依存は atelier の autopilot-run で動く。外から受け付ける口は無いが、GitHub に書き込むトークンを扱う"
+
+  cicerone3270:
+    human_impact: low
+    exposure: small
+    reason: "Cargo.lock の依存は mainframe で ci3270 (手で使う TUI) として動く。外から受け付ける口は無い"
+
+  nuage-usage-ledger:
+    human_impact: low
+    exposure: small
+    reason: "依存は flake.lock だけ (trivy の対象外)。mainframe の MVS で動く"
+
+  nix-config:
+    human_impact: low
+    exposure: small
+    reason: "依存は flake.lock だけ (trivy の対象外)。Mac と atelier のユーザー環境"
+
+  nuage-dr:
+    human_impact: low
+    exposure: small
+    reason: "依存は flake.lock だけ (trivy の対象外)。隔地の NAS の構成で、機器は未導入"
+
+  nuage-workspace:
+    human_impact: low
+    exposure: small
+    reason: "依存の定義が無い (ルール・スキル・reusable workflow だけ)"
 
 # スキャンは未対応。資産として載せ、ダッシュボードに未スキャンとして出す。
+# 露出: *.wpcapp.net の経路の先、または open な k8s のワークロードから利用者の入力が転送される先は open。
+#       LAN から ssh・管理画面などで直接届くだけなら controlled。
 hosts:
-  nuc-1:
-    kind: proxmox
-    human_impact: very high
-    exposure: controlled
-    scan: none
-    reason: "Proxmox ハイパーバイザ (スキャン未対応)"
+  # Proxmox VE (Debian 系)。全 VM・LXC がこの上で動く
+  nuc-1:    { kind: proxmox, human_impact: very high, exposure: controlled, scan: none, reason: "ハイパーバイザー。LAN から管理画面 (8006)・ssh で届く" }
+  nuc-2:    { kind: proxmox, human_impact: very high, exposure: controlled, scan: none, reason: "同上" }
+  dm-1:     { kind: proxmox, human_impact: very high, exposure: controlled, scan: none, reason: "同上" }
+  server-1: { kind: proxmox, human_impact: very high, exposure: controlled, scan: none, reason: "同上" }
+  server-2: { kind: proxmox, human_impact: very high, exposure: controlled, scan: none, reason: "同上" }
+
+  # Talos の k8s ノード (VM)。trivy-operator はノードの OS を見ない
+  talos-pkn-30r: { kind: talos, human_impact: very high, exposure: controlled, scan: none, reason: "control plane (10.20.1.11)。API (6443・50000) は LB 経由で LAN からだけ届く" }
+  talos-cir-x4e: { kind: talos, human_impact: very high, exposure: controlled, scan: none, reason: "control plane (10.20.1.12)。同上" }
+  talos-lap-8zt: { kind: talos, human_impact: very high, exposure: controlled, scan: none, reason: "control plane (10.20.1.13)。同上" }
+  talos-i6o-k42: { kind: talos, human_impact: very high, exposure: open, scan: none, reason: "worker (10.20.1.16)。LB が *.wpcapp.net を NodePort 30080/30443 に送る" }
+  talos-olt-ebd: { kind: talos, human_impact: very high, exposure: open, scan: none, reason: "worker (10.20.1.17)。同上" }
+  talos-vab-nj6: { kind: talos, human_impact: very high, exposure: open, scan: none, reason: "worker (10.20.1.18)。同上" }
+
+  # NixOS (nuage-cluster の nix/flake.nix の nixosConfigurations)
+  lb-1: { kind: nixos-lxc, human_impact: very high, exposure: open, scan: none, reason: "HAProxy・DNS。*.wpcapp.net の入口" }
+  lb-2: { kind: nixos-lxc, human_impact: very high, exposure: open, scan: none, reason: "同上" }
+  lb-3: { kind: nixos-lxc, human_impact: very high, exposure: open, scan: none, reason: "同上" }
+  swfs-cluster-1: { kind: nixos-lxc, human_impact: high, exposure: open, scan: none, reason: "SeaweedFS (S3)。pechka の nginx が s3.wpcapp.net・/resources/ を転送する" }
+  swfs-cluster-2: { kind: nixos-lxc, human_impact: high, exposure: open, scan: none, reason: "同上" }
+  swfs-cluster-3: { kind: nixos-lxc, human_impact: high, exposure: open, scan: none, reason: "同上" }
+  pg-cluster-1: { kind: nixos-lxc, human_impact: high, exposure: controlled, scan: none, reason: "PostgreSQL。k8s のアプリ (external-service/postgres) からだけ使うデータストア" }
+  pg-cluster-2: { kind: nixos-lxc, human_impact: high, exposure: controlled, scan: none, reason: "同上" }
+  pg-cluster-3: { kind: nixos-lxc, human_impact: high, exposure: controlled, scan: none, reason: "同上" }
+  egress-gateway: { kind: nixos-lxc, human_impact: medium, exposure: open, scan: none, reason: "k8s から lm-server への中継 (HAProxy)。litellm (open) から利用者の入力が流れる" }
+  lm-server: { kind: nixos-vm, human_impact: medium, exposure: open, scan: none, reason: "llama.cpp。litellm (open) から egress-gateway 経由で利用者の入力が届く" }
+  chaos-monitor: { kind: nixos-lxc, human_impact: low, exposure: open, scan: none, reason: "Grafana が monitoring.wpcapp.net (chaos-monitor-grafana) から届く" }
+  mainframe: { kind: nixos-lxc, human_impact: medium, exposure: controlled, scan: none, reason: "MVS (使用量の勘定系)。TN3270 は LB 経由で LAN からだけ届く" }
+  atelier: { kind: nixos-vm, human_impact: high, exposure: controlled, scan: none, reason: "Orca・autopilot。GitHub に書き込むトークンを持つ。Orca (6769) は LAN からだけ届く" }
+  bluray-extractor: { kind: nixos-vm, human_impact: low, exposure: controlled, scan: none, reason: "Blu-ray の取り込み。外から受け付ける口は ssh だけ" }
+
+  # その他の機器
+  truenas: { kind: truenas, human_impact: high, exposure: controlled, scan: none, reason: "一次側の NAS (192.168.5.30)。PBS のバックアップ先も兼ねる" }
+  pbs: { kind: pbs, human_impact: high, exposure: controlled, scan: none, reason: "Proxmox Backup Server。データストアは TrueNAS 上" }
+  oc1-omada: { kind: vm, human_impact: medium, exposure: controlled, scan: none, reason: "Omada コントローラー (Ubuntu の VM、server-1 上)。止まっても通信は続く" }

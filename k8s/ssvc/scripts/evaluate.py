@@ -392,19 +392,28 @@ def load_assets(path):
     for ns_name, ns_cfg in raw_ns.items():
         if not isinstance(ns_cfg, dict):
             raise ValueError(f"namespaces.{ns_name} はマップでなければならない")
-        unknown = set(ns_cfg) - {"human_impact", "exposure", "reason", "workloads"}
+        unknown = set(ns_cfg) - {
+            "human_impact",
+            "reason",
+            "exposure",
+            "exposure_reason",
+            "workloads",
+        }
         if unknown:
             raise ValueError(f"namespaces.{ns_name} に未知のキーがある: {sorted(unknown)}")
         human_impact = _require_choice(
             ns_cfg.get("human_impact"), HUMAN_IMPACT_ORDER, f"namespaces.{ns_name}.human_impact"
         )
-        exposure = ns_cfg.get("exposure")
         reason = ns_cfg.get("reason")
+        exposure = ns_cfg.get("exposure")
+        exposure_reason = ns_cfg.get("exposure_reason")
         if exposure is not None:
             exposure = _require_choice(
                 exposure, EXPOSURE_ORDER, f"namespaces.{ns_name}.exposure"
             )
-            reason = _require_nonempty_str(reason, f"namespaces.{ns_name}.reason")
+            exposure_reason = _require_nonempty_str(
+                exposure_reason, f"namespaces.{ns_name}.exposure_reason"
+            )
         workloads = {}
         raw_wls = ns_cfg.get("workloads") or {}
         if not isinstance(raw_wls, dict):
@@ -444,8 +453,9 @@ def load_assets(path):
             }
         namespaces[str(ns_name)] = {
             "human_impact": human_impact,
-            "exposure": exposure,
             "reason": reason,
+            "exposure": exposure,
+            "exposure_reason": exposure_reason,
             "workloads": workloads,
         }
 
@@ -914,7 +924,9 @@ def fetch_epss_map(cve_ids, base_url=DEFAULT_EPSS_URL, batch_size=50):
 class K8sClient:
     """ServiceAccount トークンを使って Kubernetes API からページネーション付きで読む最小クライアント。"""
 
-    def __init__(self, api_server=None, token=None, ca_file=None):
+    DEFAULT_CA_FILE = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+    def __init__(self, api_server=None, token=None, ca_file=DEFAULT_CA_FILE):
         if api_server is None:
             host = os.environ["KUBERNETES_SERVICE_HOST"]
             port = os.environ.get("KUBERNETES_SERVICE_PORT", "443")
@@ -922,43 +934,50 @@ class K8sClient:
         if token is None:
             with open("/var/run/secrets/kubernetes.io/serviceaccount/token", encoding="utf-8") as f:
                 token = f.read().strip()
-        if ca_file is None:
-            ca_file = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
         self.api_server = api_server.rstrip("/")
         self.headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
         self.ssl_context = ssl.create_default_context(cafile=ca_file) if ca_file else None
 
-    def list_all(self, path):
-        items = []
+    def iter_items(self, path, page_size=50):
+        """ページごとにアイテムを順次返し、巨大な一覧を一度にメモリに溜めない。"""
         cont = None
         while True:
-            params = {"limit": "500"}
+            params = {"limit": str(page_size)}
             if cont:
                 params["continue"] = cont
             url = f"{self.api_server}{path}?{urllib.parse.urlencode(params)}"
             doc = _http_get_json(url, headers=self.headers, ssl_context=self.ssl_context)
-            items.extend(doc.get("items") or [])
+            for item in doc.get("items") or []:
+                yield item
             cont = (doc.get("metadata") or {}).get("continue")
             if not cont:
                 break
-        return items
+
+    def list_all(self, path, page_size=50):
+        return list(self.iter_items(path, page_size=page_size))
+
+
+def _iter_k8s_resources(k8s_client, path):
+    if hasattr(k8s_client, "iter_items"):
+        return k8s_client.iter_items(path)
+    return k8s_client.list_all(path)
 
 
 def collect_k8s_data(k8s_client):
     """Ingress のある Namespace 集合と、PR 環境を除いた VulnerabilityReport の指摘一覧を返す。"""
-    ingresses = k8s_client.list_all("/apis/networking.k8s.io/v1/ingresses")
     ingress_namespaces = {
         (ing.get("metadata") or {}).get("namespace")
-        for ing in ingresses
+        for ing in _iter_k8s_resources(k8s_client, "/apis/networking.k8s.io/v1/ingresses")
         if (ing.get("metadata") or {}).get("namespace")
     }
 
-    reports = k8s_client.list_all("/apis/aquasecurity.github.io/v1alpha1/vulnerabilityreports")
     findings = []
     targets = set()
     seen_keys = set()
 
-    for rep in reports:
+    for rep in _iter_k8s_resources(
+        k8s_client, "/apis/aquasecurity.github.io/v1alpha1/vulnerabilityreports"
+    ):
         meta = rep.get("metadata") or {}
         ns = meta.get("namespace") or ""
         if not ns or PR_NAMESPACE_RE.match(ns):
@@ -1096,6 +1115,9 @@ def collect_repo_scan_data(vlogs_url, lookback="7d"):
 # ---------------------------------------------------------------------------
 
 
+ALL_METRIC_DECISIONS = REGISTERED_METRIC_DECISIONS + ("unregistered",)
+
+
 def evaluate_findings(
     findings,
     targets,
@@ -1106,8 +1128,10 @@ def evaluate_findings(
     vulnrichment_map,
     epss_map,
     decision_table,
+    vulnrichment_errors=None,
 ):
     """全脆弱性指摘を SSVC で評価し、評価済みレコード群と対象別集計を返す。"""
+    vulnrichment_errors = vulnrichment_errors or {}
     evaluated = []
     target_registration = {}
     counts = {}
@@ -1118,12 +1142,8 @@ def evaluate_findings(
         else:
             asset_info = resolve_asset_for_repo(target, assets, ingress_namespaces)
         target_registration[(source, namespace, target)] = asset_info["registered"]
-        if asset_info["registered"]:
-            for dec in REGISTERED_METRIC_DECISIONS:
-                counts[(source, namespace, target, dec)] = 0
-            counts[(source, namespace, target, "unregistered")] = 0
-        else:
-            counts[(source, namespace, target, "unregistered")] = 0
+        for dec in ALL_METRIC_DECISIONS:
+            counts[(source, namespace, target, dec)] = 0
 
     for item in findings:
         source = item["source"]
@@ -1139,15 +1159,12 @@ def evaluate_findings(
             ovr_key = (item["cve_id"], "repo", "", "", target_label)
 
         target_registration[target_key] = asset_info["registered"]
-        if asset_info["registered"]:
-            for dec in REGISTERED_METRIC_DECISIONS:
-                counts.setdefault((source, namespace, target_label, dec), 0)
-            counts.setdefault((source, namespace, target_label, "unregistered"), 0)
-        else:
-            counts.setdefault((source, namespace, target_label, "unregistered"), 0)
+        for dec in ALL_METRIC_DECISIONS:
+            counts.setdefault((source, namespace, target_label, dec), 0)
 
         cve_id = item["cve_id"]
         epss_val, epss_pct = epss_map.get(cve_id, (None, None))
+        has_vulnrichment_error = cve_id in vulnrichment_errors
 
         if cve_id in kev_set:
             exploitation = "active"
@@ -1155,6 +1172,9 @@ def evaluate_findings(
         elif cve_id in vulnrichment_map and vulnrichment_map[cve_id][0] is not None:
             exploitation = vulnrichment_map[cve_id][0]
             exploitation_source = "Vulnrichment"
+        elif has_vulnrichment_error:
+            exploitation = None
+            exploitation_source = "error"
         else:
             exploitation = None
             exploitation_source = "missing"
@@ -1162,6 +1182,9 @@ def evaluate_findings(
         if cve_id in vulnrichment_map and vulnrichment_map[cve_id][1] is not None:
             automatable = vulnrichment_map[cve_id][1]
             automatable_source = "Vulnrichment"
+        elif has_vulnrichment_error:
+            automatable = None
+            automatable_source = "error"
         else:
             automatable = None
             automatable_source = "missing"
@@ -1194,7 +1217,10 @@ def evaluate_findings(
             decision = evaluate_ssvc(
                 exploitation, exposure, automatable, human_impact, decision_table
             )
-            decision_source = "missing_data" if decision == "unknown" else "ssvc_table"
+            if decision == "unknown":
+                decision_source = "error" if has_vulnrichment_error else "missing_data"
+            else:
+                decision_source = "ssvc_table"
             override_reason = ""
             override_expires = ""
 
@@ -1230,7 +1256,9 @@ def _label_value(value):
     return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
 
 
-def render_metrics(counts, target_registration, assets, expired_overrides, now):
+def render_metrics(
+    counts, target_registration, assets, expired_overrides, now, include_last_success=True
+):
     """Prometheus テキスト形式を生成する。CVE ID はラベルに含めない。"""
     lines = [
         "# TYPE nuage_ssvc_findings gauge",
@@ -1238,8 +1266,9 @@ def render_metrics(counts, target_registration, assets, expired_overrides, now):
         "# TYPE nuage_ssvc_unscanned_assets gauge",
         "# TYPE nuage_ssvc_unscanned_assets_total gauge",
         "# TYPE nuage_ssvc_expired_overrides_total gauge",
-        "# TYPE nuage_ssvc_last_success_timestamp_seconds gauge",
     ]
+    if include_last_success:
+        lines.append("# TYPE nuage_ssvc_last_success_timestamp_seconds gauge")
 
     for (source, namespace, target, decision), value in sorted(counts.items()):
         lines.append(
@@ -1269,7 +1298,8 @@ def render_metrics(counts, target_registration, assets, expired_overrides, now):
             )
     lines.append(f"nuage_ssvc_unscanned_assets_total {unscanned_count}")
     lines.append(f"nuage_ssvc_expired_overrides_total {len(expired_overrides)}")
-    lines.append(f"nuage_ssvc_last_success_timestamp_seconds {int(now)}")
+    if include_last_success:
+        lines.append(f"nuage_ssvc_last_success_timestamp_seconds {int(now)}")
     return "\n".join(lines) + "\n"
 
 
@@ -1445,6 +1475,7 @@ def run_evaluation(
         vulnrichment_map,
         epss_map,
         decision_table,
+        vulnrichment_errors=vulnrichment_errors,
     )
 
     for record in build_log_records(
@@ -1452,7 +1483,14 @@ def run_evaluation(
     ):
         print(json.dumps(record, ensure_ascii=False, sort_keys=True), flush=True)
 
-    metrics_body = render_metrics(counts, target_registration, assets, expired_overrides, now)
+    metrics_body = render_metrics(
+        counts,
+        target_registration,
+        assets,
+        expired_overrides,
+        now,
+        include_last_success=(not vulnrichment_errors),
+    )
     if push_url:
         push_metrics(push_url, metrics_body)
     else:

@@ -2910,7 +2910,18 @@
       "description": "k8s VulnerabilityReport と repo-scan の脆弱性を CERT/CC SSVC Deployer 表で毎日評価した結果 (nuage_ssvc_findings)。件数は 1 日 1 回送られるため last_over_time(...[36h]) で最新の値を取る。",
       "fieldConfig": {
         "defaults": {
-          "mappings": [],
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "—",
+                  "color": "semi-dark-gray",
+                  "index": 0
+                }
+              }
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -3002,7 +3013,7 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 12,
+        "w": 10,
         "x": 0,
         "y": 83
       },
@@ -3029,7 +3040,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h])) or vector(0)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h])) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -3042,7 +3053,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h])) or vector(0)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h])) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "B",
@@ -3055,7 +3066,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h])) or vector(0)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"scheduled\"}[36h])) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "C",
@@ -3068,7 +3079,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h])) or vector(0)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"defer\"}[36h])) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "D",
@@ -3081,7 +3092,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) or vector(0)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "E",
@@ -3102,7 +3113,18 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "—",
+                  "color": "semi-dark-gray",
+                  "index": 0
+                }
+              }
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -3122,8 +3144,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 12,
-        "x": 12,
+        "w": 10,
+        "x": 10,
         "y": 83
       },
       "id": 102,
@@ -3149,7 +3171,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h])) or vector(0)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unregistered\"}[36h])) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "A",
@@ -3162,7 +3184,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) or vector(0)",
+          "expr": "sum(last_over_time(nuage_ssvc_findings{decision=\"unknown\"}[36h])) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "B",
@@ -3175,7 +3197,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "last_over_time(nuage_ssvc_unscanned_assets_total[36h]) or vector(0)",
+          "expr": "last_over_time(nuage_ssvc_unscanned_assets_total[36h]) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "C",
@@ -3188,7 +3210,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "last_over_time(nuage_ssvc_expired_overrides_total[36h]) or vector(0)",
+          "expr": "last_over_time(nuage_ssvc_expired_overrides_total[36h]) or vector(-1)",
           "instant": true,
           "range": false,
           "refId": "D",
@@ -3196,6 +3218,79 @@
         }
       ],
       "title": "SSVC: Governance & Coverage",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "description": "SSVC 評価 CronJob が最後に完全成功してからの経過時間 (nuage_ssvc_last_success_timestamp_seconds)。36 時間以上成功が無いと赤になる。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 93600
+              },
+              {
+                "color": "red",
+                "value": 129600
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 83
+      },
+      "id": 108,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "time() - max(last_over_time(nuage_ssvc_last_success_timestamp_seconds[7d]))",
+          "instant": true,
+          "range": false,
+          "refId": "A",
+          "legendFormat": "経過時間"
+        }
+      ],
+      "title": "SSVC: Last Success Age",
       "type": "stat"
     },
     {
@@ -3507,7 +3602,7 @@
             "uid": "VictoriaLogs"
           },
           "editorMode": "code",
-          "expr": "kubernetes.pod_namespace:=\"ssvc\" event:=\"ssvc_finding\" (decision:=\"immediate\" OR decision:=\"out-of-cycle\") run_id:in(_time:72h kubernetes.pod_namespace:=\"ssvc\" event:=\"eval_done\" | sort by (_time desc) | limit 1 | keep run_id)\n| fields decision, source, target, container, cve_id, pkg_name, installed_version, fixed_version, exploitation, exposure, automatable, human_impact, epss\n| sort by (decision asc, epss desc, target asc)\n| limit 500",
+          "expr": "kubernetes.pod_namespace:=\"ssvc\" event:=\"ssvc_finding\" (decision:=\"immediate\" OR decision:=\"out-of-cycle\") run_id:in(_time:36h kubernetes.pod_namespace:=\"ssvc\" event:=\"eval_done\" | sort by (_time desc) | limit 1 | keep run_id)\n| fields decision, source, target, container, cve_id, pkg_name, installed_version, fixed_version, exploitation, exposure, automatable, human_impact, epss\n| sort by (decision asc, epss desc, target asc)\n| limit 500",
           "queryType": "instant",
           "refId": "A"
         }
@@ -3562,7 +3657,9 @@
           }
         }
       ],
-      "type": "table"
+      "type": "table",
+      "timeFrom": "36h",
+      "hideTimeOverride": false
     },
     {
       "datasource": {
@@ -3753,7 +3850,7 @@
             "uid": "VictoriaLogs"
           },
           "editorMode": "code",
-          "expr": "kubernetes.pod_namespace:=\"ssvc\" event:=\"expired_override\" run_id:in(_time:72h kubernetes.pod_namespace:=\"ssvc\" event:=\"eval_done\" | sort by (_time desc) | limit 1 | keep run_id)\n| fields target, cve_id, decision, expires, reason\n| sort by (expires asc, target asc)\n| limit 200",
+          "expr": "kubernetes.pod_namespace:=\"ssvc\" event:=\"expired_override\" run_id:in(_time:36h kubernetes.pod_namespace:=\"ssvc\" event:=\"eval_done\" | sort by (_time desc) | limit 1 | keep run_id)\n| fields target, cve_id, decision, expires, reason\n| sort by (expires asc, target asc)\n| limit 200",
           "queryType": "instant",
           "refId": "A"
         }
@@ -3792,7 +3889,9 @@
           }
         }
       ],
-      "type": "table"
+      "type": "table",
+      "timeFrom": "36h",
+      "hideTimeOverride": false
     }
   ],
   "refresh": "1m",
@@ -3817,7 +3916,7 @@
   "timezone": "browser",
   "title": "Security",
   "uid": "trivy-operator",
-  "version": 13,
+  "version": 14,
   "weekStart": "",
   "gnetId": 17813
 }
