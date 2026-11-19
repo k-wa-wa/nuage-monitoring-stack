@@ -1325,16 +1325,39 @@ class DashboardTest(unittest.TestCase):
         for pid in (104, 107, 109):
             self.assertEqual(by_id[pid].get("timeFrom"), "36h")
 
-        # Immediate & Out-of-Cycle by Target (103): 悪用の状況列とソート順
-        p103_exprs = "\n".join(t["expr"] for t in by_id[103]["targets"])
+        # Immediate & Out-of-Cycle by Target (103): 悪用の状況列と Grafana 13.2.5 互換の単一列ソート
+        p103 = by_id[103]
+        p103_targets = {t["refId"]: t["expr"] for t in p103["targets"]}
+        p103_exprs = "\n".join(p103_targets.values())
         self.assertIn('exploitation="active"', p103_exprs)
         self.assertIn('exploitation="public poc"', p103_exprs)
         self.assertIn('exploitation="none"', p103_exprs)
-        sort_tf = next(tf for tf in by_id[103]["transformations"] if tf["id"] == "sortBy")
-        sort_fields = [s["field"] for s in sort_tf["options"]["sort"]]
-        self.assertEqual(
-            sort_fields[:5], ["Immediate", "Active", "Public PoC", "Out-of-Cycle", "None"]
-        )
+        self.assertIn("I", p103_targets)
+        score_expr = p103_targets["I"]
+        self.assertIn("1e12", score_expr)
+        self.assertIn("1e8", score_expr)
+        self.assertIn("1e4", score_expr)
+        self.assertIn('decision="immediate"', score_expr)
+        self.assertIn('exploitation="active"', score_expr)
+        self.assertIn('exploitation="public poc"', score_expr)
+        self.assertIn('decision="out-of-cycle"', score_expr)
+
+        # Grafana 13.2.5 の sortBy は s[0] のみ使うため、1 列のスコア (Value #I) で降順ソートしてから organize で隠す
+        self.assertEqual(p103["options"].get("sortBy"), [])
+        tf_ids = [tf["id"] for tf in p103["transformations"]]
+        self.assertEqual(tf_ids, ["merge", "sortBy", "organize"])
+        sort_tf = p103["transformations"][1]
+        self.assertEqual(sort_tf["options"]["sort"], [{"field": "Value #I", "desc": True}])
+        org_tf = p103["transformations"][2]
+        self.assertTrue(org_tf["options"]["excludeByName"].get("Value #I"))
+
+        # 重み式 (1e12 * Immediate + 1e8 * Active + 1e4 * PublicPoC + Out-of-Cycle) で所望の順になる
+        def _score(imm, act, poc, ooc):
+            return imm * 1e12 + act * 1e8 + poc * 1e4 + ooc
+
+        self.assertGreater(_score(1, 0, 0, 0), _score(0, 5, 0, 5))
+        self.assertGreater(_score(0, 1, 0, 1), _score(0, 0, 5, 5))
+        self.assertGreater(_score(0, 0, 1, 1), _score(0, 0, 0, 919))
 
         # Immediate & Out-of-Cycle CVE Details (104): 判定 -> 悪用の状況 (active -> public poc -> none) の順
         p104_expr = by_id[104]["targets"][0]["expr"]

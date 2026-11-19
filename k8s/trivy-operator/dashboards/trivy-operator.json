@@ -959,6 +959,19 @@
           "range": false,
           "refId": "H",
           "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(\n  (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"immediate\"}[36h])) * 1e12)\n  + ((sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"active\"}[36h])) or (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) * 0)) * 1e8)\n  + ((sum by (source, namespace, target) (last_over_time(nuage_ssvc_exploitation_findings{exploitation=\"public poc\"}[36h])) or (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) * 0)) * 1e4)\n  + sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=\"out-of-cycle\"}[36h]))\n) and on (source, namespace, target) (sum by (source, namespace, target) (last_over_time(nuage_ssvc_findings{decision=~\"immediate|out-of-cycle\"}[36h])) > 0)",
+          "instant": true,
+          "range": false,
+          "refId": "I",
+          "format": "table"
         }
       ],
       "title": "SSVC: Immediate & Out-of-Cycle by Target",
@@ -968,10 +981,23 @@
           "options": {}
         },
         {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Value #I",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true
+              "Time": true,
+              "Value #I": true
             },
             "indexByName": {
               "source": 0,
@@ -999,38 +1025,6 @@
               "Value #D": "Defer",
               "Value #E": "Unknown"
             }
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "field": "Immediate",
-                "desc": true
-              },
-              {
-                "field": "Active",
-                "desc": true
-              },
-              {
-                "field": "Public PoC",
-                "desc": true
-              },
-              {
-                "field": "Out-of-Cycle",
-                "desc": true
-              },
-              {
-                "field": "None",
-                "desc": true
-              },
-              {
-                "field": "Target",
-                "desc": false
-              }
-            ]
           }
         }
       ],
