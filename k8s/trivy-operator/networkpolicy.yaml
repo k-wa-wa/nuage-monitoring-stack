@@ -13,7 +13,7 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
-    # 2. Kubelet によるヘルスチェック (healthz / readyz)
+    # 2. Kubelet によるヘルスチェック (operator: 9090, trivy-server: 4954)
     - fromEntities:
         - host
         - remote-node
@@ -21,11 +21,30 @@ spec:
         - ports:
             - port: "9090"
               protocol: TCP
+            - port: "4954"
+              protocol: TCP
+    # 3. 組み込み Trivy サーバー (4954) への同一 Namespace (operator・スキャン Job) からの通信
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: trivy-operator
+      toPorts:
+        - ports:
+            - port: "4954"
+              protocol: TCP
   egress:
     # 1. Kubernetes API Server へのアクセス (Cilium ネイティブ解決)
     - toEntities:
         - kube-apiserver
-    # 2. CoreDNS による名前解決 (kube-system の DNS ポート 53 UDP/TCP)
+    # 2. 組み込み Trivy サーバー (trivy-server:4954) への同一 Namespace からの通信
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: trivy-operator
+            app.kubernetes.io/name: trivy-server
+      toPorts:
+        - ports:
+            - port: "4954"
+              protocol: TCP
+    # 3. CoreDNS による名前解決 (kube-system の DNS ポート 53 UDP/TCP)
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
@@ -36,7 +55,7 @@ spec:
               protocol: UDP
             - port: "53"
               protocol: TCP
-    # 3. 外部コンテナレジストリ / DB ダウンロード (HTTPS: 443 のみ)
+    # 4. 外部コンテナレジストリ / DB ダウンロード (HTTPS: 443 のみ)
     # 内部プライベート網 (192.168.0.0/16, 10.0.0.0/8 等) への横展開を完全遮断
     - toCIDRSet:
         - cidr: 0.0.0.0/0

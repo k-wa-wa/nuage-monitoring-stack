@@ -4,7 +4,7 @@
 標準ライブラリだけで動く。k8s/ssvc の CronJob で毎日実行する。
 
 入力:
-  - k8s API: VulnerabilityReport (aquasecurity.github.io/v1alpha1) と Ingress (networking.k8s.io/v1)
+  - k8s API: VulnerabilityReport (aquasecurity.github.io/v1alpha1)・Ingress (networking.k8s.io/v1)・Pod (v1)・Job (batch/v1)
   - VictoriaLogs: repo-scan Namespace の最新 run_id の vulnerability 指摘
   - 資産の宣言 (assets.yaml) と例外ファイル (overrides.yaml)
   - SSVC Deployer 判定表 (deployer_patch_application_priority_nuage.csv、上流の deployer_patch_application_priority_1_0_0.csv との差分を判定出所に反映)
@@ -13,6 +13,7 @@
 出力:
   - 標準出力: 1 件 1 行の JSON (vlagent が VictoriaLogs に入れる)
       event="ssvc_finding"     評価した CVE ごとの結果
+      event="no_scan_result"   VulnerabilityReport が無い稼働中ワークロードの一覧
       event="unscanned_asset"  未スキャン資産 (hosts) の一覧
       event="expired_override" 期限切れの例外の一覧
       event="eval_done"        実行完了のサマリ (最新 run_id の識別に使用)
@@ -972,8 +973,62 @@ def _iter_k8s_resources(k8s_client, path):
     return k8s_client.list_all(path)
 
 
+def _resolve_pod_workload(pod, job_owners):
+    """Pod のメタデータからスキャン対象の (namespace, resource_kind, resource_name) を返す。対象外なら None。"""
+    meta = pod.get("metadata") or {}
+    ns = meta.get("namespace") or ""
+    if not ns or PR_NAMESPACE_RE.match(ns):
+        return None
+    if meta.get("deletionTimestamp"):
+        return None
+    phase = (pod.get("status") or {}).get("phase") or ""
+    if phase in ("Succeeded", "Failed"):
+        return None
+
+    pod_name = meta.get("name") or ""
+    owner_refs = meta.get("ownerReferences") or []
+    if not owner_refs:
+        return (ns, "Pod", pod_name) if pod_name else None
+
+    owner = owner_refs[0]
+    owner_kind = owner.get("kind") or ""
+    owner_name = owner.get("name") or ""
+    if owner_kind in ("ReplicaSet", "StatefulSet", "DaemonSet", "ReplicationController"):
+        return (ns, owner_kind, owner_name) if owner_name else None
+    if owner_kind == "Job":
+        parent = job_owners.get((ns, owner_name))
+        if parent and parent[0] == "CronJob" and parent[1]:
+            return ns, "CronJob", parent[1]
+        if ns == "trivy-operator":
+            return None
+        return (ns, "Job", owner_name) if owner_name else None
+    return (ns, "Pod", pod_name) if pod_name else None
+
+
+def collect_running_workloads(k8s_client):
+    """稼働中の Pod から PR 環境や完了済み Job を除いたスキャン対象ワークロード集合を返す。"""
+    job_owners = {}
+    for job in _iter_k8s_resources(k8s_client, "/apis/batch/v1/jobs"):
+        meta = job.get("metadata") or {}
+        ns = meta.get("namespace") or ""
+        name = meta.get("name") or ""
+        owner_refs = meta.get("ownerReferences") or []
+        if ns and name and owner_refs:
+            job_owners[(ns, name)] = (
+                owner_refs[0].get("kind") or "",
+                owner_refs[0].get("name") or "",
+            )
+
+    workloads = set()
+    for pod in _iter_k8s_resources(k8s_client, "/api/v1/pods"):
+        resolved = _resolve_pod_workload(pod, job_owners)
+        if resolved is not None:
+            workloads.add(resolved)
+    return workloads
+
+
 def collect_k8s_data(k8s_client):
-    """Ingress のある Namespace 集合と、PR 環境を除いた VulnerabilityReport の指摘一覧を返す。"""
+    """Ingress・VulnerabilityReport と、レポートが無い稼働中ワークロード一覧を返す。"""
     ingress_namespaces = {
         (ing.get("metadata") or {}).get("namespace")
         for ing in _iter_k8s_resources(k8s_client, "/apis/networking.k8s.io/v1/ingresses")
@@ -982,6 +1037,7 @@ def collect_k8s_data(k8s_client):
 
     findings = []
     targets = set()
+    scanned_workloads = set()
     seen_keys = set()
 
     for rep in _iter_k8s_resources(
@@ -1003,6 +1059,8 @@ def collect_k8s_data(k8s_client):
         workload = normalize_workload(resource_kind, resource_name)
         target = f"{ns}/{workload}"
         targets.add(("k8s", ns, workload))
+        if resource_kind and resource_name:
+            scanned_workloads.add((ns, resource_kind, resource_name))
 
         report = rep.get("report") or {}
         artifact = report.get("artifact") or {}
@@ -1040,7 +1098,22 @@ def collect_k8s_data(k8s_client):
                     "image": image_ref,
                 }
             )
-    return ingress_namespaces, findings, targets
+
+    running_workloads = collect_running_workloads(k8s_client)
+    no_scan_result_targets = []
+    for ns, resource_kind, resource_name in sorted(running_workloads - scanned_workloads):
+        workload = normalize_workload(resource_kind, resource_name)
+        no_scan_result_targets.append(
+            {
+                "namespace": ns,
+                "resource_kind": resource_kind,
+                "resource_name": resource_name,
+                "workload": workload,
+                "target": f"{ns}/{workload}",
+            }
+        )
+
+    return ingress_namespaces, findings, targets, no_scan_result_targets
 
 
 def query_victorialogs(endpoint, expr, timeout=60):
@@ -1283,14 +1356,18 @@ def render_metrics(
     now,
     include_last_success=True,
     evaluated=None,
+    no_scan_result_targets=None,
 ):
     """Prometheus テキスト形式を生成する。CVE ID はラベルに含めない。"""
+    no_scan_result_targets = no_scan_result_targets or []
     lines = [
         "# TYPE nuage_ssvc_findings gauge",
         "# TYPE nuage_ssvc_unregistered_targets_total gauge",
+        "# TYPE nuage_ssvc_no_scan_result_targets_total gauge",
         "# TYPE nuage_ssvc_unscanned_assets gauge",
         "# TYPE nuage_ssvc_unscanned_assets_total gauge",
         "# TYPE nuage_ssvc_expired_overrides_total gauge",
+        "# TYPE nuage_ssvc_last_run_timestamp_seconds gauge",
     ]
     if evaluated is not None:
         lines.append("# TYPE nuage_ssvc_exploitation_findings gauge")
@@ -1343,6 +1420,7 @@ def render_metrics(
 
     unregistered_count = sum(1 for reg in target_registration.values() if not reg)
     lines.append(f"nuage_ssvc_unregistered_targets_total {unregistered_count}")
+    lines.append(f"nuage_ssvc_no_scan_result_targets_total {len(no_scan_result_targets)}")
 
     hosts = assets.get("hosts") or {}
     unscanned_count = 0
@@ -1359,13 +1437,22 @@ def render_metrics(
             )
     lines.append(f"nuage_ssvc_unscanned_assets_total {unscanned_count}")
     lines.append(f"nuage_ssvc_expired_overrides_total {len(expired_overrides)}")
+    lines.append(f"nuage_ssvc_last_run_timestamp_seconds {int(now)}")
     if include_last_success:
         lines.append(f"nuage_ssvc_last_success_timestamp_seconds {int(now)}")
     return "\n".join(lines) + "\n"
 
 
-def build_log_records(evaluated, target_registration, assets, expired_overrides, run_id):
-    """標準出力用の JSON 行 (ssvc_finding / unscanned_asset / expired_override / eval_done) を組む。"""
+def build_log_records(
+    evaluated,
+    target_registration,
+    assets,
+    expired_overrides,
+    run_id,
+    no_scan_result_targets=None,
+):
+    """標準出力用の JSON 行 (ssvc_finding / no_scan_result / unscanned_asset / expired_override / eval_done) を組む。"""
+    no_scan_result_targets = no_scan_result_targets or []
     records = []
     decision_totals = {dec: 0 for dec in REGISTERED_METRIC_DECISIONS + ("unregistered",)}
 
@@ -1379,6 +1466,20 @@ def build_log_records(evaluated, target_registration, assets, expired_overrides,
         }
         rec.update(item)
         records.append(rec)
+
+    for item in no_scan_result_targets:
+        records.append(
+            {
+                "event": "no_scan_result",
+                "msg": f"スキャン結果なし: {item['namespace']}/{item['resource_kind']}/{item['resource_name']}",
+                "run_id": run_id,
+                "namespace": item["namespace"],
+                "resource_kind": item["resource_kind"],
+                "resource_name": item["resource_name"],
+                "workload": item["workload"],
+                "target": item["target"],
+            }
+        )
 
     unscanned_count = 0
     for host_name, host_cfg in sorted((assets.get("hosts") or {}).items()):
@@ -1427,6 +1528,7 @@ def build_log_records(evaluated, target_registration, assets, expired_overrides,
             "counts_by_decision": decision_totals,
             "active_exploitation": active_exploitation,
             "unregistered_targets": unregistered_targets,
+            "no_scan_result_targets": len(no_scan_result_targets),
             "unscanned_assets": unscanned_count,
             "expired_overrides": len(expired_overrides),
         }
@@ -1508,7 +1610,7 @@ def run_evaluation(
 
     if k8s_client is None:
         k8s_client = K8sClient()
-    ingress_namespaces, k8s_findings, k8s_targets = collect_k8s_data(k8s_client)
+    ingress_namespaces, k8s_findings, k8s_targets, no_scan_result_targets = collect_k8s_data(k8s_client)
     repo_findings, repo_targets, latest_repo_runs = collect_repo_scan_data(
         vlogs_url, lookback=repo_scan_lookback
     )
@@ -1549,7 +1651,12 @@ def run_evaluation(
     )
 
     for record in build_log_records(
-        evaluated, target_registration, assets, expired_overrides, run_id
+        evaluated,
+        target_registration,
+        assets,
+        expired_overrides,
+        run_id,
+        no_scan_result_targets=no_scan_result_targets,
     ):
         print(json.dumps(record, ensure_ascii=False, sort_keys=True), flush=True)
 
@@ -1561,6 +1668,7 @@ def run_evaluation(
         now,
         include_last_success=(not vulnrichment_errors),
         evaluated=evaluated,
+        no_scan_result_targets=no_scan_result_targets,
     )
     if push_url:
         push_metrics(push_url, metrics_body)

@@ -31,6 +31,14 @@ helmCharts:
           prometheus.io/scrape: "true"
           prometheus.io/port: "8080"
         scanJobsConcurrentLimit: 1
+        # aivisspeech (pechka) のスキャンが既定の 5m (activeDeadlineSeconds: 300) で打ち切られ、
+        # VulnerabilityReport が作られないまま評価から落ちていたため 30m に延ばす。
+        # 実スキャン所要時間は未計測のため、大きな ML イメージでも収まるよう余裕を持たせた。
+        scanJobTimeout: 30m
+        # 複数コンテナを持つ Pod (argocd-repo-server 等) のスキャンで、同一 Job 内のコンテナ同士が
+        # /tmp/trivy/.cache の BoltDB ロックを取り合って失敗するため、組み込み Trivy サーバーを使う
+        # ClientServer モードに切り替える (スキャン Job はローカルキャッシュを開かずサーバーに委譲する)。
+        builtInTrivyServer: true
         vulnerabilityScannerScanOnlyCurrentRevisions: true
         exposedSecretScannerEnabled: false
         infraAssessmentScannerEnabled: false
@@ -46,6 +54,20 @@ helmCharts:
           memory: 1Gi
       trivy:
         offlineScan: true
+        # operator.scanJobTimeout と合わせて Trivy CLI 側の制限時間も 30m0s に延ばす (既定 5m0s)。
+        timeout: "30m0s"
+        # キャッシュ専用のため PVC を作らず emptyDir を使う (再起動時は起動時に trivy-db を再取得する)。
+        storageClassEnabled: false
+        server:
+          # requests は控えめにしつつ、limits.memory は trivy.db 展開や同時処理での OOMKilled を防ぐため
+          # チャート既定値の 1Gi にそろえる (operator 本体も 512Mi で OOMKilled になった経緯がある)。
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
         resources:
           requests:
             cpu: 100m
@@ -75,9 +97,11 @@ configMapGenerator:
   #   - nuage_ssvc_exploitation_findings{source, namespace, target, exploitation}
   #   - nuage_ssvc_active_exploitation_total
   #   - nuage_ssvc_unscanned_assets{host, kind, human_impact, exposure} / nuage_ssvc_unscanned_assets_total
+  #   - nuage_ssvc_no_scan_result_targets_total
   #   - nuage_ssvc_expired_overrides_total
+  #   - nuage_ssvc_last_run_timestamp_seconds
   #   - nuage_ssvc_last_success_timestamp_seconds
-  #   - VictoriaLogs の kubernetes.pod_namespace="ssvc" (event="ssvc_finding" / "expired_override" / "eval_done")
+  #   - VictoriaLogs の kubernetes.pod_namespace="ssvc" (event="ssvc_finding" / "no_scan_result" / "expired_override" / "eval_done")
   # Grafana の sidecar は全 Namespace を見る (searchNamespace: ALL) ため、trivy-operator Namespace に置いても読み込まれる。
   - name: trivy-operator-dashboard
     files:
