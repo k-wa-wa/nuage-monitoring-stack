@@ -116,7 +116,7 @@ data:
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\",model!~\".*(opus|sonnet|haiku|flash|argon|hydrogen|gpt-oss|gpt-6([.-][0-9]+)?-(astra|sol|luna|terra)($|-)).*\"}[$__range])) or vector(0)",
+              "expr": "sum(increase(nuage_ai_agent_tokens_total{type!=\"thinking\",model!~\".*(opus|sonnet|haiku|flash|argon|hydrogen|(^|-)neon($|-)|(^|-)(gemini-pro-)?orchestrator-(neon|argon|g1-pro)($|-)|gpt-oss|gpt-6([.-][0-9]+)?-(astra|sol|luna|terra)($|-)).*\"}[$__range])) or vector(0)",
               "instant": true
             }
           ],
