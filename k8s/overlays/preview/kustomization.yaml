@@ -69,3 +69,23 @@ patches:
       kind: ConfigMap
       metadata:
         name: grafana-dashboard-honeypot
+  # リソース節約のため、preview 環境では frontend を 1 レプリカにし、PodDisruptionBudget を除外する。
+  - target:
+      kind: Deployment
+      name: monitoring-pwa-frontend
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: monitoring-pwa-frontend
+      spec:
+        replicas: 1
+  - target:
+      kind: PodDisruptionBudget
+      name: monitoring-pwa-frontend-pdb
+    patch: |-
+      $patch: delete
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: monitoring-pwa-frontend-pdb

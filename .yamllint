@@ -1,0 +1,16 @@
+extends: default
+
+ignore: |
+  k8s/ssvc/declarations/
+  charts/
+  **/charts/
+
+rules:
+  line-length: disable
+  document-start: disable
+  empty-lines: disable
+  trailing-spaces: disable
+  indentation:
+    indent-sequences: whatever
+  comments:
+    min-spaces-from-content: 1
