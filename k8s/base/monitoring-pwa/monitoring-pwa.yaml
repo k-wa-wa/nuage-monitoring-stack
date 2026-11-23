@@ -6,6 +6,7 @@ metadata:
     keel.sh/policy: force
     keel.sh/trigger: poll
     keel.sh/pollSchedule: "@every 2m"
+    keel.sh/monitorContainers: "backend"
     keel.sh/matchTag: "true"
 spec:
   replicas: 1
@@ -121,9 +122,10 @@ metadata:
     keel.sh/policy: force
     keel.sh/trigger: poll
     keel.sh/pollSchedule: "@every 2m"
+    keel.sh/monitorContainers: "frontend"
     keel.sh/matchTag: "true"
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: monitoring-pwa-frontend
@@ -132,6 +134,13 @@ spec:
       labels:
         app: monitoring-pwa-frontend
     spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: monitoring-pwa-frontend
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
@@ -150,6 +159,18 @@ spec:
                 - ALL
           ports:
             - containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
           volumeMounts:
             - name: tmp
               mountPath: /tmp
