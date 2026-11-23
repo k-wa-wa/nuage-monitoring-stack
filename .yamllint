@@ -1,7 +1,6 @@
 extends: default
 
 ignore: |
-  k8s/ssvc/declarations/
   charts/
   **/charts/
 
@@ -14,3 +13,9 @@ rules:
     indent-sequences: whatever
   comments:
     min-spaces-from-content: 1
+  braces:
+    ignore: |
+      k8s/ssvc/declarations/
+  colons:
+    ignore: |
+      k8s/ssvc/declarations/
