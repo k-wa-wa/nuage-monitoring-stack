@@ -297,9 +297,13 @@ spec:
           # 1. gRPC ストリーム切断ログ (EOF)
           #    argo-server の WatchWorkflows ストリーム終了時に error="rpc error: code = ResourceExhausted desc = EOF"
           #    を含む Warning ログが出力され、誤検知が発生したため除外。
+          # 2. Keel の PR プレビューイメージ未 push 時の 404 ログ
+          #    PR プレビュー環境の作成直後から CI によるイメージ push 完了までの間、Keel が
+          #    status=404 のエラーログを繰り返し出力するため keel Namespace に限定して除外する。
           expr: |-
-            _time:5m kubernetes.pod_namespace:~"^(pechka|bare-web-proxy)$" ~"(?i)error"
+            _time:5m kubernetes.pod_namespace:~"^(pechka|bare-web-proxy|keel)$" ~"(?i)error"
               NOT ~"(?i)code = ResourceExhausted desc = EOF"
+              NOT (kubernetes.pod_namespace:="keel" "status=404")
             | rename kubernetes.pod_namespace as namespace, kubernetes.pod_name as pod, kubernetes.container_name as container
             | stats by (namespace, pod, container) count() as errors
             | filter errors:>0
