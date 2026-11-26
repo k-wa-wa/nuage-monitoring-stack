@@ -172,4 +172,39 @@ func TestChatDBOperationsAndLegacyBackfill(t *testing.T) {
 			t.Fatalf("unexpected thread structure: parent=%+v replies=%+v", p, replies)
 		}
 	})
+
+	t.Run("1000件を超える既存履歴も上限なくバックフィルされること", func(t *testing.T) {
+		dbPath := filepath.Join(t.TempDir(), "many_legacy.db")
+		conn, err := sql.Open("sqlite", dbPath)
+		if err != nil {
+			t.Fatalf("sql.Open failed: %v", err)
+		}
+		_, err = conn.Exec(`
+			CREATE TABLE subscriptions (endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at DATETIME NOT NULL);
+			CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT NOT NULL, url TEXT, level TEXT NOT NULL, details TEXT, source TEXT, created_at DATETIME NOT NULL);
+			CREATE TABLE alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT UNIQUE NOT NULL, alertname TEXT NOT NULL, status TEXT NOT NULL, level TEXT NOT NULL, summary TEXT NOT NULL, description TEXT, url TEXT, details TEXT, fired_at DATETIME NOT NULL, resolved_at DATETIME, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL);
+		`)
+		if err != nil {
+			t.Fatalf("create tables failed: %v", err)
+		}
+		tx, _ := conn.Begin()
+		stmt, _ := tx.Prepare(`INSERT INTO notifications (title, body, url, level, source, created_at) VALUES (?, 'body', '', 'info', 'generic', '2026-11-01T00:00:00Z')`)
+		for i := 0; i < 1005; i++ {
+			_, _ = stmt.Exec("note")
+		}
+		_ = stmt.Close()
+		_ = tx.Commit()
+		_ = conn.Close()
+
+		db, err := InitDB(dbPath)
+		if err != nil {
+			t.Fatalf("InitDB failed: %v", err)
+		}
+		defer db.Close()
+
+		ref, err := db.GetMessageBySourceRef("notification", 1)
+		if err != nil || ref == nil {
+			t.Fatalf("expected oldest notification id=1 to be backfilled, err=%v", err)
+		}
+	})
 }

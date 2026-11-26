@@ -1,136 +1,130 @@
+import { defaultSchema } from 'rehype-sanitize'
+import type { Schema } from 'hast-util-sanitize'
 import { sanitizeExternalUrl } from './url'
 
-export type MrkdwnInlineToken =
-	| { type: 'text'; text: string }
-	| { type: 'bold'; children: MrkdwnInlineToken[] }
-	| { type: 'italic'; children: MrkdwnInlineToken[] }
-	| { type: 'strike'; children: MrkdwnInlineToken[] }
-	| { type: 'code'; text: string }
-	| { type: 'link'; url: string; label: string }
-	| { type: 'mention'; userId: string }
-
-export type MrkdwnBlock =
-	| { type: 'codeblock'; code: string }
-	| { type: 'quote'; tokens: MrkdwnInlineToken[] }
-	| { type: 'paragraph'; tokens: MrkdwnInlineToken[] }
-
-// Slack mrkdwn のインライン構文を安全なトークン配列へパースする。
-export function parseMrkdwnInline(input: string): MrkdwnInlineToken[] {
-	const tokens: MrkdwnInlineToken[] = []
-	let i = 0
-
-	const pushText = (s: string) => {
-		if (!s) return
-		const last = tokens[tokens.length - 1]
-		if (last && last.type === 'text') {
-			last.text += s
-		} else {
-			tokens.push({ type: 'text', text: s })
-		}
-	}
-
-	while (i < input.length) {
-		// <url|label>, <url>, <@USER_ID>
-		if (input[i] === '<') {
-			const end = input.indexOf('>', i + 1)
-			if (end !== -1) {
-				const inner = input.slice(i + 1, end)
-				if (inner.startsWith('@') && inner.length > 1) {
-					tokens.push({ type: 'mention', userId: inner.slice(1) })
-					i = end + 1
-					continue
-				}
-				const pipeIdx = inner.indexOf('|')
-				const rawUrl = pipeIdx !== -1 ? inner.slice(0, pipeIdx) : inner
-				const label = pipeIdx !== -1 ? inner.slice(pipeIdx + 1) : inner
-				const safeUrl = sanitizeExternalUrl(rawUrl)
-				if (safeUrl) {
-					tokens.push({ type: 'link', url: safeUrl, label: label || safeUrl })
-					i = end + 1
-					continue
-				}
-			}
-		}
-
-		// インラインコード `...`
-		if (input[i] === '`') {
-			const end = input.indexOf('`', i + 1)
-			if (end > i + 1) {
-				tokens.push({ type: 'code', text: input.slice(i + 1, end) })
-				i = end + 1
-				continue
-			}
-		}
-
-		// *bold*, _italic_, ~strike~
-		const ch = input[i]
-		if (ch === '*' || ch === '_' || ch === '~') {
-			const prevOk = i === 0 || /\s|[({[]/.test(input[i - 1])
-			if (prevOk) {
-				const end = input.indexOf(ch, i + 1)
-				if (end > i + 1) {
-					const inner = input.slice(i + 1, end)
-					if (!inner.includes('\n')) {
-						const childTokens = parseMrkdwnInline(inner)
-						if (ch === '*') {
-							tokens.push({ type: 'bold', children: childTokens })
-						} else if (ch === '_') {
-							tokens.push({ type: 'italic', children: childTokens })
-						} else {
-							tokens.push({ type: 'strike', children: childTokens })
-						}
-						i = end + 1
-						continue
-					}
-				}
-			}
-		}
-
-		// 素の URL (https://... または http://...)
-		if (input.startsWith('https://', i) || input.startsWith('http://', i)) {
-			const match = input.slice(i).match(/^https?:\/\/[^\s<>]+/)
-			if (match) {
-				const safeUrl = sanitizeExternalUrl(match[0])
-				if (safeUrl) {
-					tokens.push({ type: 'link', url: safeUrl, label: match[0] })
-					i += match[0].length
-					continue
-				}
-			}
-		}
-
-		pushText(input[i])
-		i++
-	}
-
-	return tokens
+export interface SlackFormatOptions {
+	botUserId?: string
+	botName?: string
+	channelsById?: Record<string, string>
 }
 
-// Slack mrkdwn 本文をブロック単位（コードブロック・引用・段落）に分解する。
-export function parseMrkdwn(input: string): MrkdwnBlock[] {
-	if (!input) return []
-	const blocks: MrkdwnBlock[] = []
-	const segments = input.split(/```/)
+function escapeHtml(raw: string): string {
+	return raw
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;')
+}
 
-	for (let idx = 0; idx < segments.length; idx++) {
-		const seg = segments[idx]
-		if (idx % 2 === 1) {
-			blocks.push({ type: 'codeblock', code: seg.replace(/^\n+|\n+$/g, '') })
-			continue
+function escapeMarkdownLinkLabel(raw: string): string {
+	return raw.replace(/[[\]\\]/g, (ch) => `\\${ch}`)
+}
+
+function replaceSlackAngleTokensOutsideCode(
+	segment: string,
+	opts?: SlackFormatOptions
+): string {
+	return segment.replace(/<([^>\n]+)>/g, (fullMatch, inner: string) => {
+		// メンション: <@U01BOT> または <@U01BOT|label>
+		const mentionMatch = inner.match(/^@([A-Za-z0-9_-]+)(?:\|([^>]+))?$/)
+		if (mentionMatch) {
+			const uid = mentionMatch[1]
+			const label = mentionMatch[2]
+			const resolved =
+				label ||
+				(opts?.botUserId && uid === opts.botUserId ? opts.botName || 'nuage-bot' : uid)
+			return `<span class="slack-mention">@${escapeHtml(resolved)}</span>`
 		}
-		const trimmedSeg = seg.replace(/^\n+|\n+$/g, '')
-		if (!trimmedSeg) continue
 
-		const lines = trimmedSeg.split('\n')
-		for (const line of lines) {
-			if (line.startsWith('> ')) {
-				blocks.push({ type: 'quote', tokens: parseMrkdwnInline(line.slice(2)) })
-			} else if (line.startsWith('&gt; ')) {
-				blocks.push({ type: 'quote', tokens: parseMrkdwnInline(line.slice(5)) })
-			} else {
-				blocks.push({ type: 'paragraph', tokens: parseMrkdwnInline(line) })
+		// チャンネル: <#C01ALERTMGR> または <#C01ALERTMGR|alertmanager>
+		const channelMatch = inner.match(/^#([A-Za-z0-9_-]+)(?:\|([^>]+))?$/)
+		if (channelMatch) {
+			const cid = channelMatch[1]
+			const label = channelMatch[2] || opts?.channelsById?.[cid] || cid
+			return `<span class="slack-channel">#${escapeHtml(label)}</span>`
+		}
+
+		// 特殊メンション: <!here>, <!channel>, <!everyone>
+		const specialMatch = inner.match(/^!(here|channel|everyone)(?:\|([^>]+))?$/)
+		if (specialMatch) {
+			const label = specialMatch[2] || specialMatch[1]
+			return `<span class="slack-mention slack-mention-special">@${escapeHtml(label)}</span>`
+		}
+
+		// Slack リンク: <https://...|label> または <https://...>
+		const pipeIdx = inner.indexOf('|')
+		if (pipeIdx !== -1) {
+			const rawUrl = inner.slice(0, pipeIdx).trim()
+			const rawLabel = inner.slice(pipeIdx + 1)
+			const safeUrl = sanitizeExternalUrl(rawUrl)
+			if (safeUrl) {
+				return `[${escapeMarkdownLinkLabel(rawLabel)}](${safeUrl})`
+			}
+			// 危険スキーム (<javascript:...|click> 等) はリンク化せず平文ラベルに落とす
+			if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(rawUrl)) {
+				return escapeHtml(rawLabel)
+			}
+		} else {
+			const trimmed = inner.trim()
+			const safeUrl = sanitizeExternalUrl(trimmed)
+			if (safeUrl) {
+				return `[${escapeMarkdownLinkLabel(trimmed)}](${safeUrl})`
+			}
+			if (/^(?:javascript|data|vbscript):/i.test(trimmed)) {
+				return ''
 			}
 		}
+
+		// HTML タグ等はそのまま後段 (rehype-raw + rehype-sanitize) に渡す
+		return fullMatch
+	})
+}
+
+/**
+ * Slack 固有の山括弧記法 (<@U…>, <#C…>, <!here>, <!channel>, <url|label>, <url>) を
+ * Markdown / HTML として描画する前に安全な表現へ前処理する。
+ * コードブロック・インラインコードの内部はそのまま保持する。
+ */
+export function preprocessSlackSyntax(input: string, opts?: SlackFormatOptions): string {
+	if (!input) return ''
+
+	// フェンスコードブロック (```...```) とインラインコード (`...`) を保護しながら置換する
+	const codePattern = /(```[\s\S]*?```|`[^`\n]+`)/g
+	let result = ''
+	let lastIndex = 0
+	let match: RegExpExecArray | null
+
+	while ((match = codePattern.exec(input)) !== null) {
+		if (match.index > lastIndex) {
+			result += replaceSlackAngleTokensOutsideCode(input.slice(lastIndex, match.index), opts)
+		}
+		result += match[0]
+		lastIndex = match.index + match[0].length
 	}
-	return blocks
+	if (lastIndex < input.length) {
+		result += replaceSlackAngleTokensOutsideCode(input.slice(lastIndex), opts)
+	}
+	return result
+}
+
+/**
+ * GitHub 互換スキーマに基づく厳格な HTML サニタイズスキーマである。
+ * script / style / iframe / object / on* 属性 / javascript: スキームを排除する。
+ */
+export const slackSanitizeSchema: Schema = {
+	...defaultSchema,
+	attributes: {
+		...defaultSchema.attributes,
+		a: [...(defaultSchema.attributes?.a || []), 'target', 'rel'],
+		span: [
+			...(defaultSchema.attributes?.span || []),
+			['className', 'slack-mention', 'slack-mention-special', 'slack-channel']
+		]
+	},
+	protocols: {
+		...defaultSchema.protocols,
+		href: ['http', 'https', 'mailto'],
+		src: ['http', 'https']
+	}
 }

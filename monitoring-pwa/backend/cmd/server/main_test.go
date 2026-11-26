@@ -21,6 +21,8 @@ type noopSender struct{}
 
 func (noopSender) Broadcast([]byte) {}
 
+func (noopSender) BroadcastToUser(string, []byte) {}
+
 func TestEndToEndAuthBoundary(t *testing.T) {
 	hashAlice, _ := bcrypt.GenerateFromPassword([]byte("alice-secret"), bcrypt.MinCost)
 	hashBob, _ := bcrypt.GenerateFromPassword([]byte("bob-secret"), bcrypt.MinCost)
@@ -117,5 +119,24 @@ func TestEndToEndAuthBoundary(t *testing.T) {
 	e.ServeHTTP(bobDMRec, bobDMReq)
 	if bobDMRec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 accessing another user's DM, got %d", bobDMRec.Code)
+	}
+
+	// 6. CORS は localhost のみ許可し、*.wpcapp.net 等の外部 Origin には ACAO を返さない
+	crossReq := httptest.NewRequest(http.MethodGet, "/api/bootstrap", nil)
+	crossReq.Header.Set("Origin", "https://monitoring-pr-1.wpcapp.net")
+	crossReq.AddCookie(sessionCookie)
+	crossRec := httptest.NewRecorder()
+	e.ServeHTTP(crossRec, crossReq)
+	if acao := crossRec.Header().Get("Access-Control-Allow-Origin"); acao != "" {
+		t.Fatalf("expected no Access-Control-Allow-Origin for preview subdomain, got %q", acao)
+	}
+
+	localReq := httptest.NewRequest(http.MethodGet, "/api/bootstrap", nil)
+	localReq.Header.Set("Origin", "http://localhost:3000")
+	localReq.AddCookie(sessionCookie)
+	localRec := httptest.NewRecorder()
+	e.ServeHTTP(localRec, localReq)
+	if acao := localRec.Header().Get("Access-Control-Allow-Origin"); acao != "http://localhost:3000" {
+		t.Fatalf("expected localhost ACAO, got %q", acao)
 	}
 }

@@ -264,16 +264,24 @@ func (db *DB) nextTSAt(t time.Time) string {
 	return fmt.Sprintf("%010d.%06d", db.lastTSSec, db.lastTSSeq)
 }
 
-// backfillLegacyRecords は既存 DB の alerts / notifications レコードのうち messages に未取り込みのものを補完する。
+// backfillLegacyRecords は既存 DB の alerts / notifications レコードのうち messages に未取り込みのものを全件補完する。
 func (db *DB) backfillLegacyRecords() error {
-	// 1. alerts の取り込み
-	alerts, err := db.ListAlertHistory(1000)
+	// 1. alerts の全件取り込み (古い順)
+	alertRows, err := db.conn.Query(
+		`SELECT id, fingerprint, alertname, status, level, summary, description, url, details, fired_at, resolved_at, created_at, updated_at
+		 FROM alerts
+		 ORDER BY id ASC`,
+	)
 	if err != nil {
 		return err
 	}
-	// 古い順に取り込む
-	for i := len(alerts) - 1; i >= 0; i-- {
-		a := alerts[i]
+	alerts, err := scanAlerts(alertRows)
+	alertRows.Close()
+	if err != nil {
+		return err
+	}
+
+	for _, a := range alerts {
 		var count int
 		if err := db.conn.QueryRow(
 			`SELECT COUNT(*) FROM messages WHERE source_kind = 'alert' AND source_id = ?`, a.ID,
@@ -288,9 +296,9 @@ func (db *DB) backfillLegacyRecords() error {
 		if title == "" {
 			title = a.Summary
 		}
-		text := fmt.Sprintf("*[firing] %s*\n%s", title, a.Summary)
+		text := fmt.Sprintf("**[firing] %s**\n%s", title, a.Summary)
 		if a.Status == "resolved" && a.ResolvedAt == nil {
-			text = fmt.Sprintf("*[resolved] %s*\n%s", title, a.Summary)
+			text = fmt.Sprintf("**[resolved] %s**\n%s", title, a.Summary)
 		}
 
 		parentTS := db.nextTSAt(a.FiredAt)
@@ -309,7 +317,7 @@ func (db *DB) backfillLegacyRecords() error {
 
 		if a.Status == "resolved" && a.ResolvedAt != nil {
 			replyTS := db.nextTSAt(*a.ResolvedAt)
-			replyText := fmt.Sprintf("✅ *[resolved] %s*\nアラートが解決した。", title)
+			replyText := fmt.Sprintf("✅ **[resolved] %s**\nアラートが解決した。", title)
 			if _, err := db.conn.Exec(
 				`INSERT INTO messages (channel_id, ts, thread_ts, user_id, bot_id, username, text, blocks, level, source_kind, source_id, details, url, alert_status, fired_at, resolved_at, created_at, updated_at)
 				 VALUES (?, ?, ?, ?, ?, 'Alertmanager', ?, '', 'success', 'alert', ?, '', '', 'resolved', ?, ?, ?, ?)`,
@@ -320,13 +328,31 @@ func (db *DB) backfillLegacyRecords() error {
 		}
 	}
 
-	// 2. notifications の取り込み
-	notes, err := db.ListNotifications(1000)
+	// 2. notifications の全件取り込み (古い順)
+	noteRows, err := db.conn.Query(
+		`SELECT id, title, body, url, level, details, source, created_at
+		 FROM notifications
+		 ORDER BY id ASC`,
+	)
 	if err != nil {
 		return err
 	}
-	for i := len(notes) - 1; i >= 0; i-- {
-		n := notes[i]
+	var notes []Notification
+	for noteRows.Next() {
+		n, scanErr := scanNotification(noteRows)
+		if scanErr != nil {
+			noteRows.Close()
+			return scanErr
+		}
+		notes = append(notes, n)
+	}
+	if err := noteRows.Err(); err != nil {
+		noteRows.Close()
+		return err
+	}
+	noteRows.Close()
+
+	for _, n := range notes {
 		if IsLegacyAlertmanagerNotification(n) {
 			continue
 		}
@@ -378,9 +404,9 @@ func formatNotificationText(title, body string) string {
 		return body
 	}
 	if body == "" || body == title {
-		return fmt.Sprintf("*%s*", title)
+		return fmt.Sprintf("**%s**", title)
 	}
-	return fmt.Sprintf("*%s*\n%s", title, body)
+	return fmt.Sprintf("**%s**\n%s", title, body)
 }
 
 // EnsureUserChannels は宣言された全人間ユーザーに対応する bot DM チャンネルを作成する。
@@ -557,10 +583,10 @@ func (db *DB) PostAlertChatMessage(alert *Alert, isNewCycle bool, title, summary
 			var replyText string
 			var replyLevel string
 			if alert.Status == "resolved" {
-				replyText = fmt.Sprintf("✅ *[resolved] %s*\nアラートが解決した。", title)
+				replyText = fmt.Sprintf("✅ **[resolved] %s**\nアラートが解決した。", title)
 				replyLevel = "success"
 			} else {
-				replyText = fmt.Sprintf("🔥 *[firing] %s*\n%s", title, summary)
+				replyText = fmt.Sprintf("🔥 **[firing] %s**\n%s", title, summary)
 				replyLevel = alert.Level
 			}
 
@@ -610,7 +636,7 @@ func (db *DB) PostAlertChatMessage(alert *Alert, isNewCycle bool, title, summary
 	} else {
 		icon = "🔥"
 	}
-	text := fmt.Sprintf("%s *[%s] %s*\n%s", icon, alert.Status, title, summary)
+	text := fmt.Sprintf("%s **[%s] %s**\n%s", icon, alert.Status, title, summary)
 	parent, err := db.CreateMessage(CreateMessageParams{
 		ChannelID:   ChannelAlertmanager,
 		UserID:      SystemBotUserID,

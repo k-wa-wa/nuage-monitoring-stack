@@ -1,0 +1,66 @@
+name: Test monitoring-pwa
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "monitoring-pwa/**"
+      - ".github/workflows/monitoring-pwa-test.yml"
+  pull_request:
+    paths:
+      - "monitoring-pwa/**"
+      - ".github/workflows/monitoring-pwa-test.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backend-and-e2e:
+    name: Backend & Bolt E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: monitoring-pwa/backend/go.mod
+          cache-dependency-path: monitoring-pwa/backend/go.sum
+
+      - name: Run Go vet and tests
+        working-directory: monitoring-pwa/backend
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install echo-bot dependencies
+        run: pip install -r monitoring-pwa/echo-bot/requirements.txt
+
+      - name: Run echo-bot unit and Bolt-Go E2E tests
+        working-directory: monitoring-pwa/echo-bot
+        run: python -m unittest discover -s . -p "test_*.py" -v
+
+  frontend:
+    name: Frontend Lint, Build & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install, lint, build, and test frontend
+        working-directory: monitoring-pwa/frontend
+        run: |
+          bun install --frozen-lockfile
+          bun run lint
+          bun run build
+          bun test

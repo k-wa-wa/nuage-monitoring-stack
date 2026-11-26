@@ -208,6 +208,22 @@ func TestSlackWebAPIMethods(t *testing.T) {
 		if uObj["id"] != "U01ALICE" || uObj["is_bot"] != false {
 			t.Fatalf("unexpected user object: %+v", uObj)
 		}
+
+		// DM への chat.postMessage は該当ユーザー (U01ALICE) の購読にのみ Push 送信すること
+		prevBroadcastCount := len(sender.payloads)
+		dmPost := callSlackMethod(t, e, "chat.postMessage", cfg.SlackBotToken, map[string]interface{}{
+			"channel": push.DMChannelID("U01ALICE"),
+			"text":    "Alice 宛の DM",
+		})
+		if dmPost["ok"] != true {
+			t.Fatalf("DM chat.postMessage failed: %+v", dmPost)
+		}
+		if len(sender.payloads) != prevBroadcastCount {
+			t.Fatalf("DM push must not broadcast to all users")
+		}
+		if len(sender.userPayloads["U01ALICE"]) != 1 || len(sender.userPayloads["U02BOB"]) != 0 {
+			t.Fatalf("expected DM push only to U01ALICE, got %+v", sender.userPayloads)
+		}
 	})
 }
 

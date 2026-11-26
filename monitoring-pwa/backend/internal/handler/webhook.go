@@ -16,6 +16,7 @@ import (
 // PushSender は Web Push 通知を送信するインターフェースである。
 type PushSender interface {
 	Broadcast(payload []byte)
+	BroadcastToUser(userID string, payload []byte)
 }
 
 // WebhookHandler は Alertmanager および汎用 Webhook リクエストを処理する構造体である。
@@ -136,8 +137,16 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 
 		alertDetails, _ := json.Marshal(alert)
 
-		existing, findErr := h.db.GetAlertByFingerprint(fingerprint)
-		isNewCycle := findErr != nil || existing == nil || (alert.Status == "firing" && existing.Status != "firing")
+		isNewCycle := true
+		if existing, findErr := h.db.GetAlertByFingerprint(fingerprint); findErr == nil && existing != nil {
+			if alert.Status != "firing" || existing.Status == "firing" {
+				isNewCycle = false
+			} else if parent, pErr := h.db.GetLatestAlertParentMessage(existing.ID); pErr == nil && parent != nil && parent.AlertStatus == "firing" {
+				// 起動時の migrate() で alerts が resolved になっていても、
+				// messages 上の親スレッドが未解決のままなら同一スレッドへ繋げる。
+				isNewCycle = false
+			}
+		}
 
 		// DBにアラート状態を保存・更新（統合一覧と /alerts/:id ディープリンクのソース）
 		savedAlert, err := h.db.UpsertAlert(
@@ -330,9 +339,9 @@ func (h *WebhookHandler) saveAndEmitNotificationChat(noteID int64, source, title
 		username = "Keel"
 	}
 
-	text := fmt.Sprintf("*%s*\n%s", strings.TrimSpace(title), strings.TrimSpace(body))
+	text := fmt.Sprintf("**%s**\n%s", strings.TrimSpace(title), strings.TrimSpace(body))
 	if strings.TrimSpace(body) == "" || strings.TrimSpace(body) == strings.TrimSpace(title) {
-		text = fmt.Sprintf("*%s*", strings.TrimSpace(title))
+		text = fmt.Sprintf("**%s**", strings.TrimSpace(title))
 	}
 
 	msg, err := h.db.CreateMessage(push.CreateMessageParams{

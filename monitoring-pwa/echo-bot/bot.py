@@ -37,10 +37,15 @@ def create_app(
     api_base_url: str,
     client: Optional[WebClient] = None,
     bot_user_id: Optional[str] = None,
+    process_before_response: bool = False,
 ) -> App:
     """Slack Bolt アプリとオウム返しハンドラを構築する。"""
     web_client = client or WebClient(token=bot_token, base_url=api_base_url)
-    app = App(client=web_client, token_verification_enabled=False)
+    app = App(
+        client=web_client,
+        token_verification_enabled=False,
+        process_before_response=process_before_response,
+    )
 
     state = {"bot_user_id": bot_user_id}
 

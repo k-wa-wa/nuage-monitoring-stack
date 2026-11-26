@@ -44,6 +44,7 @@ export default function App() {
 	const [hasMore, setHasMore] = useState(false)
 	const [loadingOlder, setLoadingOlder] = useState(false)
 	const [sending, setSending] = useState(false)
+	const [sendError, setSendError] = useState<string | null>(null)
 
 	const [threadParent, setThreadParent] = useState<ChatMessage | null>(null)
 	const [threadReplies, setThreadReplies] = useState<ChatMessage[]>([])
@@ -56,6 +57,7 @@ export default function App() {
 
 	const activeChannelIdRef = useRef<string | null>(activeChannelId)
 	const threadParentTsRef = useRef<string | null>(null)
+	const threadChannelIdRef = useRef<string | null>(null)
 	const userIdRef = useRef<string | null>(null)
 	const resolvedRouteRef = useRef<string | null>(null)
 
@@ -65,11 +67,20 @@ export default function App() {
 
 	useEffect(() => {
 		threadParentTsRef.current = threadParent?.ts || null
+		threadChannelIdRef.current = threadParent?.channel_id || null
 	}, [threadParent])
 
 	useEffect(() => {
 		userIdRef.current = user?.id || null
 	}, [user])
+
+	const channelsById = useMemo(() => {
+		const map: Record<string, string> = {}
+		for (const ch of channels) {
+			map[ch.id] = ch.name
+		}
+		return map
+	}, [channels])
 
 	// ローカル開発時に別ポートで動くバックエンドを指すように URL を切り替える。
 	const apiBase = import.meta.env.DEV ? 'http://localhost:8080' : ''
@@ -232,11 +243,38 @@ export default function App() {
 		resolvedRouteRef.current = routePath
 	}, [authState, routePath, apiBase, loadThread])
 
-	// SSE でリアルタイム更新を受信する
+	// SSE でリアルタイム更新を受信し、再接続・復帰時に欠損を同期する
 	useEffect(() => {
 		if (authState !== 'authenticated') return
 
 		const es = new EventSource(`${apiBase}/api/events`, { withCredentials: true })
+		let openedOnce = false
+
+		const resyncAfterReconnect = () => {
+			void loadBootstrap()
+			if (activeChannelIdRef.current) {
+				void loadChannelMessages(activeChannelIdRef.current)
+			}
+			if (threadChannelIdRef.current && threadParentTsRef.current) {
+				void loadThread(threadChannelIdRef.current, threadParentTsRef.current)
+			}
+		}
+
+		es.addEventListener('open', () => {
+			if (!openedOnce) {
+				openedOnce = true
+				return
+			}
+			resyncAfterReconnect()
+		})
+
+		const handleVisibilityOrOnline = () => {
+			if (document.visibilityState === 'visible') {
+				resyncAfterReconnect()
+			}
+		}
+		document.addEventListener('visibilitychange', handleVisibilityOrOnline)
+		window.addEventListener('online', resyncAfterReconnect)
 
 		es.addEventListener('bot_status', (event: MessageEvent) => {
 			try {
@@ -322,9 +360,11 @@ export default function App() {
 		})
 
 		return () => {
+			document.removeEventListener('visibilitychange', handleVisibilityOrOnline)
+			window.removeEventListener('online', resyncAfterReconnect)
 			es.close()
 		}
-	}, [authState, apiBase, markChannelRead])
+	}, [authState, apiBase, markChannelRead, loadBootstrap, loadChannelMessages, loadThread])
 
 	const navigateToPath = useCallback((newPath: string) => {
 		resolvedRouteRef.current = null
@@ -489,6 +529,7 @@ export default function App() {
 		setActiveChannelId(channelId)
 		setThreadParent(null)
 		setThreadReplies([])
+		setSendError(null)
 		setMobileScreen('messages')
 		const nextPath = `/channels/${channelId}`
 		resolvedRouteRef.current = nextPath
@@ -549,11 +590,12 @@ export default function App() {
 		}
 	}
 
-	const handlePostMessage = async (text: string, threadTs?: string) => {
+	const handlePostMessage = async (text: string, threadTs?: string): Promise<boolean> => {
 		const targetChannel = threadTs && threadParent ? threadParent.channel_id : activeChannelId
-		if (!targetChannel) return
+		if (!targetChannel) return false
 
 		setSending(true)
+		setSendError(null)
 		try {
 			const res = await fetch(
 				`${apiBase}/api/channels/${encodeURIComponent(targetChannel)}/messages`,
@@ -566,10 +608,14 @@ export default function App() {
 			)
 			if (res.status === 401) {
 				setAuthState('unauthenticated')
-				return
+				return false
 			}
-			if (!res.ok) return
-			const data: { message: ChatMessage; bot_online: boolean } = await res.json()
+			if (!res.ok) {
+				setSendError(`送信に失敗した (HTTP ${res.status})。再度試してほしい。`)
+				return false
+			}
+			const data: { message: ChatMessage; bot_online: boolean; delivered_to_bot: boolean } =
+				await res.json()
 			setBot((prev) => ({ ...prev, online: data.bot_online }))
 
 			const created = data.message
@@ -582,6 +628,10 @@ export default function App() {
 					prev.some((r) => r.ts === created.ts) ? prev : [...prev, created]
 				)
 			}
+			return true
+		} catch {
+			setSendError('ネットワークエラーにより送信できなかった。接続を確認して再送してほしい。')
+			return false
 		} finally {
 			setSending(false)
 		}
@@ -676,11 +726,13 @@ export default function App() {
 						<MessageList
 							channel={activeChannel}
 							messages={messages}
+							channelsById={channelsById}
 							hasMore={hasMore}
 							loadingOlder={loadingOlder}
 							currentUserId={user.id}
 							bot={bot}
 							sending={sending}
+							sendError={sendError}
 							onBackMobile={() => setMobileScreen('channels')}
 							onLoadOlder={handleLoadOlder}
 							onSendMessage={(text) => handlePostMessage(text)}
@@ -697,9 +749,11 @@ export default function App() {
 						<ThreadPane
 							parent={threadParent}
 							replies={threadReplies}
+							channelsById={channelsById}
 							currentUserId={user.id}
 							bot={bot}
 							sending={sending}
+							sendError={sendError}
 							onClose={handleCloseThread}
 							onSendReply={(text) => handlePostMessage(text, threadParent.ts)}
 						/>

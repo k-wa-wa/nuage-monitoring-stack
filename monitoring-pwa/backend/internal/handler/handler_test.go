@@ -12,19 +12,32 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/alertmanager"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/config"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 )
 
 type mockSender struct {
-	payloads []notificationPayload
+	payloads     []notificationPayload
+	userPayloads map[string][]notificationPayload
 }
 
 func (m *mockSender) Broadcast(payload []byte) {
 	var p notificationPayload
 	if err := json.Unmarshal(payload, &p); err == nil {
 		m.payloads = append(m.payloads, p)
+	}
+}
+
+func (m *mockSender) BroadcastToUser(userID string, payload []byte) {
+	var p notificationPayload
+	if err := json.Unmarshal(payload, &p); err == nil {
+		if m.userPayloads == nil {
+			m.userPayloads = make(map[string][]notificationPayload)
+		}
+		m.userPayloads[userID] = append(m.userPayloads[userID], p)
 	}
 }
 
@@ -363,5 +376,114 @@ func TestAlertmanagerEndToEndFingerprintAndOutOfLimitMatch(t *testing.T) {
 	}
 	if items[0].UID != "alert-1" || items[0].ID != 1 || items[0].Status != "firing" {
 		t.Fatalf("expected active OldAlert to merge with DB record alert-1, got %+v", items[0])
+	}
+}
+
+func TestAlertmanagerRestartKeepsSingleThread(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "restart.db")
+	db1, err := push.InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB 1 failed: %v", err)
+	}
+
+	e := echo.New()
+	wh1 := NewWebhookHandler(&mockSender{}, db1)
+	firingBody := `{
+		"status": "firing",
+		"alerts": [{
+			"status": "firing",
+			"labels": {"alertname": "NodeDown", "instance": "n1", "severity": "critical"},
+			"annotations": {"summary": "Node n1 is down"}
+		}]
+	}`
+	req1 := httptest.NewRequest(http.MethodPost, "/webhook/alertmanager", strings.NewReader(firingBody))
+	req1.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	if err := wh1.AlertmanagerWebhook(e.NewContext(req1, httptest.NewRecorder())); err != nil {
+		t.Fatalf("firing 1 failed: %v", err)
+	}
+	_ = db1.Close()
+
+	// Pod 再起動をシミュレート (InitDB が alerts を一律 resolved にする)
+	db2, err := push.InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB 2 failed: %v", err)
+	}
+	defer db2.Close()
+
+	wh2 := NewWebhookHandler(&mockSender{}, db2)
+	req2 := httptest.NewRequest(http.MethodPost, "/webhook/alertmanager", strings.NewReader(firingBody))
+	req2.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	if err := wh2.AlertmanagerWebhook(e.NewContext(req2, httptest.NewRecorder())); err != nil {
+		t.Fatalf("firing 2 failed: %v", err)
+	}
+
+	// 親メッセージが 2 つに分裂せず 1 つのまま維持されること
+	parents, _, err := db2.ListChannelMessagesAsc(push.ChannelAlertmanager, "", 20)
+	if err != nil {
+		t.Fatalf("ListChannelMessagesAsc failed: %v", err)
+	}
+	if len(parents) != 1 {
+		t.Fatalf("expected 1 parent thread after restart + re-fire, got %d", len(parents))
+	}
+	if parents[0].AlertStatus != "firing" || parents[0].ReplyCount != 1 {
+		t.Fatalf("expected firing parent with 1 reply, got %+v", parents[0])
+	}
+
+	// resolved が来たら同じ親スレッドが resolved になること
+	resolvedBody := `{
+		"status": "resolved",
+		"alerts": [{
+			"status": "resolved",
+			"labels": {"alertname": "NodeDown", "instance": "n1", "severity": "critical"},
+			"annotations": {"summary": "Node n1 is down"}
+		}]
+	}`
+	req3 := httptest.NewRequest(http.MethodPost, "/webhook/alertmanager", strings.NewReader(resolvedBody))
+	req3.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	if err := wh2.AlertmanagerWebhook(e.NewContext(req3, httptest.NewRecorder())); err != nil {
+		t.Fatalf("resolved failed: %v", err)
+	}
+
+	parents, _, _ = db2.ListChannelMessagesAsc(push.ChannelAlertmanager, "", 20)
+	if len(parents) != 1 || parents[0].AlertStatus != "resolved" || parents[0].ReplyCount != 2 {
+		t.Fatalf("expected resolved single parent with 2 replies, got %+v", parents)
+	}
+}
+
+func TestLoginRateLimit(t *testing.T) {
+	hash, _ := bcrypt.GenerateFromPassword([]byte("valid-pass"), bcrypt.MinCost)
+	h := NewAuthHandler([]byte(strings.Repeat("k", 32)), []config.UserConfig{
+		{ID: "U01ADMIN", DisplayName: "Admin", PassphraseHash: string(hash)},
+	})
+	e := echo.New()
+
+	for i := 0; i < loginRateMaxFailures; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"passphrase":"wrong"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		req.RemoteAddr = "198.51.100.10:12345"
+		err := h.Login(e.NewContext(req, httptest.NewRecorder()))
+		httpErr, ok := err.(*echo.HTTPError)
+		if !ok || httpErr.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %v", i, err)
+		}
+	}
+
+	// 上限到達後は 429
+	reqBlocked := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"passphrase":"valid-pass"}`))
+	reqBlocked.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	reqBlocked.RemoteAddr = "198.51.100.10:12345"
+	err := h.Login(e.NewContext(reqBlocked, httptest.NewRecorder()))
+	httpErr, ok := err.(*echo.HTTPError)
+	if !ok || httpErr.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 after rate limit, got %v", err)
+	}
+
+	// 別 IP はログイン可能であること
+	reqOther := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"passphrase":"valid-pass"}`))
+	reqOther.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	reqOther.RemoteAddr = "198.51.100.20:12345"
+	recOther := httptest.NewRecorder()
+	if err := h.Login(e.NewContext(reqOther, recOther)); err != nil || recOther.Code != http.StatusOK {
+		t.Fatalf("expected 200 from another IP, got code=%d err=%v", recOther.Code, err)
 	}
 }

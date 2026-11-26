@@ -8,7 +8,7 @@ import (
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
-// Sender は VAPID キーペアを使用して、登録された全デバイスに Web Push 通知をブロードキャストする構造体である。
+// Sender は VAPID キーペアを使用して、登録されたデバイスに Web Push 通知を送信する構造体である。
 type Sender struct {
 	publicKey  string
 	privateKey string
@@ -26,9 +26,21 @@ func NewSender(publicKey, privateKey, subject string, db *DB) *Sender {
 }
 
 // Broadcast は登録されたすべてのデバイスに通知を送信する。
-// 送信先が 404/410 (無効化/期限切れ) を返した場合、データベースから自動削除する。
 func (s *Sender) Broadcast(payload []byte) {
-	for _, sub := range s.db.List() {
+	s.sendToSubscriptions(s.db.List(), payload)
+}
+
+// BroadcastToUser は指定ユーザーに紐づくデバイスにのみ通知を送信する。
+func (s *Sender) BroadcastToUser(userID string, payload []byte) {
+	if userID == "" {
+		return
+	}
+	s.sendToSubscriptions(s.db.ListByUser(userID), payload)
+}
+
+// sendToSubscriptions は購読一覧へ通知を送信し、404/410 応答の購読を削除する。
+func (s *Sender) sendToSubscriptions(subs []webpush.Subscription, payload []byte) {
+	for _, sub := range subs {
 		resp, err := webpush.SendNotification(payload, &sub, &webpush.Options{
 			Subscriber:      s.subject,
 			VAPIDPublicKey:  s.publicKey,

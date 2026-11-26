@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -87,7 +88,12 @@ func NewRouter(cfg config.Config, db *push.DB, hub *realtime.Hub, sender handler
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOriginFunc: func(origin string) (bool, error) {
-			return true, nil
+			u, err := url.Parse(origin)
+			if err != nil || u.Scheme != "http" {
+				return false, nil
+			}
+			host := u.Hostname()
+			return host == "localhost" || host == "127.0.0.1", nil
 		},
 		AllowCredentials: true,
 	}))

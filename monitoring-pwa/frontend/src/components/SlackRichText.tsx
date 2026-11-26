@@ -1,5 +1,9 @@
-import type { ReactNode } from 'react'
-import { parseMrkdwn, parseMrkdwnInline, type MrkdwnInlineToken } from '../utils/mrkdwn'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
+import rehypeSanitize from 'rehype-sanitize'
+import { preprocessSlackSyntax, slackSanitizeSchema } from '../utils/mrkdwn'
+import { sanitizeExternalUrl } from '../utils/url'
 import type { SlackBlock, SlackTextObject } from '../types/chat'
 
 interface SlackRichTextProps {
@@ -7,96 +11,87 @@ interface SlackRichTextProps {
 	blocks?: SlackBlock[]
 	botUserId?: string
 	botName?: string
+	channelsById?: Record<string, string>
 }
 
-function renderInlineTokens(
-	tokens: MrkdwnInlineToken[],
-	botUserId?: string,
-	botName?: string
-): ReactNode[] {
-	return tokens.map((tok, idx) => {
-		switch (tok.type) {
-			case 'text':
-				return <span key={idx}>{tok.text}</span>
-			case 'bold':
-				return <strong key={idx}>{renderInlineTokens(tok.children, botUserId, botName)}</strong>
-			case 'italic':
-				return <em key={idx}>{renderInlineTokens(tok.children, botUserId, botName)}</em>
-			case 'strike':
-				return <del key={idx}>{renderInlineTokens(tok.children, botUserId, botName)}</del>
-			case 'code':
-				return (
-					<code key={idx} className="slack-inline-code">
-						{tok.text}
-					</code>
-				)
-			case 'link':
-				return (
-					<a
-						key={idx}
-						href={tok.url}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="slack-link"
-					>
-						{tok.label}
-					</a>
-				)
-			case 'mention': {
-				const displayName =
-					botUserId && tok.userId === botUserId ? botName || 'nuage-bot' : tok.userId
-				return (
-					<span key={idx} className="slack-mention">
-						@{displayName}
-					</span>
-				)
-			}
+const markdownComponents: Components = {
+	a: ({ node: _node, href, children, ...rest }) => {
+		const safeHttp = sanitizeExternalUrl(href)
+		const safeMailto = href && href.startsWith('mailto:') ? href : null
+		const safeHref = safeHttp || safeMailto
+		if (!safeHref) {
+			return <span>{children}</span>
 		}
-	})
+		return (
+			<a
+				{...rest}
+				href={safeHref}
+				target="_blank"
+				rel="noopener noreferrer"
+				className="slack-link"
+			>
+				{children}
+			</a>
+		)
+	},
+	code: ({ node: _node, className, children, ...rest }) => {
+		const isBlock = Boolean(className) || String(children).includes('\n')
+		return (
+			<code
+				{...rest}
+				className={isBlock ? className : 'slack-inline-code'}
+			>
+				{children}
+			</code>
+		)
+	},
+	pre: ({ node: _node, children, ...rest }) => (
+		<pre {...rest} className="slack-codeblock">
+			{children}
+		</pre>
+	),
+	blockquote: ({ node: _node, children, ...rest }) => (
+		<blockquote {...rest} className="slack-quote">
+			{children}
+		</blockquote>
+	),
+	table: ({ node: _node, children, ...rest }) => (
+		<div className="gfm-table-wrap">
+			<table {...rest} className="gfm-table">
+				{children}
+			</table>
+		</div>
+	)
 }
 
-function MrkdwnBlockText({
+function GfmContent({
 	text,
 	plainOnly,
 	botUserId,
-	botName
+	botName,
+	channelsById
 }: {
 	text: string
 	plainOnly?: boolean
 	botUserId?: string
 	botName?: string
+	channelsById?: Record<string, string>
 }) {
 	if (!text) return null
 	if (plainOnly) {
 		return <span className="slack-plain-text">{text}</span>
 	}
-	const blocks = parseMrkdwn(text)
+
+	const prepared = preprocessSlackSyntax(text, { botUserId, botName, channelsById })
 	return (
-		<div className="slack-mrkdwn">
-			{blocks.map((blk, idx) => {
-				if (blk.type === 'codeblock') {
-					return (
-						<pre key={idx} className="slack-codeblock">
-							<code>{blk.code}</code>
-						</pre>
-					)
-				}
-				if (blk.type === 'quote') {
-					return (
-						<blockquote key={idx} className="slack-quote">
-							{renderInlineTokens(blk.tokens, botUserId, botName)}
-						</blockquote>
-					)
-				}
-				if (blk.tokens.length === 0) {
-					return <div key={idx} className="slack-empty-line" />
-				}
-				return (
-					<p key={idx} className="slack-paragraph">
-						{renderInlineTokens(blk.tokens, botUserId, botName)}
-					</p>
-				)
-			})}
+		<div className="slack-mrkdwn gfm-body">
+			<ReactMarkdown
+				remarkPlugins={[remarkGfm]}
+				rehypePlugins={[rehypeRaw, [rehypeSanitize, slackSanitizeSchema]]}
+				components={markdownComponents}
+			>
+				{prepared}
+			</ReactMarkdown>
 		</div>
 	)
 }
@@ -104,29 +99,41 @@ function MrkdwnBlockText({
 function renderTextObject(
 	obj: SlackTextObject,
 	botUserId?: string,
-	botName?: string
-): ReactNode {
-	if (obj.type === 'plain_text') {
-		return <span className="slack-plain-text">{obj.text}</span>
-	}
+	botName?: string,
+	channelsById?: Record<string, string>
+) {
 	return (
-		<MrkdwnBlockText
-			text={obj.text}
-			plainOnly={false}
+		<GfmContent
+			text={obj.text || ''}
+			plainOnly={obj.type === 'plain_text'}
 			botUserId={botUserId}
 			botName={botName}
+			channelsById={channelsById}
 		/>
 	)
 }
 
-// SlackRichText は本文の mrkdwn および Block Kit (section / context / divider) を描画する。
-export default function SlackRichText({ text, blocks, botUserId, botName }: SlackRichTextProps) {
+// SlackRichText は GFM + サニタイズ済み HTML + Slack 山括弧記法および Block Kit (section / context / divider) を描画する。
+export default function SlackRichText({
+	text,
+	blocks,
+	botUserId,
+	botName,
+	channelsById
+}: SlackRichTextProps) {
 	const supportedBlocks = Array.isArray(blocks)
 		? blocks.filter((b) => b.type === 'section' || b.type === 'context' || b.type === 'divider')
 		: []
 
 	if (supportedBlocks.length === 0) {
-		return <MrkdwnBlockText text={text} botUserId={botUserId} botName={botName} />
+		return (
+			<GfmContent
+				text={text}
+				botUserId={botUserId}
+				botName={botName}
+				channelsById={channelsById}
+			/>
+		)
 	}
 
 	return (
@@ -141,9 +148,7 @@ export default function SlackRichText({ text, blocks, botUserId, botName }: Slac
 						<div key={idx} className="slack-block-context">
 							{elements.map((el, elIdx) => (
 								<span key={elIdx} className="slack-context-item">
-									{el.type === 'plain_text'
-										? el.text
-										: renderInlineTokens(parseMrkdwnInline(el.text || ''), botUserId, botName)}
+									{renderTextObject(el, botUserId, botName, channelsById)}
 								</span>
 							))}
 						</div>
@@ -154,14 +159,14 @@ export default function SlackRichText({ text, blocks, botUserId, botName }: Slac
 					<div key={idx} className="slack-block-section">
 						{block.text && (
 							<div className="slack-section-text">
-								{renderTextObject(block.text, botUserId, botName)}
+								{renderTextObject(block.text, botUserId, botName, channelsById)}
 							</div>
 						)}
 						{Array.isArray(block.fields) && block.fields.length > 0 && (
 							<div className="slack-section-fields">
 								{block.fields.map((field, fIdx) => (
 									<div key={fIdx} className="slack-section-field">
-										{renderTextObject(field, botUserId, botName)}
+										{renderTextObject(field, botUserId, botName, channelsById)}
 									</div>
 								))}
 							</div>

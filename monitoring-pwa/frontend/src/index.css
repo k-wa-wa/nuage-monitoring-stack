@@ -1645,13 +1645,76 @@ a {
   text-underline-offset: 2px;
 }
 
-.slack-mention {
+.slack-mention,
+.slack-channel {
   display: inline-block;
   background-color: var(--accent-subtle);
   color: var(--accent);
   border-radius: var(--radius-sm);
   padding: 0 4px;
   font-weight: 500;
+}
+
+.slack-mention-special {
+  background-color: var(--blocked-subtle);
+  color: var(--blocked);
+}
+
+.gfm-body p {
+  margin: 0;
+}
+
+.gfm-body p + p {
+  margin-top: 6px;
+}
+
+.gfm-body ul,
+.gfm-body ol {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.gfm-body li.task-list-item {
+  list-style: none;
+  margin-left: -16px;
+}
+
+.gfm-body input[type="checkbox"] {
+  margin-right: 6px;
+  accent-color: var(--accent);
+}
+
+.gfm-table-wrap {
+  overflow-x: auto;
+  margin: 6px 0;
+}
+
+.gfm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.gfm-table th,
+.gfm-table td {
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.gfm-table th {
+  background-color: var(--bg);
+  font-weight: 600;
+}
+
+.composer-error-banner {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background-color: var(--warn-subtle);
+  border: 1px solid var(--warn-border);
+  color: var(--warn);
+  font-size: 12px;
 }
 
 .slack-blocks {

@@ -516,7 +516,11 @@ func (h *SlackHandler) chatPostMessage(c echo.Context, params map[string]interfa
 			Tag:   fmt.Sprintf("msg-%s-%s", chID, msg.TS),
 		}
 		if payload, err := json.Marshal(payloadObj); err == nil {
-			h.sender.Broadcast(payload)
+			if ch.IsIM && ch.DMUserID != "" {
+				h.sender.BroadcastToUser(ch.DMUserID, payload)
+			} else {
+				h.sender.Broadcast(payload)
+			}
 		}
 	}
 

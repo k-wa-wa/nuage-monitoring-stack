@@ -153,8 +153,11 @@ func (db *DB) migrate() error {
 		}
 	}
 
-	// details / source カラムが未追加の場合はマイグレーションを実行する。
-	if err := db.ensureNotificationColumns([]string{"details", "source"}); err != nil {
+	// details / source / user_id カラムが未追加の場合はマイグレーションを実行する。
+	if err := db.ensureTableColumns("notifications", []string{"details", "source"}); err != nil {
+		return err
+	}
+	if err := db.ensureTableColumns("subscriptions", []string{"user_id"}); err != nil {
 		return err
 	}
 
@@ -169,9 +172,9 @@ func (db *DB) migrate() error {
 	return nil
 }
 
-// ensureNotificationColumns は notifications テーブルに不足している TEXT カラムを追加する。
-func (db *DB) ensureNotificationColumns(requiredCols []string) error {
-	rows, err := db.conn.Query(`PRAGMA table_info(notifications)`)
+// ensureTableColumns は指定テーブルに不足している TEXT カラムを追加する。
+func (db *DB) ensureTableColumns(table string, requiredCols []string) error {
+	rows, err := db.conn.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
 	if err != nil {
 		return err
 	}
@@ -195,7 +198,7 @@ func (db *DB) ensureNotificationColumns(requiredCols []string) error {
 
 	for _, col := range requiredCols {
 		if !existing[col] {
-			if _, err := db.conn.Exec(fmt.Sprintf(`ALTER TABLE notifications ADD COLUMN %s TEXT`, col)); err != nil {
+			if _, err := db.conn.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s TEXT NOT NULL DEFAULT ''`, table, col)); err != nil {
 				return err
 			}
 		}
@@ -205,14 +208,20 @@ func (db *DB) ensureNotificationColumns(requiredCols []string) error {
 
 // Add は購読情報をデータベースに登録、または更新する。
 func (db *DB) Add(sub webpush.Subscription) error {
+	return db.AddForUser(sub, "")
+}
+
+// AddForUser はユーザー ID を紐づけて購読情報を登録または更新する。
+func (db *DB) AddForUser(sub webpush.Subscription, userID string) error {
 	_, err := db.conn.Exec(
-		`INSERT INTO subscriptions (endpoint, p256dh, auth, created_at)
-		 VALUES (?, ?, ?, ?)
+		`INSERT INTO subscriptions (endpoint, p256dh, auth, user_id, created_at)
+		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(endpoint) DO UPDATE SET
 			p256dh = excluded.p256dh,
 			auth = excluded.auth,
+			user_id = CASE WHEN excluded.user_id != '' THEN excluded.user_id ELSE subscriptions.user_id END,
 			created_at = excluded.created_at`,
-		sub.Endpoint, sub.Keys.P256dh, sub.Keys.Auth, time.Now(),
+		sub.Endpoint, sub.Keys.P256dh, sub.Keys.Auth, userID, time.Now(),
 	)
 	return err
 }
@@ -227,7 +236,16 @@ func (db *DB) Remove(endpoint string) {
 
 // List は全購読情報を取得する。
 func (db *DB) List() []webpush.Subscription {
-	rows, err := db.conn.Query(`SELECT endpoint, p256dh, auth FROM subscriptions`)
+	return db.listSubscriptionsWhere("", nil)
+}
+
+// ListByUser は指定ユーザーに紐づく購読情報一覧を取得する。
+func (db *DB) ListByUser(userID string) []webpush.Subscription {
+	return db.listSubscriptionsWhere("WHERE user_id = ?", []interface{}{userID})
+}
+
+func (db *DB) listSubscriptionsWhere(where string, args []interface{}) []webpush.Subscription {
+	rows, err := db.conn.Query(`SELECT endpoint, p256dh, auth FROM subscriptions `+where, args...)
 	if err != nil {
 		slog.Error("failed to list subscriptions", "error", err)
 		return nil

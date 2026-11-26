@@ -8,6 +8,7 @@ interface MessageBubbleProps {
 	currentUserId: string
 	botUserId: string
 	botName: string
+	channelsById?: Record<string, string>
 	inThread?: boolean
 	onOpenThread?: (msg: ChatMessage) => void
 }
@@ -48,6 +49,7 @@ export default function MessageBubble({
 	currentUserId,
 	botUserId,
 	botName,
+	channelsById,
 	inThread = false,
 	onOpenThread
 }: MessageBubbleProps) {
@@ -89,6 +91,7 @@ export default function MessageBubble({
 						blocks={message.blocks}
 						botUserId={botUserId}
 						botName={botName}
+						channelsById={channelsById}
 					/>
 				</div>
 

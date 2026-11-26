@@ -13,14 +13,16 @@ import type { BotInfo, Channel, ChatMessage } from '../types/chat'
 interface MessageListProps {
 	channel: Channel
 	messages: ChatMessage[]
+	channelsById: Record<string, string>
 	hasMore: boolean
 	loadingOlder: boolean
 	currentUserId: string
 	bot: BotInfo
 	sending: boolean
+	sendError: string | null
 	onBackMobile: () => void
 	onLoadOlder: () => Promise<void>
-	onSendMessage: (text: string) => Promise<void>
+	onSendMessage: (text: string) => Promise<boolean>
 	onOpenThread: (msg: ChatMessage) => void
 	onOpenSearch: () => void
 }
@@ -29,11 +31,13 @@ interface MessageListProps {
 export default function MessageList({
 	channel,
 	messages,
+	channelsById,
 	hasMore,
 	loadingOlder,
 	currentUserId,
 	bot,
 	sending,
+	sendError,
 	onBackMobile,
 	onLoadOlder,
 	onSendMessage,
@@ -100,11 +104,13 @@ export default function MessageList({
 	const submitMessage = async () => {
 		const text = draft.trim()
 		if (!text || sending) return
-		setDraft('')
 		if (!bot.online) {
 			setOfflineNotice(true)
 		}
-		await onSendMessage(text)
+		const ok = await onSendMessage(text)
+		if (ok) {
+			setDraft('')
+		}
 	}
 
 	const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -200,6 +206,7 @@ export default function MessageList({
 							currentUserId={currentUserId}
 							botUserId={bot.user_id}
 							botName={bot.name}
+							channelsById={channelsById}
 							onOpenThread={onOpenThread}
 						/>
 					))
@@ -207,6 +214,11 @@ export default function MessageList({
 			</div>
 
 			<div className="composer-wrap">
+				{sendError && (
+					<div className="composer-error-banner" role="alert">
+						{sendError}
+					</div>
+				)}
 				<div className="composer-box">
 					{channel.is_channel && (
 						<div className="composer-toolbar">

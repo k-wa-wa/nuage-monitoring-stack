@@ -6,6 +6,7 @@ import (
 	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/labstack/echo/v4"
 
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/auth"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 )
 
@@ -37,7 +38,11 @@ func (h *SubscribeHandler) Subscribe(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "endpoint and keys are required")
 	}
 
-	if err := h.db.Add(sub); err != nil {
+	userID := ""
+	if u := auth.GetUser(c); u != nil {
+		userID = u.ID
+	}
+	if err := h.db.AddForUser(sub, userID); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save subscription")
 	}
 	return c.NoContent(http.StatusCreated)

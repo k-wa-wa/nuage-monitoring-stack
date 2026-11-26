@@ -9,11 +9,13 @@ import type { UnifiedNotification } from '../types/notification'
 interface ThreadPaneProps {
 	parent: ChatMessage
 	replies: ChatMessage[]
+	channelsById: Record<string, string>
 	currentUserId: string
 	bot: BotInfo
 	sending: boolean
+	sendError: string | null
 	onClose: () => void
-	onSendReply: (text: string) => Promise<void>
+	onSendReply: (text: string) => Promise<boolean>
 }
 
 function messageToUnified(msg: ChatMessage): UnifiedNotification {
@@ -52,9 +54,11 @@ function messageToUnified(msg: ChatMessage): UnifiedNotification {
 export default function ThreadPane({
 	parent,
 	replies,
+	channelsById,
 	currentUserId,
 	bot,
 	sending,
+	sendError,
 	onClose,
 	onSendReply
 }: ThreadPaneProps) {
@@ -65,8 +69,10 @@ export default function ThreadPane({
 	const submitReply = async () => {
 		const text = draft.trim()
 		if (!text || sending) return
-		setDraft('')
-		await onSendReply(text)
+		const ok = await onSendReply(text)
+		if (ok) {
+			setDraft('')
+		}
 	}
 
 	const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -108,6 +114,7 @@ export default function ThreadPane({
 						currentUserId={currentUserId}
 						botUserId={bot.user_id}
 						botName={bot.name}
+						channelsById={channelsById}
 						inThread
 					/>
 					{unifiedItem && (unifiedItem.details || unifiedItem.url) && (
@@ -132,6 +139,7 @@ export default function ThreadPane({
 								currentUserId={currentUserId}
 								botUserId={bot.user_id}
 								botName={bot.name}
+								channelsById={channelsById}
 								inThread
 							/>
 						))
@@ -140,6 +148,11 @@ export default function ThreadPane({
 			</div>
 
 			<div className="thread-composer">
+				{sendError && (
+					<div className="composer-error-banner" role="alert">
+						{sendError}
+					</div>
+				)}
 				{!bot.online && (
 					<div className="thread-offline-hint">
 						<WifiOff size={12} />
