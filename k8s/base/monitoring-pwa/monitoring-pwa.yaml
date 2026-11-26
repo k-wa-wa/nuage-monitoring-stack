@@ -60,6 +60,26 @@ spec:
                   name: pwa-notifier-secret
                   key: VAPID_SUBJECT
                   optional: true
+            - name: COOKIE_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pwa-notifier-secret
+                  key: COOKIE_SIGNING_KEY
+            - name: USERS_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: pwa-notifier-secret
+                  key: USERS_JSON
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pwa-notifier-secret
+                  key: SLACK_BOT_TOKEN
+            - name: SLACK_APP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pwa-notifier-secret
+                  key: SLACK_APP_TOKEN
           volumeMounts:
             - name: db-volume
               mountPath: /data
@@ -80,10 +100,10 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 32Mi
+              memory: 64Mi
             limits:
               cpu: 200m
-              memory: 64Mi
+              memory: 128Mi
       volumes:
         - name: db-volume
           persistentVolumeClaim:

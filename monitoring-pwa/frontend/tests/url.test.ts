@@ -4,6 +4,7 @@ import {
 	extractExternalLinks,
 	getLogsUrl,
 	parseAppRoute,
+	parseChatRoute,
 	rewriteGeneratorUrl,
 	sanitizeExternalUrl
 } from '../src/utils/url'
@@ -135,6 +136,46 @@ describe('parseAppRoute', () => {
 			detailKind: null,
 			detailId: null,
 			legacyHistoryId: 7
+		})
+	})
+})
+
+describe('parseChatRoute', () => {
+	test('チャンネル・スレッド・ディープリンク・設定ルートを判定する', () => {
+		expect(parseChatRoute('/channels/C01ALERTMGR')).toEqual({
+			view: 'chat',
+			channelId: 'C01ALERTMGR',
+			threadTs: null,
+			deepLinkKind: null,
+			deepLinkId: null
+		})
+		expect(parseChatRoute('/channels/C01ALERTMGR/threads/1700000000.000100')).toEqual({
+			view: 'chat',
+			channelId: 'C01ALERTMGR',
+			threadTs: '1700000000.000100',
+			deepLinkKind: null,
+			deepLinkId: null
+		})
+		expect(parseChatRoute('/alerts/12')).toEqual({
+			view: 'chat',
+			channelId: null,
+			threadTs: null,
+			deepLinkKind: 'alert',
+			deepLinkId: 12
+		})
+		expect(parseChatRoute('/notifications/5')).toEqual({
+			view: 'chat',
+			channelId: null,
+			threadTs: null,
+			deepLinkKind: 'notification',
+			deepLinkId: 5
+		})
+		expect(parseChatRoute('/settings')).toEqual({
+			view: 'settings',
+			channelId: null,
+			threadTs: null,
+			deepLinkKind: null,
+			deepLinkId: null
 		})
 	})
 })

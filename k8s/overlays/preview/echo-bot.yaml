@@ -1,0 +1,73 @@
+# preview 環境専用の Bolt 製オウム返し bot (prod には配置しない)。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-pwa-echo-bot
+  annotations:
+    keel.sh/policy: force
+    keel.sh/trigger: poll
+    keel.sh/pollSchedule: "@every 2m"
+    keel.sh/monitorContainers: "echo-bot"
+    keel.sh/matchTag: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monitoring-pwa-echo-bot
+  template:
+    metadata:
+      labels:
+        app: monitoring-pwa-echo-bot
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: echo-bot
+          image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-echo-bot:latest
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SLACK_API_BASE_URL
+              value: "http://monitoring-pwa-backend/slack/api/"
+            - name: HEALTH_PORT
+              value: "8080"
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pwa-notifier-secret
+                  key: SLACK_BOT_TOKEN
+            - name: SLACK_APP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pwa-notifier-secret
+                  key: SLACK_APP_TOKEN
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

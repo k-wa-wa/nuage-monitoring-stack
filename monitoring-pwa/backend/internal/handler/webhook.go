@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/realtime"
 )
 
 // PushSender は Web Push 通知を送信するインターフェースである。
@@ -21,12 +22,22 @@ type PushSender interface {
 type WebhookHandler struct {
 	sender PushSender
 	db     *push.DB
+	hub    *realtime.Hub
 }
 
 func NewWebhookHandler(sender PushSender, db *push.DB) *WebhookHandler {
 	return &WebhookHandler{
 		sender: sender,
 		db:     db,
+	}
+}
+
+// NewWebhookHandlerWithHub はリアルタイム配信 Hub 付きの WebhookHandler を生成する。
+func NewWebhookHandlerWithHub(sender PushSender, db *push.DB, hub *realtime.Hub) *WebhookHandler {
+	return &WebhookHandler{
+		sender: sender,
+		db:     db,
+		hub:    hub,
 	}
 }
 
@@ -125,6 +136,9 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 
 		alertDetails, _ := json.Marshal(alert)
 
+		existing, findErr := h.db.GetAlertByFingerprint(fingerprint)
+		isNewCycle := findErr != nil || existing == nil || (alert.Status == "firing" && existing.Status != "firing")
+
 		// DBにアラート状態を保存・更新（統合一覧と /alerts/:id ディープリンクのソース）
 		savedAlert, err := h.db.UpsertAlert(
 			fingerprint,
@@ -138,6 +152,13 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 		)
 		if err != nil {
 			slog.Error("failed to upsert alert", "fingerprint", fingerprint, "error", err)
+		} else if savedAlert != nil {
+			msg, parent, chatErr := h.db.PostAlertChatMessage(savedAlert, isNewCycle, name, summary, string(alertDetails), alert.GeneratorURL)
+			if chatErr != nil {
+				slog.Error("failed to post alert chat message", "fingerprint", fingerprint, "error", chatErr)
+			} else {
+				h.emitSystemMessage(push.ChannelAlertmanager, msg, parent)
+			}
 		}
 
 		// resolved の場合は Push 通知（バイブ・通知音）を送信しない
@@ -192,13 +213,15 @@ func (h *WebhookHandler) GenericWebhook(c echo.Context) error {
 	if targetURL == "" {
 		targetURL = strings.TrimSpace(req.TargetURL)
 	}
-	source := inferNotificationSource(req.Title, req.Source)
+	source := push.InferNotificationSource(req.Title, req.Source)
 
 	// DBに履歴を保存
 	id, err := h.db.SaveNotificationWithSource(req.Title, req.Body, targetURL, level, req.Details, source)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save notification history")
 	}
+
+	h.saveAndEmitNotificationChat(id, source, req.Title, req.Body, level, req.Details, targetURL)
 
 	payloadObj := notificationPayload{
 		Title:      req.Title,
@@ -250,6 +273,8 @@ func (h *WebhookHandler) KeelWebhook(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save notification history")
 	}
 
+	h.saveAndEmitNotificationChat(id, "keel", title, body, level, string(detailsObj), "")
+
 	payloadObj := notificationPayload{
 		Title: title,
 		Body:  body,
@@ -293,4 +318,70 @@ func (h *WebhookHandler) TestNotify(c echo.Context) error {
 
 	h.sender.Broadcast(payload)
 	return c.NoContent(http.StatusOK)
+}
+
+func (h *WebhookHandler) saveAndEmitNotificationChat(noteID int64, source, title, body, level, details, targetURL string) {
+	chID := push.ChannelForSource(source)
+	username := "Nuage Notify"
+	switch source {
+	case "argocd":
+		username = "Argo CD"
+	case "keel":
+		username = "Keel"
+	}
+
+	text := fmt.Sprintf("*%s*\n%s", strings.TrimSpace(title), strings.TrimSpace(body))
+	if strings.TrimSpace(body) == "" || strings.TrimSpace(body) == strings.TrimSpace(title) {
+		text = fmt.Sprintf("*%s*", strings.TrimSpace(title))
+	}
+
+	msg, err := h.db.CreateMessage(push.CreateMessageParams{
+		ChannelID:  chID,
+		UserID:     push.SystemBotUserID,
+		BotID:      push.SystemBotID,
+		Username:   username,
+		Text:       text,
+		Level:      level,
+		SourceKind: "notification",
+		SourceID:   noteID,
+		Details:    details,
+		URL:        targetURL,
+	})
+	if err != nil {
+		slog.Error("failed to post notification chat message", "note_id", noteID, "error", err)
+		return
+	}
+	h.emitSystemMessage(chID, msg, nil)
+}
+
+func (h *WebhookHandler) emitSystemMessage(channelID string, msg, updatedParent *push.Message) {
+	if h.hub == nil || msg == nil {
+		return
+	}
+	h.hub.PublishBrowser("", realtime.BrowserEvent{
+		Type:      "message_created",
+		ChannelID: channelID,
+		Payload:   msg,
+	})
+	if updatedParent != nil && updatedParent.TS != msg.TS {
+		h.hub.PublishBrowser("", realtime.BrowserEvent{
+			Type:      "message_updated",
+			ChannelID: channelID,
+			Payload:   updatedParent,
+		})
+	}
+	ev := map[string]interface{}{
+		"type":         "message",
+		"channel":      channelID,
+		"channel_type": "channel",
+		"user":         msg.UserID,
+		"bot_id":       msg.BotID,
+		"text":         msg.Text,
+		"ts":           msg.TS,
+		"event_ts":     msg.TS,
+	}
+	if msg.ThreadTS != "" {
+		ev["thread_ts"] = msg.ThreadTS
+	}
+	h.hub.SendEventCallback(ev)
 }

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -14,7 +15,10 @@ import (
 
 // DB は SQLite データベースへの接続を管理する構造体である。
 type DB struct {
-	conn *sql.DB
+	conn      *sql.DB
+	tsMu      sync.Mutex
+	lastTSSec int64
+	lastTSSeq int
 }
 
 // Notification は通知履歴の各レコードを表す。
@@ -77,6 +81,13 @@ func InitDB(path string) (*DB, error) {
 	}
 
 	if err := conn.Ping(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	// SQLite の同時書き込みによる SQLITE_BUSY を防ぐ
+	conn.SetMaxOpenConns(1)
+	if _, err := conn.Exec(`PRAGMA busy_timeout = 5000;`); err != nil {
 		conn.Close()
 		return nil, err
 	}
@@ -150,6 +161,10 @@ func (db *DB) migrate() error {
 	// 過去の取りこぼしアラート（firing のまま残存していたゴーストアラート）を resolved に更新する。
 	// アクティブアラートは Alertmanager API からリアルタイム取得するため、DB 上の未解決レコードを解消する。
 	_, _ = db.conn.Exec(`UPDATE alerts SET status = 'resolved', level = 'success', resolved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE status = 'firing'`)
+
+	if err := db.migrateChatSchema(); err != nil {
+		return err
+	}
 
 	return nil
 }

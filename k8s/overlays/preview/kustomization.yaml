@@ -19,6 +19,7 @@ resources:
   - namespace.yaml
   - ../../base/monitoring-pwa
   - local-secrets.yaml
+  - echo-bot.yaml
   - ingress.yaml
 
 patches:

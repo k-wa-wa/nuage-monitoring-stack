@@ -1,25 +1,33 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/alertmanager"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/auth"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/config"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/handler"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/realtime"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	cfg := config.Load()
-	if cfg.VAPIDPublicKey == "" || cfg.VAPIDPrivateKey == "" {
-		slog.Error("VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY must be set (see: go run ./cmd/genvapid)")
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("invalid configuration", "error", err)
 		os.Exit(1)
 	}
 
@@ -31,25 +39,82 @@ func main() {
 	}
 	defer db.Close()
 
+	if err := db.EnsureUserChannels(cfg.Users); err != nil {
+		slog.Error("failed to initialize user DM channels", "error", err)
+		os.Exit(1)
+	}
+
+	hub := realtime.NewHub()
 	amClient := alertmanager.NewClient(cfg.AlertmanagerURL)
 	sender := push.NewSender(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, db)
 
+	e := NewRouter(cfg, db, hub, sender, amClient)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		slog.Info("starting server", "port", cfg.Port, "db_path", cfg.DBPath)
+		if err := e.Start(":" + cfg.Port); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server stopped", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done()
+	slog.Info("shutting down server")
+	hub.DisconnectAll("server_shutdown")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		slog.Error("graceful shutdown failed", "error", err)
+	}
+}
+
+// NewRouter は認証・チャット・Slack 互換 API・Webhook を含む Echo ルーターを構築する。
+func NewRouter(cfg config.Config, db *push.DB, hub *realtime.Hub, sender handler.PushSender, amClient handler.ActiveAlertsFetcher) *echo.Echo {
 	subscribeH := handler.NewSubscribeHandler(cfg.VAPIDPublicKey, db)
-	webhookH := handler.NewWebhookHandler(sender, db)
+	webhookH := handler.NewWebhookHandlerWithHub(sender, db, hub)
 	historyH := handler.NewHistoryHandler(db, amClient)
+	authH := handler.NewAuthHandler([]byte(cfg.CookieSigningKey), cfg.Users)
+	chatH := handler.NewChatHandler(cfg, db, hub)
+	slackH := handler.NewSlackHandler(cfg, db, hub, sender)
 
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.RequestID())
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOriginFunc: func(origin string) (bool, error) {
+			return true, nil
+		},
+		AllowCredentials: true,
+	}))
 
-	// 開発時等のクロスオリジンアクセスに対応するため CORS を有効化
-	e.Use(middleware.CORS())
-
+	// 認証不要の公開エンドポイント
 	e.GET("/health", handler.Health)
+	e.POST("/webhook/alertmanager", webhookH.AlertmanagerWebhook)
+	e.POST("/webhook/generic", webhookH.GenericWebhook)
+	e.POST("/webhook/keel", webhookH.KeelWebhook)
+	e.POST("/api/auth/login", authH.Login)
+	e.POST("/api/auth/logout", authH.Logout)
 
+	// 人間向け API (署名付きセッション Cookie 必須)
 	api := e.Group("/api")
+	api.Use(auth.RequireSessionMiddleware([]byte(cfg.CookieSigningKey), cfg.Users))
+	api.GET("/auth/me", authH.Me)
+	api.GET("/bootstrap", chatH.Bootstrap)
+	api.GET("/channels", chatH.ListChannels)
+	api.GET("/channels/:id/messages", chatH.ListMessages)
+	api.GET("/channels/:id/threads/:ts", chatH.GetThread)
+	api.POST("/channels/:id/messages", chatH.PostMessage)
+	api.POST("/channels/:id/read", chatH.MarkRead)
+	api.GET("/search", chatH.Search)
+	api.GET("/deeplink/:kind/:id", chatH.DeepLink)
+	api.GET("/events", chatH.Events)
+
+	// 既存 Push / 履歴 API
 	api.GET("/vapid-public-key", subscribeH.VAPIDPublicKey)
 	api.POST("/subscribe", subscribeH.Subscribe)
 	api.POST("/unsubscribe", subscribeH.Unsubscribe)
@@ -60,13 +125,9 @@ func main() {
 	api.GET("/notifications", historyH.UnifiedNotifications)
 	api.GET("/notifications/:kind/:id", historyH.GetNotificationDetail)
 
-	e.POST("/webhook/alertmanager", webhookH.AlertmanagerWebhook)
-	e.POST("/webhook/generic", webhookH.GenericWebhook)
-	e.POST("/webhook/keel", webhookH.KeelWebhook)
+	// Slack 互換 API (bot / app トークン必須) & Socket Mode WebSocket
+	e.POST("/slack/api/:method", slackH.DispatchMethod)
+	e.GET("/slack/socket", slackH.SocketModeWS)
 
-	slog.Info("starting server", "port", cfg.Port, "db_path", cfg.DBPath)
-	if err := e.Start(":" + cfg.Port); err != nil {
-		slog.Error("server stopped", "error", err)
-		os.Exit(1)
-	}
+	return e
 }

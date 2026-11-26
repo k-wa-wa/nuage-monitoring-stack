@@ -197,3 +197,76 @@ export const parseAppRoute = (pathname: string): ParsedAppRoute => {
 		legacyHistoryId: null
 	}
 }
+
+export interface ParsedChatRoute {
+	view: 'chat' | 'settings'
+	channelId: string | null
+	threadTs: string | null
+	deepLinkKind: 'alert' | 'notification' | null
+	deepLinkId: number | null
+}
+
+// チャット UI 向けのルートをパースする。
+export const parseChatRoute = (pathname: string): ParsedChatRoute => {
+	if (pathname === '/settings' || pathname.startsWith('/settings/')) {
+		return {
+			view: 'settings',
+			channelId: null,
+			threadTs: null,
+			deepLinkKind: null,
+			deepLinkId: null
+		}
+	}
+
+	const threadMatch = pathname.match(/^\/channels\/([^/]+)\/threads\/([^/]+)\/?$/)
+	if (threadMatch) {
+		return {
+			view: 'chat',
+			channelId: decodeURIComponent(threadMatch[1]),
+			threadTs: decodeURIComponent(threadMatch[2]),
+			deepLinkKind: null,
+			deepLinkId: null
+		}
+	}
+
+	const chMatch = pathname.match(/^\/channels\/([^/]+)\/?$/)
+	if (chMatch) {
+		return {
+			view: 'chat',
+			channelId: decodeURIComponent(chMatch[1]),
+			threadTs: null,
+			deepLinkKind: null,
+			deepLinkId: null
+		}
+	}
+
+	const alertMatch = pathname.match(/^\/alerts\/(\d+)\/?$/)
+	if (alertMatch) {
+		return {
+			view: 'chat',
+			channelId: null,
+			threadTs: null,
+			deepLinkKind: 'alert',
+			deepLinkId: parseInt(alertMatch[1], 10)
+		}
+	}
+
+	const noteMatch = pathname.match(/^\/notifications\/(\d+)\/?$/)
+	if (noteMatch) {
+		return {
+			view: 'chat',
+			channelId: null,
+			threadTs: null,
+			deepLinkKind: 'notification',
+			deepLinkId: parseInt(noteMatch[1], 10)
+		}
+	}
+
+	return {
+		view: 'chat',
+		channelId: null,
+		threadTs: null,
+		deepLinkKind: null,
+		deepLinkId: null
+	}
+}

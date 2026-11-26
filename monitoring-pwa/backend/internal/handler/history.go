@@ -3,14 +3,12 @@ package handler
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -36,6 +34,8 @@ type UnifiedNotification struct {
 	Level       string     `json:"level"`  // "error" | "warning" | "info" | "success"
 	URL         string     `json:"url,omitempty"`
 	Details     string     `json:"details,omitempty"`
+	ChannelID   string     `json:"channel_id,omitempty"`
+	TS          string     `json:"ts,omitempty"`
 	Timestamp   time.Time  `json:"timestamp"`
 	FiredAt     *time.Time `json:"fired_at,omitempty"`
 	ResolvedAt  *time.Time `json:"resolved_at,omitempty"`
@@ -184,7 +184,7 @@ func (h *HistoryHandler) UnifiedNotifications(c echo.Context) error {
 	}
 
 	for _, n := range notes {
-		if isLegacyAlertmanagerNotification(n) {
+		if push.IsLegacyAlertmanagerNotification(n) {
 			continue
 		}
 		historyItems = append(historyItems, notificationToUnified(n))
@@ -224,7 +224,12 @@ func (h *HistoryHandler) GetNotificationDetail(c echo.Context) error {
 			}
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch alert")
 		}
-		return c.JSON(http.StatusOK, alertToUnified(*a, fmt.Sprintf("alert-%d", a.ID)))
+		item := alertToUnified(*a, fmt.Sprintf("alert-%d", a.ID))
+		if msg, mErr := h.db.GetMessageBySourceRef("alert", a.ID); mErr == nil && msg != nil {
+			item.ChannelID = msg.ChannelID
+			item.TS = msg.TS
+		}
+		return c.JSON(http.StatusOK, item)
 	case "notification":
 		n, err := h.db.GetNotificationByID(id)
 		if err != nil {
@@ -233,7 +238,12 @@ func (h *HistoryHandler) GetNotificationDetail(c echo.Context) error {
 			}
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch notification")
 		}
-		return c.JSON(http.StatusOK, notificationToUnified(*n))
+		item := notificationToUnified(*n)
+		if msg, mErr := h.db.GetMessageBySourceRef("notification", n.ID); mErr == nil && msg != nil {
+			item.ChannelID = msg.ChannelID
+			item.TS = msg.TS
+		}
+		return c.JSON(http.StatusOK, item)
 	default:
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid notification kind")
 	}
@@ -269,23 +279,8 @@ func alertToUnified(a push.Alert, uid string) UnifiedNotification {
 	}
 }
 
-// inferNotificationSource は明示指定またはタイトルから通知の送信元種別を判定する。
-func inferNotificationSource(title, explicitSource string) string {
-	s := strings.TrimSpace(explicitSource)
-	if s != "" && s != "generic" {
-		return s
-	}
-	if strings.HasPrefix(title, "[Keel]") {
-		return "keel"
-	}
-	if strings.Contains(strings.ToLower(title), "argo") {
-		return "argocd"
-	}
-	return "generic"
-}
-
 func notificationToUnified(n push.Notification) UnifiedNotification {
-	source := inferNotificationSource(n.Title, n.Source)
+	source := push.InferNotificationSource(n.Title, n.Source)
 	return UnifiedNotification{
 		UID:       fmt.Sprintf("notification-%d", n.ID),
 		ID:        n.ID,
@@ -301,28 +296,4 @@ func notificationToUnified(n push.Notification) UnifiedNotification {
 		CreatedAt: n.CreatedAt,
 		UpdatedAt: n.CreatedAt,
 	}
-}
-
-// isLegacyAlertmanagerNotification は過去の二重保存によって notifications テーブルに入った Alertmanager 通知を判定する。
-func isLegacyAlertmanagerNotification(n push.Notification) bool {
-	if n.Source == "alertmanager" {
-		return true
-	}
-	if n.Source != "" {
-		return false
-	}
-	if !strings.HasPrefix(n.Title, "[firing] ") && !strings.HasPrefix(n.Title, "[resolved] ") {
-		return false
-	}
-	if n.Details == "" {
-		return false
-	}
-	var parsed struct {
-		Labels      map[string]string `json:"labels"`
-		Annotations map[string]string `json:"annotations"`
-	}
-	if err := json.Unmarshal([]byte(n.Details), &parsed); err != nil {
-		return false
-	}
-	return len(parsed.Labels) > 0 || len(parsed.Annotations) > 0
 }

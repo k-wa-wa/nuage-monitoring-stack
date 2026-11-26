@@ -34,6 +34,13 @@ spec:
                 name: monitoring-pwa-backend
                 port:
                   number: 80
+          - path: /slack
+            pathType: Prefix
+            backend:
+              service:
+                name: monitoring-pwa-backend
+                port:
+                  number: 80
           - path: /
             pathType: Prefix
             backend:
