@@ -577,6 +577,7 @@ export default function App() {
 	const navigateToPath = useCallback(
 		(newPath: string, screen: HistoryScreen = 'messages', prevScreen?: HistoryScreen) => {
 			pushHistoryRoute(newPath, screen, prevScreen)
+			resolvedRouteRef.current = null
 		},
 		[pushHistoryRoute]
 	)
@@ -753,13 +754,17 @@ export default function App() {
 	}
 
 	const handleOpenThread = (msg: ChatMessage) => {
+		const wasThreadOpen = Boolean(threadParent && !threadExiting)
+		const prevScreen: HistoryScreen = wasThreadOpen ? 'thread' : 'messages'
 		cancelThreadExit()
-		triggerThreadEnterAnimation()
+		if (!wasThreadOpen) {
+			triggerThreadEnterAnimation()
+		}
 		setThreadParent(msg)
 		setThreadReplies([])
 		setMobileScreen('thread')
 		const nextPath = `/channels/${encodeURIComponent(msg.channel_id)}/threads/${encodeURIComponent(msg.ts)}`
-		pushHistoryRoute(nextPath, 'thread', 'messages')
+		pushHistoryRoute(nextPath, 'thread', prevScreen)
 		void loadThread(msg.channel_id, msg.ts)
 	}
 

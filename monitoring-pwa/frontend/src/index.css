@@ -2255,7 +2255,7 @@ a {
   overflow: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x pan-y pinch-zoom;
+  touch-action: pan-x pan-y;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2273,14 +2273,15 @@ a {
   object-fit: contain;
   border-radius: var(--radius-md);
   cursor: zoom-in;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
 }
 
 .image-lightbox-img.zoomed {
   max-width: none;
   max-height: none;
-  min-width: min(160vw, 1200px);
-  width: auto;
-  height: auto;
+  flex-shrink: 0;
   cursor: zoom-out;
 }
 
@@ -2392,14 +2393,15 @@ a {
       visibility 0s linear 0s;
   }
 
-  /* マウント開始 / アンマウント終了用の明示的スライド補助 */
-  .thread-pane.pane-entering,
-  .settings-pane.pane-entering {
+  /* マウント開始 / アンマウント終了用の明示的スライド補助 (状態クラスに勝つ詳細度) */
+  .chat-shell .thread-pane.pane-entering,
+  .chat-shell .settings-pane.pane-entering {
     transform: translate3d(100%, 0, 0);
+    transition: none;
   }
 
-  .thread-pane.pane-exiting,
-  .settings-pane.pane-exiting {
+  .chat-shell .thread-pane.pane-exiting,
+  .chat-shell .settings-pane.pane-exiting {
     transform: translate3d(100%, 0, 0);
     pointer-events: none;
   }

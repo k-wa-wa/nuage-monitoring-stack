@@ -33,6 +33,7 @@ function hasScrollableHorizontalParent(target: EventTarget | null, stopAt: HTMLE
  * スマホ幅において画面左端からの右スワイプで 1 つ前の画面へ戻るフックである。
  * React の再レンダーを介さず CSS 変数 (--swipe-progress) を更新することで
  * 指に追従する滑らかなトランジションを実現する。
+ * touchmove (passive: false) は左端スワイプ追跡中のみ動的に付与し、通常の縦スクロールを妨げない。
  */
 export function useSwipeBack({
 	shellRef,
@@ -70,6 +71,8 @@ export function useSwipeBack({
 		let lastTime = 0
 		let velocityX = 0
 		let activeLayer: SwipeTargetLayer = null
+		let touchListenersAttached = false
+		let pointerListenersAttached = false
 
 		const clearSwipeStyles = () => {
 			shell.classList.remove('is-swiping', 'is-swiping-layer1', 'is-swiping-thread')
@@ -86,8 +89,33 @@ export function useSwipeBack({
 			return true
 		}
 
-		const beginTrack = (clientX: number, clientY: number, target: EventTarget | null) => {
-			if (!canStartSwipe(clientX, target)) return
+		const detachTouchListeners = () => {
+			if (!touchListenersAttached) return
+			touchListenersAttached = false
+			window.removeEventListener('touchmove', handleTouchMove)
+			window.removeEventListener('touchend', handleTouchEnd)
+			window.removeEventListener('touchcancel', handleTouchCancel)
+		}
+
+		const detachPointerListeners = () => {
+			if (!pointerListenersAttached) return
+			pointerListenersAttached = false
+			window.removeEventListener('pointermove', handlePointerMove)
+			window.removeEventListener('pointerup', handlePointerUp)
+			window.removeEventListener('pointercancel', handlePointerCancel)
+		}
+
+		const abortTracking = () => {
+			tracking = false
+			locked = false
+			activeLayer = null
+			clearSwipeStyles()
+			detachTouchListeners()
+			detachPointerListeners()
+		}
+
+		const beginTrack = (clientX: number, clientY: number, target: EventTarget | null): boolean => {
+			if (!canStartSwipe(clientX, target)) return false
 			tracking = true
 			locked = false
 			activeLayer = targetLayerRef.current
@@ -96,6 +124,7 @@ export function useSwipeBack({
 			lastX = clientX
 			lastTime = performance.now()
 			velocityX = 0
+			return true
 		}
 
 		const updateTrack = (clientX: number, clientY: number, preventDefault?: () => void) => {
@@ -109,8 +138,7 @@ export function useSwipeBack({
 					return
 				}
 				if (dx <= 0 || Math.abs(dy) > Math.abs(dx) * 0.85) {
-					tracking = false
-					activeLayer = null
+					abortTracking()
 					return
 				}
 				locked = true
@@ -137,7 +165,11 @@ export function useSwipeBack({
 		}
 
 		const finishTrack = (clientX: number, cancelled = false) => {
-			if (!tracking) return
+			if (!tracking) {
+				detachTouchListeners()
+				detachPointerListeners()
+				return
+			}
 			const wasLocked = locked
 			const width = Math.max(shell.clientWidth, 1)
 			const progress = Math.max(0, Math.min(1, (clientX - startX) / width))
@@ -147,27 +179,15 @@ export function useSwipeBack({
 				(progress >= COMPLETE_PROGRESS_THRESHOLD ||
 					(velocityX >= COMPLETE_VELOCITY_THRESHOLD && progress >= 0.08))
 
-			tracking = false
-			locked = false
-			activeLayer = null
-			clearSwipeStyles()
+			abortTracking()
 
 			if (shouldComplete) {
 				onBackRef.current()
 			}
 		}
 
-		// Touch Events (iOS Safari / Android Chrome の実タッチ操作用。passive: false で縦スクロールを抑止する)
-		const handleTouchStart = (e: TouchEvent) => {
-			if (e.touches.length !== 1) {
-				finishTrack(lastX, true)
-				return
-			}
-			const t = e.touches[0]
-			beginTrack(t.clientX, t.clientY, e.target)
-		}
-
-		const handleTouchMove = (e: TouchEvent) => {
+		// Touch Events (左端で追跡を開始した時だけ touchmove passive: false を付与する)
+		function handleTouchMove(e: TouchEvent) {
 			if (!tracking || e.touches.length !== 1) return
 			const t = e.touches[0]
 			updateTrack(t.clientX, t.clientY, () => {
@@ -175,56 +195,65 @@ export function useSwipeBack({
 			})
 		}
 
-		const handleTouchEnd = (e: TouchEvent) => {
+		function handleTouchEnd(e: TouchEvent) {
 			const t = e.changedTouches[0]
 			finishTrack(t ? t.clientX : lastX, false)
 		}
 
-		const handleTouchCancel = () => {
+		function handleTouchCancel() {
 			finishTrack(lastX, true)
 		}
 
-		// Pointer Events (マウスドラッグや Playwright pointer 操作のフォールバック)
-		const handlePointerDown = (e: PointerEvent) => {
-			if (e.pointerType === 'touch') return
-			if (e.button !== 0) return
-			beginTrack(e.clientX, e.clientY, e.target)
+		const handleTouchStart = (e: TouchEvent) => {
+			if (e.touches.length !== 1) {
+				finishTrack(lastX, true)
+				return
+			}
+			const t = e.touches[0]
+			if (!beginTrack(t.clientX, t.clientY, e.target)) return
+			if (!touchListenersAttached) {
+				touchListenersAttached = true
+				window.addEventListener('touchmove', handleTouchMove, { passive: false })
+				window.addEventListener('touchend', handleTouchEnd, { passive: true })
+				window.addEventListener('touchcancel', handleTouchCancel, { passive: true })
+			}
 		}
 
-		const handlePointerMove = (e: PointerEvent) => {
+		// Pointer Events (マウスドラッグや Playwright pointer 操作のフォールバック)
+		function handlePointerMove(e: PointerEvent) {
 			if (e.pointerType === 'touch') return
 			updateTrack(e.clientX, e.clientY)
 		}
 
-		const handlePointerUp = (e: PointerEvent) => {
+		function handlePointerUp(e: PointerEvent) {
 			if (e.pointerType === 'touch') return
 			finishTrack(e.clientX, false)
 		}
 
-		const handlePointerCancel = (e: PointerEvent) => {
+		function handlePointerCancel(e: PointerEvent) {
 			if (e.pointerType === 'touch') return
 			finishTrack(lastX, true)
 		}
 
+		const handlePointerDown = (e: PointerEvent) => {
+			if (e.pointerType === 'touch') return
+			if (e.button !== 0) return
+			if (!beginTrack(e.clientX, e.clientY, e.target)) return
+			if (!pointerListenersAttached) {
+				pointerListenersAttached = true
+				window.addEventListener('pointermove', handlePointerMove)
+				window.addEventListener('pointerup', handlePointerUp)
+				window.addEventListener('pointercancel', handlePointerCancel)
+			}
+		}
+
 		shell.addEventListener('touchstart', handleTouchStart, { passive: true })
-		shell.addEventListener('touchmove', handleTouchMove, { passive: false })
-		shell.addEventListener('touchend', handleTouchEnd, { passive: true })
-		shell.addEventListener('touchcancel', handleTouchCancel, { passive: true })
 		shell.addEventListener('pointerdown', handlePointerDown)
-		window.addEventListener('pointermove', handlePointerMove)
-		window.addEventListener('pointerup', handlePointerUp)
-		window.addEventListener('pointercancel', handlePointerCancel)
 
 		return () => {
-			clearSwipeStyles()
+			abortTracking()
 			shell.removeEventListener('touchstart', handleTouchStart)
-			shell.removeEventListener('touchmove', handleTouchMove)
-			shell.removeEventListener('touchend', handleTouchEnd)
-			shell.removeEventListener('touchcancel', handleTouchCancel)
 			shell.removeEventListener('pointerdown', handlePointerDown)
-			window.removeEventListener('pointermove', handlePointerMove)
-			window.removeEventListener('pointerup', handlePointerUp)
-			window.removeEventListener('pointercancel', handlePointerCancel)
 		}
 	}, [shellRef, enabled])
 }

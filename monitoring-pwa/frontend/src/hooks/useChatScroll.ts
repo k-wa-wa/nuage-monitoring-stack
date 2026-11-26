@@ -51,6 +51,13 @@ export function useChatScroll({
 	const loadingOlderRef = useRef<boolean>(loadingOlder)
 	const hasMoreRef = useRef<boolean>(hasMore)
 	const onLoadOlderRef = useRef(onLoadOlder)
+	const prevScrollHeightRef = useRef<number>(0)
+	const prevClientHeightRef = useRef<number>(0)
+
+	const syncMetrics = useCallback((el: HTMLElement) => {
+		prevScrollHeightRef.current = el.scrollHeight
+		prevClientHeightRef.current = el.clientHeight
+	}, [])
 
 	useEffect(() => {
 		loadingOlderRef.current = loadingOlder
@@ -96,6 +103,8 @@ export function useChatScroll({
 		prevLastIdRef.current = null
 		prevCountRef.current = 0
 		anchorRef.current = null
+		prevScrollHeightRef.current = 0
+		prevClientHeightRef.current = 0
 	}
 
 	useEffect(() => {
@@ -159,21 +168,73 @@ export function useChatScroll({
 		prevFirstIdRef.current = firstId
 		prevLastIdRef.current = lastId
 		prevCountRef.current = count
-	}, [itemIds, scrollKey, isInitialLoading])
+		syncMetrics(el)
+	}, [itemIds, scrollKey, isInitialLoading, syncMetrics])
 
-	// キーボード表示や画面サイズ変化でコンテナ高さが変わった時も、最下部表示を維持する
+	// キーボード表示や画面サイズ変化、画像遅延読込・詳細展開で高さが変わった時も最下部表示を維持する
 	useEffect(() => {
 		const el = scrollRef.current
-		if (!el || typeof ResizeObserver === 'undefined') return
+		if (!el) return
+		syncMetrics(el)
 
-		const observer = new ResizeObserver(() => {
-			if (shouldStickBottomRef.current) {
+		const stickIfNeeded = () => {
+			// ユーザーが上へスクロールした直後 (scroll イベント発火前) の高さ変化で引き戻さないよう、
+			// 変化前のサイズ基準で最下部付近にいたかを確認する
+			const prevSH = prevScrollHeightRef.current || el.scrollHeight
+			const prevCH = prevClientHeightRef.current || el.clientHeight
+			const wasNearBottom = prevSH - el.scrollTop - prevCH < BOTTOM_THRESHOLD_PX
+			if (shouldStickBottomRef.current && wasNearBottom) {
 				el.scrollTop = el.scrollHeight
+			} else if (!wasNearBottom) {
+				shouldStickBottomRef.current = false
 			}
-		})
-		observer.observe(el)
-		return () => observer.disconnect()
-	}, [scrollKey])
+			syncMetrics(el)
+		}
+
+		let resizeObserver: ResizeObserver | null = null
+		let mutationObserver: MutationObserver | null = null
+
+		if (typeof ResizeObserver !== 'undefined') {
+			resizeObserver = new ResizeObserver(stickIfNeeded)
+			resizeObserver.observe(el)
+			for (const child of Array.from(el.children)) {
+				resizeObserver.observe(child)
+			}
+
+			if (typeof MutationObserver !== 'undefined') {
+				mutationObserver = new MutationObserver((mutations) => {
+					for (const mutation of mutations) {
+						for (const added of Array.from(mutation.addedNodes)) {
+							if (added instanceof HTMLElement) {
+								resizeObserver?.observe(added)
+							}
+						}
+						for (const removed of Array.from(mutation.removedNodes)) {
+							if (removed instanceof HTMLElement) {
+								resizeObserver?.unobserve(removed)
+							}
+						}
+					}
+					stickIfNeeded()
+				})
+				mutationObserver.observe(el, { childList: true })
+			}
+		}
+
+		// img の load イベントはバブリングしないためキャプチャフェーズで拾う
+		const handleMediaLoad = (event: Event) => {
+			if (event.target instanceof HTMLImageElement) {
+				stickIfNeeded()
+			}
+		}
+		el.addEventListener('load', handleMediaLoad, true)
+
+		return () => {
+			el.removeEventListener('load', handleMediaLoad, true)
+			mutationObserver?.disconnect()
+			resizeObserver?.disconnect()
+		}
+	}, [scrollKey, syncMetrics])
 
 	const scrollToBottom = useCallback(() => {
 		const el = scrollRef.current
@@ -181,8 +242,9 @@ export function useChatScroll({
 		el.scrollTop = el.scrollHeight
 		shouldStickBottomRef.current = true
 		forceBottomOnNextAppendRef.current = false
+		syncMetrics(el)
 		setHasNewMessages(false)
-	}, [])
+	}, [syncMetrics])
 
 	const markStickBottomOnSend = useCallback(() => {
 		shouldStickBottomRef.current = true
@@ -193,6 +255,7 @@ export function useChatScroll({
 	const handleScroll = useCallback(
 		(e: UIEvent<HTMLDivElement>) => {
 			const el = e.currentTarget
+			syncMetrics(el)
 			const nearBottom = isNearBottom(el)
 			shouldStickBottomRef.current = nearBottom
 			if (nearBottom) {
@@ -209,7 +272,7 @@ export function useChatScroll({
 				void onLoadOlderRef.current()
 			}
 		},
-		[prepareLoadOlder]
+		[prepareLoadOlder, syncMetrics]
 	)
 
 	return {

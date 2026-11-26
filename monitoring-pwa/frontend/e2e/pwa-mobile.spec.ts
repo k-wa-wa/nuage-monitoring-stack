@@ -1,17 +1,19 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type CDPSession, type Page } from '@playwright/test'
 
-// テスト用 1x1 透過 PNG (外部通信を避けつつ画像ライトボックスをテストする)
-const TINY_PNG = Buffer.from(
-	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-	'base64'
+// テスト用 240x220 SVG (外部通信を避けつつ遅延読込の高さ変化と画像ライトボックスをテストする)
+const MOCK_SVG = Buffer.from(
+	'<svg xmlns="http://www.w3.org/2000/svg" width="240" height="220" viewBox="0 0 240 220"><rect width="240" height="220" fill="#2c2a26"/><circle cx="120" cy="110" r="60" fill="#e07a5f"/></svg>',
+	'utf-8'
 )
 
 async function setupRoutes(page: Page) {
 	await page.route('https://mock-assets.local/**', async (route) => {
+		// 初期スクロール後に遅延ロードで高さが伸びる状況を再現する
+		await new Promise((resolve) => setTimeout(resolve, 120))
 		await route.fulfill({
 			status: 200,
-			contentType: 'image/png',
-			body: TINY_PNG
+			contentType: 'image/svg+xml',
+			body: MOCK_SVG
 		})
 	})
 }
@@ -38,6 +40,42 @@ async function performEdgeSwipeRight(
 	await page.mouse.down()
 	await page.mouse.move(endX, y, { steps })
 	await page.mouse.up()
+}
+
+async function performTouchEdgeSwipeRight(
+	page: Page,
+	cdp: CDPSession,
+	startX: number,
+	endX: number,
+	steps = 10,
+	stepDelayMs = 10,
+	onMidMove?: () => Promise<void>
+) {
+	const viewport = page.viewportSize()
+	if (!viewport) throw new Error('viewport is missing')
+	const y = Math.round(viewport.height * 0.5)
+
+	await cdp.send('Input.dispatchTouchEvent', {
+		type: 'touchStart',
+		touchPoints: [{ x: startX, y, id: 1 }]
+	})
+	for (let i = 1; i <= steps; i++) {
+		const x = Math.round(startX + ((endX - startX) * i) / steps)
+		await cdp.send('Input.dispatchTouchEvent', {
+			type: 'touchMove',
+			touchPoints: [{ x, y, id: 1 }]
+		})
+		if (onMidMove && i === Math.ceil(steps / 2)) {
+			await onMidMove()
+		}
+		if (stepDelayMs > 0) {
+			await page.waitForTimeout(stepDelayMs)
+		}
+	}
+	await cdp.send('Input.dispatchTouchEvent', {
+		type: 'touchEnd',
+		touchPoints: []
+	})
 }
 
 test.describe('PWA スマホ最適化 E2E', () => {
@@ -150,10 +188,15 @@ test.describe('PWA スマホ最適化 E2E', () => {
 		await loginAsTestUser(page)
 		await page.getByRole('button', { name: /general/ }).click()
 
-		// チャンネル最下部（メッセージ #080）が見えること
+		// チャンネル最下部（メッセージ #080）が見え、遅延画像ロード後も最下部を維持すること
 		const latestMsg = page.locator('#chat-msg-1700000080\\.000100')
 		await expect(latestMsg).toBeVisible()
 		await expect(async () => {
+			const loaded = await page.locator('.slack-inline-image').first().evaluate((el) => {
+				const img = el as HTMLImageElement
+				return img.complete && img.naturalHeight >= 200
+			})
+			expect(loaded).toBe(true)
 			const metrics = await page.locator('.chat-timeline').evaluate((el) => ({
 				distanceFromBottom: el.scrollHeight - el.scrollTop - el.clientHeight
 			}))
@@ -377,5 +420,131 @@ test.describe('PWA スマホ最適化 E2E', () => {
 			)
 			expect(distAfterShrink).toBeLessThan(8)
 		}).toPass()
+	})
+
+	test('Touch Events による左端スワイプ戻りとスレッド・設定のスライドイン開始位置を検証する', async ({
+		page
+	}) => {
+		await loginAsTestUser(page)
+		const cdp = await page.context().newCDPSession(page)
+		const viewport = page.viewportSize()!
+
+		// 1. 設定画面を開くときのスライドイン開始位置が右端 (100%) から始まること
+		await page.evaluate(() => {
+			;(window as unknown as { __settingsStartTx?: number }).__settingsStartTx = undefined
+			const obs = new MutationObserver((mutations) => {
+				for (const m of mutations) {
+					for (const node of Array.from(m.addedNodes)) {
+						if (node instanceof HTMLElement && node.classList.contains('settings-pane')) {
+							const tr = getComputedStyle(node).transform
+							const match = tr.match(/matrix\([^,]+,[^,]+,[^,]+,[^,]+,([^,]+),/)
+							;(window as unknown as { __settingsStartTx?: number }).__settingsStartTx = match
+								? parseFloat(match[1])
+								: 0
+							obs.disconnect()
+						}
+					}
+				}
+			})
+			obs.observe(document.querySelector('.chat-shell')!, { childList: true })
+		})
+		await page.getByRole('button', { name: '設定' }).click()
+		await expect(page.locator('.settings-pane')).toBeVisible()
+		const settingsStartTx = await page.evaluate(
+			() => (window as unknown as { __settingsStartTx?: number }).__settingsStartTx ?? 0
+		)
+		expect(settingsStartTx).toBeGreaterThanOrEqual(viewport.width * 0.8)
+
+		// Touch Events の左端スワイプで設定からチャンネル一覧へ戻る
+		let sawSwipingClassOnLayer1 = false
+		await performTouchEdgeSwipeRight(page, cdp, 8, 260, 8, 8, async () => {
+			const cls = await page.locator('.chat-shell').getAttribute('class')
+			if (cls?.includes('is-swiping-layer1')) {
+				sawSwipingClassOnLayer1 = true
+			}
+		})
+		expect(sawSwipingClassOnLayer1).toBe(true)
+		await expect(page.locator('.chat-shell')).toHaveClass(/mobile-channels/)
+
+		// 2. チャンネル → スレッドを開くときのスライドイン開始位置が右端 (100%) から始まること
+		await page.getByRole('button', { name: /general/ }).click()
+		await expect(page.locator('.chat-shell')).toHaveClass(/mobile-messages/)
+
+		await page.evaluate(() => {
+			;(window as unknown as { __threadStartTx?: number }).__threadStartTx = undefined
+			const obs = new MutationObserver((mutations) => {
+				for (const m of mutations) {
+					for (const node of Array.from(m.addedNodes)) {
+						if (node instanceof HTMLElement && node.classList.contains('thread-pane')) {
+							const tr = getComputedStyle(node).transform
+							const match = tr.match(/matrix\([^,]+,[^,]+,[^,]+,[^,]+,([^,]+),/)
+							;(window as unknown as { __threadStartTx?: number }).__threadStartTx = match
+								? parseFloat(match[1])
+								: 0
+							obs.disconnect()
+						}
+					}
+				}
+			})
+			obs.observe(document.querySelector('.chat-shell')!, { childList: true })
+		})
+		await page.locator('#chat-msg-1700000080\\.000100 .thread-open-btn').click()
+		await expect(page.locator('.chat-shell')).toHaveClass(/mobile-thread/)
+		const threadStartTx = await page.evaluate(
+			() => (window as unknown as { __threadStartTx?: number }).__threadStartTx ?? 0
+		)
+		expect(threadStartTx).toBeGreaterThanOrEqual(viewport.width * 0.8)
+
+		// わずかなタッチスワイプでゆっくり放した時は戻らないこと
+		await performTouchEdgeSwipeRight(page, cdp, 10, 48, 12, 25)
+		await expect(page.locator('.chat-shell')).toHaveClass(/mobile-thread/)
+
+		// 十分なタッチスワイプ中に指追従クラスが付与され、スレッド → チャンネルへ戻ること
+		let sawSwipingClassOnThread = false
+		await performTouchEdgeSwipeRight(page, cdp, 8, 260, 8, 8, async () => {
+			const cls = await page.locator('.chat-shell').getAttribute('class')
+			if (cls?.includes('is-swiping-thread')) {
+				sawSwipingClassOnThread = true
+			}
+		})
+		expect(sawSwipingClassOnThread).toBe(true)
+		await expect(page.locator('.chat-shell')).toHaveClass(/mobile-messages/)
+		await expect(page).toHaveURL(/\/channels\/C01GENERAL$/)
+	})
+
+	test('PC 幅でのスレッド切替後に × で閉じると前スレッドに戻らず、NOTIFICATION_CLICK で遷移できる', async ({
+		page
+	}) => {
+		await page.setViewportSize({ width: 1280, height: 800 })
+		await loginAsTestUser(page)
+
+		await page.getByRole('button', { name: /general/ }).click()
+		await expect(page.locator('#chat-msg-1700000080\\.000100')).toBeVisible()
+
+		// スレッド T1 (#079) を開く
+		await page.locator('#chat-msg-1700000079\\.000100 .thread-open-btn').click()
+		await expect(page.locator('.thread-pane')).toBeVisible()
+		await expect(page).toHaveURL(/\/channels\/C01GENERAL\/threads\/1700000079\.000100$/)
+
+		// タイムラインから別スレッド T2 (#080) に切り替える
+		await page.locator('#chat-msg-1700000080\\.000100 .thread-open-btn').click()
+		await expect(page).toHaveURL(/\/channels\/C01GENERAL\/threads\/1700000080\.000100$/)
+
+		// × ボタンで閉じたとき T1 に戻らず、スレッドペインが閉じてチャンネル URL になること
+		await page.locator('.thread-header .desktop-only-btn').click()
+		await expect(page.locator('.thread-pane')).toBeHidden()
+		await expect(page).toHaveURL(/\/channels\/C01GENERAL$/)
+
+		// Service Worker からの NOTIFICATION_CLICK postMessage を受信して該当スレッドへ遷移すること
+		await page.evaluate(() => {
+			navigator.serviceWorker.dispatchEvent(
+				new MessageEvent('message', {
+					data: { type: 'NOTIFICATION_CLICK', url: '/alerts/42' }
+				})
+			)
+		})
+		await expect(page).toHaveURL(/\/alerts\/42$/)
+		await expect(page.locator('.thread-pane')).toBeVisible()
+		await expect(page.getByText('スレッド返信 #25')).toBeVisible()
 	})
 })

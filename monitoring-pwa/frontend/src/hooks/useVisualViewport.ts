@@ -10,6 +10,7 @@ function isEditableElement(el: Element | null): boolean {
 /**
  * iOS Safari / PWA のソフトウェアキーボード開閉に合わせて
  * --app-height / --app-offset-top を更新し、閉じた際のスクロールずれを戻すフックである。
+ * あわせて通常画面でのピンチズーム (iOS gesturestart 等) を抑止する。
  */
 export function useVisualViewport(): void {
 	useEffect(() => {
@@ -17,6 +18,7 @@ export function useVisualViewport(): void {
 		let maxObservedHeight = window.innerHeight
 		let wasKeyboardOpen = false
 		let resetTimer: number | null = null
+		let multiTouchMoveAttached = false
 
 		const syncViewport = () => {
 			const vv = window.visualViewport
@@ -75,6 +77,43 @@ export function useVisualViewport(): void {
 			syncViewport()
 		}
 
+		// iOS Safari は user-scalable=no を無視してピンチ拡大を許すため gesture* イベントを抑止する
+		const preventGestureZoom = (e: Event) => {
+			if (e.cancelable) {
+				e.preventDefault()
+			}
+		}
+
+		const preventMultiTouchMove = (e: TouchEvent) => {
+			if (e.touches.length >= 2 && e.cancelable) {
+				e.preventDefault()
+			}
+		}
+
+		const detachMultiTouchMove = () => {
+			if (!multiTouchMoveAttached) return
+			multiTouchMoveAttached = false
+			window.removeEventListener('touchmove', preventMultiTouchMove)
+			window.removeEventListener('touchend', handleMultiTouchEnd)
+			window.removeEventListener('touchcancel', handleMultiTouchEnd)
+		}
+
+		function handleMultiTouchEnd(e: TouchEvent) {
+			if (e.touches.length < 2) {
+				detachMultiTouchMove()
+			}
+		}
+
+		// 1 本指の通常スクロールを妨げないよう、2 本指以上のタッチ開始時のみ touchmove (passive: false) を付ける
+		const handlePinchTouchStart = (e: TouchEvent) => {
+			if (e.touches.length >= 2 && !multiTouchMoveAttached) {
+				multiTouchMoveAttached = true
+				window.addEventListener('touchmove', preventMultiTouchMove, { passive: false })
+				window.addEventListener('touchend', handleMultiTouchEnd, { passive: true })
+				window.addEventListener('touchcancel', handleMultiTouchEnd, { passive: true })
+			}
+		}
+
 		syncViewport()
 
 		const vv = window.visualViewport
@@ -85,11 +124,15 @@ export function useVisualViewport(): void {
 		window.addEventListener('resize', handleOrientationOrResize)
 		document.addEventListener('focusin', handleFocusIn)
 		document.addEventListener('focusout', handleFocusOut)
+		document.addEventListener('gesturestart', preventGestureZoom, { passive: false })
+		document.addEventListener('gesturechange', preventGestureZoom, { passive: false })
+		document.addEventListener('touchstart', handlePinchTouchStart, { passive: true })
 
 		return () => {
 			if (resetTimer !== null) {
 				window.clearTimeout(resetTimer)
 			}
+			detachMultiTouchMove()
 			if (vv) {
 				vv.removeEventListener('resize', syncViewport)
 				vv.removeEventListener('scroll', syncViewport)
@@ -97,6 +140,9 @@ export function useVisualViewport(): void {
 			window.removeEventListener('resize', handleOrientationOrResize)
 			document.removeEventListener('focusin', handleFocusIn)
 			document.removeEventListener('focusout', handleFocusOut)
+			document.removeEventListener('gesturestart', preventGestureZoom)
+			document.removeEventListener('gesturechange', preventGestureZoom)
+			document.removeEventListener('touchstart', handlePinchTouchStart)
 		}
 	}, [])
 }
