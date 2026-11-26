@@ -68,6 +68,94 @@ function makeThreadReplies(parentTs, channelId = 'C01GENERAL') {
 	return replies
 }
 
+const alertDetails = JSON.stringify({
+	status: 'firing',
+	labels: { alertname: 'KubeJobFailed', namespace: 'monitoring', job_name: 'backup-1', severity: 'warning' },
+	annotations: { summary: 'Job failed to complete.', description: 'Job monitoring/backup-1 failed to complete.' },
+	generatorURL: 'http://vmalert/graph?g0.expr=up'
+})
+
+const alertMessages = [
+	{
+		id: 501,
+		channel_id: 'C01ALERTS',
+		ts: '1700002000.000100',
+		bot_id: 'B01ALERT',
+		username: 'Alertmanager',
+		text: '🔥 **[firing] KubeJobFailed**\nJob failed to complete.',
+		level: 'warning',
+		source_kind: 'alert',
+		source_id: 42,
+		alert_status: 'firing',
+		details: alertDetails,
+		fired_at: new Date(1700002000 * 1000).toISOString(),
+		created_at: new Date(1700002000 * 1000).toISOString(),
+		updated_at: new Date(1700002000 * 1000).toISOString()
+	},
+	{
+		id: 502,
+		channel_id: 'C01ALERTS',
+		ts: '1700002100.000100',
+		bot_id: 'B01ALERT',
+		username: 'Alertmanager',
+		text: '✅ **[resolved] NodeHighCPU**\nCPU usage is back to normal.',
+		level: 'success',
+		source_kind: 'alert',
+		source_id: 43,
+		alert_status: 'resolved',
+		fired_at: new Date(1700002100 * 1000).toISOString(),
+		resolved_at: new Date(1700002400 * 1000).toISOString(),
+		created_at: new Date(1700002100 * 1000).toISOString(),
+		updated_at: new Date(1700002400 * 1000).toISOString()
+	}
+]
+
+const unifiedNotifications = [
+	{
+		uid: 'alert-42',
+		id: 42,
+		kind: 'alert',
+		source: 'alertmanager',
+		title: 'KubeJobFailed',
+		body: 'Job failed to complete.',
+		status: 'firing',
+		level: 'warning',
+		details: alertDetails,
+		timestamp: new Date(1700002000 * 1000).toISOString(),
+		fired_at: new Date(1700002000 * 1000).toISOString(),
+		created_at: new Date(1700002000 * 1000).toISOString(),
+		updated_at: new Date(1700002000 * 1000).toISOString()
+	},
+	{
+		uid: 'alert-43',
+		id: 43,
+		kind: 'alert',
+		source: 'alertmanager',
+		title: 'NodeHighCPU',
+		body: 'CPU usage is back to normal.',
+		status: 'resolved',
+		level: 'success',
+		timestamp: new Date(1700002400 * 1000).toISOString(),
+		fired_at: new Date(1700002100 * 1000).toISOString(),
+		resolved_at: new Date(1700002400 * 1000).toISOString(),
+		created_at: new Date(1700002100 * 1000).toISOString(),
+		updated_at: new Date(1700002400 * 1000).toISOString()
+	},
+	{
+		uid: 'notification-7',
+		id: 7,
+		kind: 'notification',
+		source: 'argocd',
+		title: 'Argo CD: monitoring-pwa を同期した',
+		body: 'Sync succeeded (revision abc1234).',
+		status: 'notice',
+		level: 'success',
+		timestamp: new Date(1700002500 * 1000).toISOString(),
+		created_at: new Date(1700002500 * 1000).toISOString(),
+		updated_at: new Date(1700002500 * 1000).toISOString()
+	}
+]
+
 const sseClients = new Set()
 
 function sendJson(res, status, data, headers = {}) {
@@ -144,6 +232,14 @@ const server = http.createServer(async (req, res) => {
 				bot: { id: 'B01BOT', user_id: 'U01BOT', name: 'nuage-bot', online: true },
 				channels: [
 					{
+						id: 'C01ALERTS',
+						name: 'alertmanager',
+						is_channel: true,
+						is_im: false,
+						created_at: '2026-11-01T00:00:00Z',
+						unread_count: 0
+					},
+					{
 						id: 'C01GENERAL',
 						name: 'general',
 						is_channel: true,
@@ -203,6 +299,10 @@ const server = http.createServer(async (req, res) => {
 			}
 
 			const before = url.searchParams.get('before')
+			if (channelId === 'C01ALERTS') {
+				sendJson(res, 200, { messages: before ? [] : alertMessages, has_more: false })
+				return
+			}
 			if (channelId === 'D01BOT') {
 				sendJson(res, 200, { messages: before ? [] : dmMessages, has_more: false })
 				return
@@ -229,6 +329,11 @@ const server = http.createServer(async (req, res) => {
 		if (threadMatch) {
 			const channelId = decodeURIComponent(threadMatch[1])
 			const ts = decodeURIComponent(threadMatch[2])
+			const alertParent = alertMessages.find((m) => m.ts === ts)
+			if (alertParent) {
+				sendJson(res, 200, { parent: alertParent, replies: [] })
+				return
+			}
 			const parent =
 				allGeneralMessages.find((m) => m.ts === ts) || allGeneralMessages[allGeneralMessages.length - 1]
 			sendJson(res, 200, {
@@ -239,11 +344,20 @@ const server = http.createServer(async (req, res) => {
 		}
 
 		const dlMatch = pathname.match(/^\/api\/deeplink\/(alert|notification)\/(\d+)$/)
+		if (dlMatch && dlMatch[1] === 'alert' && dlMatch[2] === '42') {
+			sendJson(res, 200, { channel_id: 'C01ALERTS', ts: alertMessages[0].ts })
+			return
+		}
 		if (dlMatch) {
 			sendJson(res, 200, {
 				channel_id: 'C01GENERAL',
 				ts: allGeneralMessages[allGeneralMessages.length - 1].ts
 			})
+			return
+		}
+
+		if (pathname === '/api/notifications') {
+			sendJson(res, 200, unifiedNotifications)
 			return
 		}
 

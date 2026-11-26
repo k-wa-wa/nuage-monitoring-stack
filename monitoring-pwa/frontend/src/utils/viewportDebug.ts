@@ -2,7 +2,7 @@
  * 実機 (iOS Safari・ホーム画面 PWA) で、画面の高さとスクロールの値を確かめるための一時的な計測表示である。
  * URL に `?debug=viewport` を付けて開くと有効になり、`?debug=off` で消える (localStorage に覚える)。
  * iOS のホーム画面 PWA は Safari と localStorage を共有せず URL も打てないため、
- * 画面上部の「Nuage Notify」の文字を 2 秒以内に 5 回タップしても切り替えられる。
+ * 「Nuage Notify」の大見出しを 2 秒以内に 5 回タップするか、設定画面のスイッチでも切り替えられる。
  * 原因が分かったら取り除く。
  */
 
@@ -18,6 +18,25 @@ function describe(el: EventTarget | null): string {
 			? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.')
 			: ''
 	return `${el.tagName.toLowerCase()}${id}${cls}`
+}
+
+export function isViewportDebugEnabled(): boolean {
+	try {
+		return localStorage.getItem(STORAGE_KEY) === '1'
+	} catch {
+		return false
+	}
+}
+
+// setViewportDebugEnabled は計測表示の有無を覚えて、読み込み直す。
+export function setViewportDebugEnabled(enabled: boolean): void {
+	try {
+		if (enabled) localStorage.setItem(STORAGE_KEY, '1')
+		else localStorage.removeItem(STORAGE_KEY)
+	} catch {
+		return
+	}
+	window.location.reload()
 }
 
 function isEnabled(): boolean {
@@ -38,7 +57,7 @@ function installTapToggle(): void {
 		'click',
 		(e) => {
 			const target = e.target instanceof Element ? e.target : null
-			if (!target?.closest('.sidebar-workspace-title, .login-title')) return
+			if (!target?.closest('.app-title-tap')) return
 			const now = Date.now()
 			if (now - firstAt > 2000) {
 				count = 0
