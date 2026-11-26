@@ -11,8 +11,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/alertmanager"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/config"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/notify"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/realtime"
 )
@@ -49,7 +49,7 @@ func TestEndToEndAuthBoundary(t *testing.T) {
 		t.Fatalf("EnsureUserChannels failed: %v", err)
 	}
 
-	e := NewRouter(cfg, db, realtime.NewHub(), noopSender{}, alertmanager.NewClient("http://localhost:9093"))
+	e := NewRouter(cfg, db, realtime.NewHub(), noopSender{}, notify.New(db, nil, noopSender{}))
 
 	// 1. /health と /webhook/* は認証不要
 	healthRec := httptest.NewRecorder()
@@ -67,7 +67,7 @@ func TestEndToEndAuthBoundary(t *testing.T) {
 	}
 
 	// 2. /api/* は未ログイン時 401
-	for _, path := range []string{"/api/auth/me", "/api/bootstrap", "/api/notifications", "/api/channels"} {
+	for _, path := range []string{"/api/auth/me", "/api/bootstrap", "/api/activity", "/api/channels"} {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusUnauthorized {
@@ -84,7 +84,7 @@ func TestEndToEndAuthBoundary(t *testing.T) {
 		t.Fatalf("expected 401 for wrong passphrase, got %d", badRec.Code)
 	}
 
-	// 4. Alice でログイン -> Cookie で /api/bootstrap と /api/notifications が通る
+	// 4. Alice でログイン -> Cookie で /api/bootstrap が通る
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"passphrase":"alice-secret"}`))
 	loginReq.Header.Set("Content-Type", "application/json")
 	loginRec := httptest.NewRecorder()
@@ -164,7 +164,7 @@ func TestLoginRateLimitBehindTrustedProxy(t *testing.T) {
 		t.Fatalf("EnsureUserChannels failed: %v", err)
 	}
 
-	e := NewRouter(cfg, db, realtime.NewHub(), noopSender{}, alertmanager.NewClient("http://localhost:9093"))
+	e := NewRouter(cfg, db, realtime.NewHub(), noopSender{}, notify.New(db, nil, noopSender{}))
 
 	// 1. HAProxy (10.20.1.x) -> Cilium Envoy (10.244.x.x) の実経路で、
 	// クライアントが偽装した XFF 左端は無視され、lb の IP (10.20.1.21) が返ること。

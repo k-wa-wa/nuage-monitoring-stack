@@ -5,67 +5,60 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
+
+	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
-func TestInitDB(t *testing.T) {
-	t.Run("正常に初期化できること", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		dbPath := filepath.Join(tmpDir, "test.db")
+func tableExists(t *testing.T, db *DB, name string) bool {
+	t.Helper()
+	var n int
+	if err := db.conn.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&n); err != nil {
+		t.Fatalf("sqlite_master query failed: %v", err)
+	}
+	return n > 0
+}
 
-		db, err := InitDB(dbPath)
+func TestInitDB(t *testing.T) {
+	t.Run("新しい DB を作り、版を記録すること", func(t *testing.T) {
+		db, err := InitDB(filepath.Join(t.TempDir(), "test.db"))
 		if err != nil {
 			t.Fatalf("InitDB failed: %v", err)
 		}
 		defer db.Close()
 
-		// 正常にテーブルが作られ、書き込み可能であること
-		id, err := db.SaveNotificationWithSource("title", "body", "https://example.com", "info", "details", "generic")
-		if err != nil {
-			t.Fatalf("SaveNotificationWithSource failed: %v", err)
+		for _, table := range []string{"subscriptions", "channels", "messages", "channel_reads", "alerts"} {
+			if !tableExists(t, db, table) {
+				t.Errorf("table %s should exist", table)
+			}
 		}
-
-		got, err := db.GetNotificationByID(id)
-		if err != nil {
-			t.Fatalf("GetNotificationByID failed: %v", err)
+		if tableExists(t, db, "notifications") {
+			t.Errorf("notifications table should not exist")
 		}
-		if got.Title != "title" || got.URL != "https://example.com" || got.Source != "generic" {
-			t.Fatalf("unexpected notification: %+v", got)
+		var version int
+		if err := db.conn.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != schemaVersion {
+			t.Fatalf("expected user_version %d, got %d (err=%v)", schemaVersion, version, err)
 		}
 	})
 
-	t.Run("既存DBからの後方互換マイグレーションができること", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		dbPath := filepath.Join(tmpDir, "legacy.db")
-
-		// details / source カラムを持たない旧スキーマの DB を事前作成する
+	t.Run("古い作りの DB は、購読だけ残して作り直すこと", func(t *testing.T) {
+		dbPath := filepath.Join(t.TempDir(), "legacy.db")
 		conn, err := sql.Open("sqlite", dbPath)
 		if err != nil {
 			t.Fatalf("sql.Open failed: %v", err)
 		}
+		// master の版の作り (user_id の無い subscriptions、notifications、id を持つ alerts)
 		_, err = conn.Exec(`
-			CREATE TABLE subscriptions (
-				endpoint TEXT PRIMARY KEY,
-				p256dh TEXT NOT NULL,
-				auth TEXT NOT NULL,
-				created_at DATETIME NOT NULL
-			);
-			CREATE TABLE notifications (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				title TEXT NOT NULL,
-				body TEXT NOT NULL,
-				url TEXT,
-				level TEXT NOT NULL,
-				created_at DATETIME NOT NULL
-			);
-			INSERT INTO notifications (title, body, url, level, created_at)
-			VALUES ('legacy-title', 'legacy-body', 'https://argocd.wpcapp.net', 'info', '2026-01-01T00:00:00Z');
+			CREATE TABLE subscriptions (endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL, created_at DATETIME NOT NULL);
+			INSERT INTO subscriptions VALUES ('https://push.example/1', 'p', 'a', '2026-01-01T00:00:00Z');
+			CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT NOT NULL, url TEXT, level TEXT NOT NULL, created_at DATETIME NOT NULL);
+			INSERT INTO notifications (title, body, url, level, created_at) VALUES ('t', 'b', '', 'info', '2026-01-01T00:00:00Z');
+			CREATE TABLE alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, fingerprint TEXT UNIQUE NOT NULL, alertname TEXT NOT NULL, status TEXT NOT NULL);
+			INSERT INTO alerts (fingerprint, alertname, status) VALUES ('fp', 'A', 'firing');
 		`)
+		conn.Close()
 		if err != nil {
-			conn.Close()
 			t.Fatalf("legacy setup failed: %v", err)
 		}
-		conn.Close()
 
 		db, err := InitDB(dbPath)
 		if err != nil {
@@ -73,17 +66,44 @@ func TestInitDB(t *testing.T) {
 		}
 		defer db.Close()
 
-		notes, err := db.ListNotifications(10)
-		if err != nil {
-			t.Fatalf("ListNotifications failed: %v", err)
+		if tableExists(t, db, "notifications") {
+			t.Errorf("legacy notifications table should be dropped")
 		}
-		if len(notes) != 1 || notes[0].Title != "legacy-title" || notes[0].URL != "https://argocd.wpcapp.net" {
-			t.Fatalf("legacy data was lost or corrupted: %+v", notes)
+		if open, err := db.ListOpenAlerts(); err != nil || len(open) != 0 {
+			t.Errorf("legacy alerts should be dropped: %+v (err=%v)", open, err)
 		}
+		subs := db.List()
+		if len(subs) != 1 || subs[0].Endpoint != "https://push.example/1" {
+			t.Fatalf("subscriptions should be kept, got %+v", subs)
+		}
+		// user_id 列が足されていて、ユーザーに紐づけられること
+		if err := db.AddForUser(webpush.Subscription{Endpoint: "https://push.example/1"}, "U01ALICE"); err != nil {
+			t.Fatalf("AddForUser failed: %v", err)
+		}
+		if got := db.ListByUser("U01ALICE"); len(got) != 1 {
+			t.Fatalf("expected subscription bound to user, got %+v", got)
+		}
+	})
 
-		// マイグレーション後の新規書き込みも動作すること
-		if _, err := db.SaveNotificationWithSource("new", "body", "", "info", "det", "keel"); err != nil {
-			t.Fatalf("SaveNotificationWithSource after migration failed: %v", err)
+	t.Run("同じ版の DB は作り直さないこと", func(t *testing.T) {
+		dbPath := filepath.Join(t.TempDir(), "keep.db")
+		db, err := InitDB(dbPath)
+		if err != nil {
+			t.Fatalf("InitDB failed: %v", err)
+		}
+		if _, err := db.CreateMessage(CreateMessageParams{ChannelID: ChannelGeneral, Username: "a", Text: "keep me"}); err != nil {
+			t.Fatalf("CreateMessage failed: %v", err)
+		}
+		db.Close()
+
+		db, err = InitDB(dbPath)
+		if err != nil {
+			t.Fatalf("re-InitDB failed: %v", err)
+		}
+		defer db.Close()
+		msgs, _, err := db.ListChannelMessagesAsc(ChannelGeneral, "", 10)
+		if err != nil || len(msgs) != 1 {
+			t.Fatalf("messages should survive restart, got %d (err=%v)", len(msgs), err)
 		}
 	})
 
@@ -118,39 +138,39 @@ func TestInitDB(t *testing.T) {
 	})
 }
 
-func TestAlertAndFingerprint(t *testing.T) {
-	tmpDir := t.TempDir()
-	db, err := InitDB(filepath.Join(tmpDir, "alerts.db"))
-	if err != nil {
-		t.Fatalf("InitDB failed: %v", err)
-	}
-	defer db.Close()
-
+func TestFingerprintIsOrderIndependent(t *testing.T) {
 	fp1 := GenerateFingerprint(map[string]string{"alertname": "HighCPU", "pod": "api-1", "namespace": "default"})
 	fp2 := GenerateFingerprint(map[string]string{"namespace": "default", "alertname": "HighCPU", "pod": "api-1"})
 	if fp1 != fp2 {
 		t.Fatalf("fingerprint should be order-independent: %s != %s", fp1, fp2)
 	}
+}
 
-	saved, err := db.UpsertAlert(fp1, "HighCPU", "firing", "error", "CPU high", "desc", "http://grafana/explore", `{"labels":{"alertname":"HighCPU"}}`)
+func TestAlertState(t *testing.T) {
+	db, err := InitDB(filepath.Join(t.TempDir(), "alerts.db"))
 	if err != nil {
-		t.Fatalf("UpsertAlert failed: %v", err)
+		t.Fatalf("InitDB failed: %v", err)
 	}
+	defer db.Close()
 
-	got, err := db.GetAlertByID(saved.ID)
-	if err != nil {
-		t.Fatalf("GetAlertByID failed: %v", err)
+	if st, err := db.GetAlertState("fp-1"); err != nil || st != nil {
+		t.Fatalf("unknown fingerprint should return nil, got %+v (err=%v)", st, err)
 	}
-	if got.Fingerprint != fp1 || got.Status != "firing" {
-		t.Fatalf("unexpected alert: %+v", got)
+	if err := db.SetAlertOpenThread("fp-1", "HighCPU", "1700000000.000001"); err != nil {
+		t.Fatalf("SetAlertOpenThread failed: %v", err)
 	}
-
-	time.Sleep(5 * time.Millisecond)
-	resolved, err := db.UpsertAlert(fp1, "HighCPU", "resolved", "success", "CPU high", "desc", "http://grafana/explore", `{"labels":{"alertname":"HighCPU"}}`)
-	if err != nil {
-		t.Fatalf("UpsertAlert resolve failed: %v", err)
+	if err := db.SetAlertOpenThread("fp-2", "DiskFull", ""); err != nil {
+		t.Fatalf("SetAlertOpenThread failed: %v", err)
 	}
-	if resolved.ID != saved.ID || resolved.Status != "resolved" || resolved.ResolvedAt == nil {
-		t.Fatalf("unexpected resolved alert: %+v", resolved)
+	open, err := db.ListOpenAlerts()
+	if err != nil || len(open) != 1 || open[0].Fingerprint != "fp-1" || open[0].OpenThreadTS != "1700000000.000001" {
+		t.Fatalf("expected only fp-1 to be open, got %+v (err=%v)", open, err)
+	}
+	if err := db.SetAlertOpenThread("fp-1", "HighCPU", ""); err != nil {
+		t.Fatalf("closing failed: %v", err)
+	}
+	st, err := db.GetAlertState("fp-1")
+	if err != nil || st == nil || st.OpenThreadTS != "" {
+		t.Fatalf("expected fp-1 closed, got %+v (err=%v)", st, err)
 	}
 }

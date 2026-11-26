@@ -49,7 +49,6 @@ export interface ChatMessage {
 	blocks?: SlackBlock[]
 	level?: 'info' | 'success' | 'warning' | 'error' | string
 	source_kind?: 'alert' | 'notification' | string
-	source_id?: number
 	details?: string
 	url?: string
 	alert_status?: 'firing' | 'resolved' | string
@@ -66,6 +65,19 @@ export interface SearchResult {
 	channel_name: string
 	is_im: boolean
 	message: ChatMessage
+}
+
+// 通知タブの 1 件 (アラート・通知のスレッドの親メッセージ)
+export interface ActivityItem {
+	channel_id: string
+	channel_name: string
+	message: ChatMessage
+}
+
+export interface ActivityResponse {
+	items: ActivityItem[]
+	has_more: boolean
+	firing_count: number
 }
 
 export interface BootstrapResponse {

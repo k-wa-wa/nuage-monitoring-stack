@@ -85,7 +85,6 @@ const alertMessages = [
 		text: '🔥 **[firing] KubeJobFailed**\nJob failed to complete.',
 		level: 'warning',
 		source_kind: 'alert',
-		source_id: 42,
 		alert_status: 'firing',
 		details: alertDetails,
 		fired_at: new Date(1700002000 * 1000).toISOString(),
@@ -101,7 +100,6 @@ const alertMessages = [
 		text: '✅ **[resolved] NodeHighCPU**\nCPU usage is back to normal.',
 		level: 'success',
 		source_kind: 'alert',
-		source_id: 43,
 		alert_status: 'resolved',
 		fired_at: new Date(1700002100 * 1000).toISOString(),
 		resolved_at: new Date(1700002400 * 1000).toISOString(),
@@ -110,51 +108,19 @@ const alertMessages = [
 	}
 ]
 
-const unifiedNotifications = [
-	{
-		uid: 'alert-42',
-		id: 42,
-		kind: 'alert',
-		source: 'alertmanager',
-		title: 'KubeJobFailed',
-		body: 'Job failed to complete.',
-		status: 'firing',
-		level: 'warning',
-		details: alertDetails,
-		timestamp: new Date(1700002000 * 1000).toISOString(),
-		fired_at: new Date(1700002000 * 1000).toISOString(),
-		created_at: new Date(1700002000 * 1000).toISOString(),
-		updated_at: new Date(1700002000 * 1000).toISOString()
-	},
-	{
-		uid: 'alert-43',
-		id: 43,
-		kind: 'alert',
-		source: 'alertmanager',
-		title: 'NodeHighCPU',
-		body: 'CPU usage is back to normal.',
-		status: 'resolved',
-		level: 'success',
-		timestamp: new Date(1700002400 * 1000).toISOString(),
-		fired_at: new Date(1700002100 * 1000).toISOString(),
-		resolved_at: new Date(1700002400 * 1000).toISOString(),
-		created_at: new Date(1700002100 * 1000).toISOString(),
-		updated_at: new Date(1700002400 * 1000).toISOString()
-	},
-	{
-		uid: 'notification-7',
-		id: 7,
-		kind: 'notification',
-		source: 'argocd',
-		title: 'Argo CD: monitoring-pwa を同期した',
-		body: 'Sync succeeded (revision abc1234).',
-		status: 'notice',
-		level: 'success',
-		timestamp: new Date(1700002500 * 1000).toISOString(),
-		created_at: new Date(1700002500 * 1000).toISOString(),
-		updated_at: new Date(1700002500 * 1000).toISOString()
-	}
-]
+// 通知タブ (/api/activity) に出す通知 (#argocd)
+const argoNotice = {
+	id: 601,
+	channel_id: 'C01ARGO',
+	ts: '1700002500.000100',
+	bot_id: 'B00SYSTEM',
+	username: 'Argo CD',
+	text: '**Argo CD: monitoring-pwa を同期した**\nSync succeeded (revision abc1234).',
+	level: 'success',
+	source_kind: 'notification',
+	created_at: new Date(1700002500 * 1000).toISOString(),
+	updated_at: new Date(1700002500 * 1000).toISOString()
+}
 
 const sseClients = new Set()
 
@@ -343,21 +309,26 @@ const server = http.createServer(async (req, res) => {
 			return
 		}
 
-		const dlMatch = pathname.match(/^\/api\/deeplink\/(alert|notification)\/(\d+)$/)
-		if (dlMatch && dlMatch[1] === 'alert' && dlMatch[2] === '42') {
-			sendJson(res, 200, { channel_id: 'C01ALERTS', ts: alertMessages[0].ts })
-			return
-		}
-		if (dlMatch) {
-			sendJson(res, 200, {
-				channel_id: 'C01GENERAL',
-				ts: allGeneralMessages[allGeneralMessages.length - 1].ts
-			})
-			return
-		}
-
-		if (pathname === '/api/notifications') {
-			sendJson(res, 200, unifiedNotifications)
+		if (pathname === '/api/activity') {
+			const filter = url.searchParams.get('filter') || 'all'
+			const all = [
+				{ channel_id: 'C01ARGO', channel_name: 'argocd', message: argoNotice },
+				...alertMessages
+					.slice()
+					.reverse()
+					.map((m) => ({ channel_id: 'C01ALERTS', channel_name: 'alertmanager', message: m }))
+			]
+			const items = all.filter(({ message: m }) =>
+				filter === 'firing'
+					? m.source_kind === 'alert' && m.alert_status === 'firing'
+					: filter === 'resolved'
+						? m.source_kind === 'alert' && m.alert_status === 'resolved'
+						: filter === 'notice'
+							? m.source_kind === 'notification'
+							: true
+			)
+			const firing = alertMessages.filter((m) => m.alert_status === 'firing').length
+			sendJson(res, 200, { items, has_more: false, firing_count: firing })
 			return
 		}
 

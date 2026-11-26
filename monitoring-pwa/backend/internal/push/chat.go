@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -54,7 +53,6 @@ type Message struct {
 	Blocks      json.RawMessage `json:"blocks,omitempty"`
 	Level       string          `json:"level,omitempty"`
 	SourceKind  string          `json:"source_kind,omitempty"`
-	SourceID    int64           `json:"source_id,omitempty"`
 	Details     string          `json:"details,omitempty"`
 	URL         string          `json:"url,omitempty"`
 	AlertStatus string          `json:"alert_status,omitempty"`
@@ -109,30 +107,6 @@ func InferNotificationSource(title, explicitSource string) string {
 	return "generic"
 }
 
-// IsLegacyAlertmanagerNotification は過去の二重保存によって notifications テーブルに入った Alertmanager 通知を判定する。
-func IsLegacyAlertmanagerNotification(n Notification) bool {
-	if n.Source == "alertmanager" {
-		return true
-	}
-	if n.Source != "" {
-		return false
-	}
-	if !strings.HasPrefix(n.Title, "[firing] ") && !strings.HasPrefix(n.Title, "[resolved] ") {
-		return false
-	}
-	if n.Details == "" {
-		return false
-	}
-	var parsed struct {
-		Labels      map[string]string `json:"labels"`
-		Annotations map[string]string `json:"annotations"`
-	}
-	if err := json.Unmarshal([]byte(n.Details), &parsed); err != nil {
-		return false
-	}
-	return len(parsed.Labels) > 0 || len(parsed.Annotations) > 0
-}
-
 func (db *DB) migrateChatSchema() error {
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS channels (
@@ -157,7 +131,6 @@ func (db *DB) migrateChatSchema() error {
 			blocks TEXT NOT NULL DEFAULT '',
 			level TEXT NOT NULL DEFAULT '',
 			source_kind TEXT NOT NULL DEFAULT '',
-			source_id INTEGER NOT NULL DEFAULT 0,
 			details TEXT NOT NULL DEFAULT '',
 			url TEXT NOT NULL DEFAULT '',
 			alert_status TEXT NOT NULL DEFAULT '',
@@ -168,7 +141,7 @@ func (db *DB) migrateChatSchema() error {
 			UNIQUE(channel_id, ts)
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_channel_thread_ts ON messages(channel_id, thread_ts, ts);`,
-		`CREATE INDEX IF NOT EXISTS idx_messages_source ON messages(source_kind, source_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_activity ON messages(source_kind, thread_ts, ts);`,
 		`CREATE TABLE IF NOT EXISTS channel_reads (
 			user_id TEXT NOT NULL,
 			channel_id TEXT NOT NULL,
@@ -202,211 +175,7 @@ func (db *DB) migrateChatSchema() error {
 		}
 	}
 
-	if err := db.seedLastTS(); err != nil {
-		return err
-	}
-
-	if err := db.backfillLegacyRecords(); err != nil {
-		return err
-	}
-
 	return nil
-}
-
-func (db *DB) seedLastTS() error {
-	var maxTS sql.NullString
-	if err := db.conn.QueryRow(`SELECT MAX(ts) FROM messages`).Scan(&maxTS); err != nil {
-		return err
-	}
-	if maxTS.Valid && maxTS.String != "" {
-		sec, seq := parseTS(maxTS.String)
-		db.tsMu.Lock()
-		db.lastTSSec = sec
-		db.lastTSSeq = seq
-		db.tsMu.Unlock()
-	}
-	return nil
-}
-
-func parseTS(ts string) (int64, int) {
-	parts := strings.SplitN(ts, ".", 2)
-	sec, _ := strconv.ParseInt(parts[0], 10, 64)
-	var seq int
-	if len(parts) == 2 {
-		seq, _ = strconv.Atoi(parts[1])
-	}
-	return sec, seq
-}
-
-// NextTS は Slack 互換の `"1700000000.000100"` 形式の一意かつ単調増加するタイムスタンプを生成する。
-func (db *DB) NextTS() string {
-	return db.nextTSAt(time.Now())
-}
-
-func (db *DB) nextTSAt(t time.Time) string {
-	db.tsMu.Lock()
-	defer db.tsMu.Unlock()
-
-	sec := t.Unix()
-	if sec < 0 {
-		sec = 0
-	}
-	if sec > db.lastTSSec {
-		db.lastTSSec = sec
-		db.lastTSSeq = 1
-	} else {
-		db.lastTSSeq++
-		if db.lastTSSeq >= 1000000 {
-			db.lastTSSec++
-			db.lastTSSeq = 1
-		}
-	}
-	return fmt.Sprintf("%010d.%06d", db.lastTSSec, db.lastTSSeq)
-}
-
-// backfillLegacyRecords は既存 DB の alerts / notifications レコードのうち messages に未取り込みのものを全件補完する。
-func (db *DB) backfillLegacyRecords() error {
-	// 1. alerts の全件取り込み (古い順)
-	alertRows, err := db.conn.Query(
-		`SELECT id, fingerprint, alertname, status, level, summary, description, url, details, fired_at, resolved_at, created_at, updated_at
-		 FROM alerts
-		 ORDER BY id ASC`,
-	)
-	if err != nil {
-		return err
-	}
-	alerts, err := scanAlerts(alertRows)
-	alertRows.Close()
-	if err != nil {
-		return err
-	}
-
-	for _, a := range alerts {
-		var count int
-		if err := db.conn.QueryRow(
-			`SELECT COUNT(*) FROM messages WHERE source_kind = 'alert' AND source_id = ?`, a.ID,
-		).Scan(&count); err != nil {
-			return err
-		}
-		if count > 0 {
-			continue
-		}
-
-		title := a.Alertname
-		if title == "" {
-			title = a.Summary
-		}
-		text := fmt.Sprintf("**[firing] %s**\n%s", title, a.Summary)
-		if a.Status == "resolved" && a.ResolvedAt == nil {
-			text = fmt.Sprintf("**[resolved] %s**\n%s", title, a.Summary)
-		}
-
-		parentTS := db.nextTSAt(a.FiredAt)
-		parentLevel := a.Level
-		if a.Status == "resolved" {
-			parentLevel = "success"
-		}
-
-		if _, err := db.conn.Exec(
-			`INSERT INTO messages (channel_id, ts, thread_ts, user_id, bot_id, username, text, blocks, level, source_kind, source_id, details, url, alert_status, fired_at, resolved_at, created_at, updated_at)
-			 VALUES (?, ?, '', ?, ?, 'Alertmanager', ?, '', ?, 'alert', ?, ?, ?, ?, ?, ?, ?, ?)`,
-			ChannelAlertmanager, parentTS, SystemBotUserID, SystemBotID, text, parentLevel, a.ID, a.Details, a.URL, a.Status, a.FiredAt, a.ResolvedAt, a.CreatedAt, a.UpdatedAt,
-		); err != nil {
-			return err
-		}
-
-		if a.Status == "resolved" && a.ResolvedAt != nil {
-			replyTS := db.nextTSAt(*a.ResolvedAt)
-			replyText := fmt.Sprintf("✅ **[resolved] %s**\nアラートが解決した。", title)
-			if _, err := db.conn.Exec(
-				`INSERT INTO messages (channel_id, ts, thread_ts, user_id, bot_id, username, text, blocks, level, source_kind, source_id, details, url, alert_status, fired_at, resolved_at, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, 'Alertmanager', ?, '', 'success', 'alert', ?, '', '', 'resolved', ?, ?, ?, ?)`,
-				ChannelAlertmanager, replyTS, parentTS, SystemBotUserID, SystemBotID, replyText, a.ID, a.FiredAt, a.ResolvedAt, *a.ResolvedAt, *a.ResolvedAt,
-			); err != nil {
-				return err
-			}
-		}
-	}
-
-	// 2. notifications の全件取り込み (古い順)
-	noteRows, err := db.conn.Query(
-		`SELECT id, title, body, url, level, details, source, created_at
-		 FROM notifications
-		 ORDER BY id ASC`,
-	)
-	if err != nil {
-		return err
-	}
-	var notes []Notification
-	for noteRows.Next() {
-		n, scanErr := scanNotification(noteRows)
-		if scanErr != nil {
-			noteRows.Close()
-			return scanErr
-		}
-		notes = append(notes, n)
-	}
-	if err := noteRows.Err(); err != nil {
-		noteRows.Close()
-		return err
-	}
-	noteRows.Close()
-
-	for _, n := range notes {
-		if IsLegacyAlertmanagerNotification(n) {
-			continue
-		}
-		var count int
-		if err := db.conn.QueryRow(
-			`SELECT COUNT(*) FROM messages WHERE source_kind = 'notification' AND source_id = ?`, n.ID,
-		).Scan(&count); err != nil {
-			return err
-		}
-		if count > 0 {
-			continue
-		}
-
-		source := InferNotificationSource(n.Title, n.Source)
-		chID := ChannelForSource(source)
-		username := usernameForSource(source)
-		text := formatNotificationText(n.Title, n.Body)
-		ts := db.nextTSAt(n.CreatedAt)
-
-		if _, err := db.conn.Exec(
-			`INSERT INTO messages (channel_id, ts, thread_ts, user_id, bot_id, username, text, blocks, level, source_kind, source_id, details, url, alert_status, created_at, updated_at)
-			 VALUES (?, ?, '', ?, ?, ?, ?, '', ?, 'notification', ?, ?, ?, '', ?, ?)`,
-			chID, ts, SystemBotUserID, SystemBotID, username, text, n.Level, n.ID, n.Details, n.URL, n.CreatedAt, n.CreatedAt,
-		); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func usernameForSource(source string) string {
-	switch strings.ToLower(strings.TrimSpace(source)) {
-	case "argocd":
-		return "Argo CD"
-	case "keel":
-		return "Keel"
-	case "alertmanager":
-		return "Alertmanager"
-	default:
-		return "Nuage Notify"
-	}
-}
-
-func formatNotificationText(title, body string) string {
-	title = strings.TrimSpace(title)
-	body = strings.TrimSpace(body)
-	if title == "" {
-		return body
-	}
-	if body == "" || body == title {
-		return fmt.Sprintf("**%s**", title)
-	}
-	return fmt.Sprintf("**%s**\n%s", title, body)
 }
 
 // EnsureUserChannels は宣言された全人間ユーザーに対応する bot DM チャンネルを作成する。
@@ -526,7 +295,6 @@ type CreateMessageParams struct {
 	Blocks      string
 	Level       string
 	SourceKind  string
-	SourceID    int64
 	Details     string
 	URL         string
 	AlertStatus string
@@ -535,24 +303,40 @@ type CreateMessageParams struct {
 }
 
 // CreateMessage は新規メッセージを保存し、採番された ts を持つ Message を返す。
+//
+// ts は Slack と同じ "秒.6桁" の形で、6 桁には DB が振る id の下 6 桁を使う。
+// プロセスのメモリに連番を持たないので、書き込む Pod が複数になっても ts はぶつからない
+// (id は DB が一意に振る。同じ秒に id が 100 万違う 2 件が入らない限り一意)。
 func (db *DB) CreateMessage(p CreateMessageParams) (*Message, error) {
 	now := time.Now()
-	ts := db.nextTSAt(now)
-	if p.Blocks == "" {
-		p.Blocks = ""
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return nil, err
 	}
-	res, err := db.conn.Exec(
+	defer tx.Rollback()
+
+	res, err := tx.Exec(
 		`INSERT INTO messages (
 			channel_id, ts, thread_ts, user_id, bot_id, username, text, blocks, level,
-			source_kind, source_id, details, url, alert_status, fired_at, resolved_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ChannelID, ts, p.ThreadTS, p.UserID, p.BotID, p.Username, p.Text, p.Blocks, p.Level,
-		p.SourceKind, p.SourceID, p.Details, p.URL, p.AlertStatus, p.FiredAt, p.ResolvedAt, now, now,
+			source_kind, details, url, alert_status, fired_at, resolved_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ChannelID, fmt.Sprintf("pending-%d", now.UnixNano()), p.ThreadTS, p.UserID, p.BotID, p.Username, p.Text, p.Blocks, p.Level,
+		p.SourceKind, p.Details, p.URL, p.AlertStatus, p.FiredAt, p.ResolvedAt, now, now,
 	)
 	if err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	ts := fmt.Sprintf("%010d.%06d", now.Unix(), id%1000000)
+	if _, err := tx.Exec(`UPDATE messages SET ts = ? WHERE id = ?`, ts, id); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	return db.GetMessageByID(id)
 }
 
@@ -573,137 +357,119 @@ func (db *DB) UpdateMessage(channelID, ts, text, blocks string) (*Message, error
 	return db.GetMessageByTS(channelID, ts)
 }
 
-// PostAlertChatMessage は Alertmanager の発報・解決を同じスレッドにまとめて保存する。
-// 返り値は (投稿したメッセージ, 親メッセージまたは更新された親メッセージ, error) である。
-func (db *DB) PostAlertChatMessage(alert *Alert, isNewCycle bool, title, summary, details, targetURL string) (*Message, *Message, error) {
-	return db.SyncAlertChatMessage(alert, isNewCycle, false, title, summary, details, targetURL)
+// AlertRootUpdate はアラートのスレッドの親メッセージ (ルート) に書き戻す状態である。
+type AlertRootUpdate struct {
+	Status     string
+	Level      string
+	ResolvedAt *time.Time
+	Details    string // 空なら変えない
+	URL        string // 空なら変えない
 }
 
-// SyncAlertChatMessage は Alertmanager の発報・解決をチャットスレッドへ反映する。
-// skipReply が true で既存スレッドが存在する場合は返信を作成せず親メッセージのみを更新する。
-func (db *DB) SyncAlertChatMessage(alert *Alert, isNewCycle, skipReply bool, title, summary, details, targetURL string) (*Message, *Message, error) {
-	if !isNewCycle {
-		// 既存の親スレッドを探し、状態遷移時のみ返信を足す
-		parent, err := db.GetLatestAlertParentMessage(alert.ID)
-		if err == nil && parent != nil {
-			var reply *Message
-			if !skipReply {
-				var replyText string
-				var replyLevel string
-				if alert.Status == "resolved" {
-					replyText = fmt.Sprintf("✅ **[resolved] %s**\nアラートが解決した。", title)
-					replyLevel = "success"
-				} else {
-					replyText = fmt.Sprintf("🔥 **[firing] %s**\n%s", title, summary)
-					replyLevel = alert.Level
-				}
-
-				reply, err = db.CreateMessage(CreateMessageParams{
-					ChannelID:   ChannelAlertmanager,
-					ThreadTS:    parent.TS,
-					UserID:      SystemBotUserID,
-					BotID:       SystemBotID,
-					Username:    "Alertmanager",
-					Text:        replyText,
-					Level:       replyLevel,
-					SourceKind:  "alert",
-					SourceID:    alert.ID,
-					AlertStatus: alert.Status,
-					FiredAt:     &alert.FiredAt,
-					ResolvedAt:  alert.ResolvedAt,
-				})
-				if err != nil {
-					return nil, nil, err
-				}
-			}
-
-			updatedParent, err := db.updateAlertParentMessage(parent.ID, alert, details, targetURL)
-			if err != nil {
-				if reply != nil {
-					return reply, parent, nil
-				}
-				return nil, nil, err
-			}
-			return reply, updatedParent, nil
-		}
-	}
-
-	// 新規親メッセージを作成
-	var icon string
-	if alert.Status == "resolved" {
-		icon = "✅"
-	} else {
-		icon = "🔥"
-	}
-	text := fmt.Sprintf("%s **[%s] %s**\n%s", icon, alert.Status, title, summary)
-	parent, err := db.CreateMessage(CreateMessageParams{
-		ChannelID:   ChannelAlertmanager,
-		UserID:      SystemBotUserID,
-		BotID:       SystemBotID,
-		Username:    "Alertmanager",
-		Text:        text,
-		Level:       alert.Level,
-		SourceKind:  "alert",
-		SourceID:    alert.ID,
-		Details:     details,
-		URL:         targetURL,
-		AlertStatus: alert.Status,
-		FiredAt:     &alert.FiredAt,
-		ResolvedAt:  alert.ResolvedAt,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	return parent, parent, nil
-}
-
-func (db *DB) updateAlertParentMessage(parentID int64, alert *Alert, details, targetURL string) (*Message, error) {
-	parentLevel := alert.Level
-	if alert.Status == "resolved" {
-		parentLevel = "success"
-	}
-	now := time.Now()
-	if _, err := db.conn.Exec(
+// UpdateAlertRoot はアラートのスレッドの親メッセージの状態を更新する。
+func (db *DB) UpdateAlertRoot(channelID, ts string, u AlertRootUpdate) (*Message, error) {
+	res, err := db.conn.Exec(
 		`UPDATE messages
 		 SET alert_status = ?, level = ?, resolved_at = ?,
 		     details = CASE WHEN ? != '' THEN ? ELSE details END,
 		     url = CASE WHEN ? != '' THEN ? ELSE url END,
 		     updated_at = ?
-		 WHERE id = ?`,
-		alert.Status, parentLevel, alert.ResolvedAt,
-		details, details,
-		targetURL, targetURL,
-		now, parentID,
-	); err != nil {
-		return nil, err
-	}
-	return db.GetMessageByID(parentID)
-}
-
-// GetLatestAlertParentMessage は指定 alert ID に紐づく最新のルートメッセージを取得する。
-func (db *DB) GetLatestAlertParentMessage(alertID int64) (*Message, error) {
-	return db.GetMessageBySourceRef("alert", alertID)
-}
-
-// GetMessageBySourceRef は source_kind と source_id に対応する最新のルートメッセージを取得する。
-func (db *DB) GetMessageBySourceRef(kind string, id int64) (*Message, error) {
-	row := db.conn.QueryRow(
-		`SELECT `+messageSelectCols+`
-		 FROM messages m
-		 WHERE m.source_kind = ? AND m.source_id = ? AND m.thread_ts = ''
-		 ORDER BY m.ts DESC LIMIT 1`,
-		kind, id,
+		 WHERE channel_id = ? AND ts = ? AND thread_ts = ''`,
+		u.Status, u.Level, u.ResolvedAt,
+		u.Details, u.Details,
+		u.URL, u.URL,
+		time.Now(), channelID, ts,
 	)
-	msg, err := scanMessage(row)
 	if err != nil {
 		return nil, err
 	}
-	return &msg, nil
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return db.GetMessageByTS(channelID, ts)
+}
+
+// ActivityFilter は通知タブの絞り込みである。
+type ActivityFilter string
+
+const (
+	ActivityAll      ActivityFilter = "all"
+	ActivityFiring   ActivityFilter = "firing"
+	ActivityResolved ActivityFilter = "resolved"
+	ActivityNotice   ActivityFilter = "notice"
+)
+
+// ActivityItem は通知タブの 1 件 (アラート・通知のスレッドの親メッセージ) である。
+type ActivityItem struct {
+	ChannelID   string  `json:"channel_id"`
+	ChannelName string  `json:"channel_name"`
+	Message     Message `json:"message"`
+}
+
+// ListActivity はアラート・通知のスレッドの親メッセージを新しい順に返す。beforeTS より古いものだけを返す。
+func (db *DB) ListActivity(filter ActivityFilter, beforeTS string, limit int) ([]ActivityItem, bool, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	conds := []string{"m.thread_ts = ''", "m.source_kind != ''"}
+	var args []interface{}
+	switch filter {
+	case ActivityFiring:
+		conds = append(conds, "m.source_kind = 'alert'", "m.alert_status = 'firing'")
+	case ActivityResolved:
+		conds = append(conds, "m.source_kind = 'alert'", "m.alert_status = 'resolved'")
+	case ActivityNotice:
+		conds = append(conds, "m.source_kind = 'notification'")
+	}
+	if beforeTS != "" {
+		conds = append(conds, "m.ts < ?")
+		args = append(args, beforeTS)
+	}
+	args = append(args, limit+1)
+
+	rows, err := db.conn.Query(
+		`SELECT c.name, `+messageSelectCols+`
+		 FROM messages m JOIN channels c ON c.id = m.channel_id
+		 WHERE `+strings.Join(conds, " AND ")+`
+		 ORDER BY m.ts DESC LIMIT ?`,
+		args...,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+
+	var items []ActivityItem
+	for rows.Next() {
+		var name string
+		m, err := scanMessageWithPrefix(rows, &name)
+		if err != nil {
+			return nil, false, err
+		}
+		items = append(items, ActivityItem{ChannelID: m.ChannelID, ChannelName: name, Message: m})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+	return items, hasMore, nil
+}
+
+// CountFiringAlerts は発生中のアラート (スレッドの親メッセージ) の数を返す。
+func (db *DB) CountFiringAlerts() (int, error) {
+	var n int
+	err := db.conn.QueryRow(
+		`SELECT COUNT(*) FROM messages WHERE thread_ts = '' AND source_kind = 'alert' AND alert_status = 'firing'`,
+	).Scan(&n)
+	return n, err
 }
 
 const messageSelectCols = `
 	m.id, m.channel_id, m.ts, m.thread_ts, m.user_id, m.bot_id, m.username, m.text, m.blocks, m.level,
-	m.source_kind, m.source_id, m.details, m.url, m.alert_status, m.fired_at, m.resolved_at,
+	m.source_kind, m.details, m.url, m.alert_status, m.fired_at, m.resolved_at,
 	(SELECT COUNT(*) FROM messages r WHERE r.channel_id = m.channel_id AND r.thread_ts = m.ts) AS reply_count,
 	COALESCE((SELECT MAX(r.ts) FROM messages r WHERE r.channel_id = m.channel_id AND r.thread_ts = m.ts), '') AS latest_reply,
 	m.created_at, m.updated_at`
@@ -895,7 +661,7 @@ func (db *DB) SearchMessages(query, channelID, userID string, limit int) ([]Sear
 			&r.ChannelID, &r.ChannelName, &isIM,
 			&r.Message.ID, &r.Message.ChannelID, &r.Message.TS, &r.Message.ThreadTS,
 			&r.Message.UserID, &r.Message.BotID, &r.Message.Username, &r.Message.Text,
-			&blocksStr, &r.Message.Level, &r.Message.SourceKind, &r.Message.SourceID,
+			&blocksStr, &r.Message.Level, &r.Message.SourceKind,
 			&r.Message.Details, &r.Message.URL, &r.Message.AlertStatus,
 			&firedAtVal, &resolvedAtVal, &r.Message.ReplyCount, &r.Message.LatestReply,
 			&r.Message.CreatedAt, &r.Message.UpdatedAt,
@@ -917,16 +683,26 @@ func (db *DB) SearchMessages(query, channelID, userID string, limit int) ([]Sear
 	return results, rows.Err()
 }
 
+type rowScanner interface {
+	Scan(dest ...interface{}) error
+}
+
 func scanMessage(s rowScanner) (Message, error) {
+	return scanMessageWithPrefix(s)
+}
+
+// scanMessageWithPrefix は、messageSelectCols の前に並べた列 (prefix) も一緒に読む。
+func scanMessageWithPrefix(s rowScanner, prefix ...interface{}) (Message, error) {
 	var m Message
 	var blocksStr string
 	var firedAtVal, resolvedAtVal sql.NullTime
 
-	if err := s.Scan(
+	dest := append(prefix,
 		&m.ID, &m.ChannelID, &m.TS, &m.ThreadTS, &m.UserID, &m.BotID, &m.Username, &m.Text,
-		&blocksStr, &m.Level, &m.SourceKind, &m.SourceID, &m.Details, &m.URL, &m.AlertStatus,
+		&blocksStr, &m.Level, &m.SourceKind, &m.Details, &m.URL, &m.AlertStatus,
 		&firedAtVal, &resolvedAtVal, &m.ReplyCount, &m.LatestReply, &m.CreatedAt, &m.UpdatedAt,
-	); err != nil {
+	)
+	if err := s.Scan(dest...); err != nil {
 		return Message{}, err
 	}
 	if blocksStr != "" {

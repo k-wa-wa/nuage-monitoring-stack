@@ -223,10 +223,10 @@ test.describe('Nuage Notify (Ionic) スマホ E2E', () => {
 		await expect(page).toHaveURL(/\/channels\/C01GENERAL$/)
 	})
 
-	test('ディープリンク /alerts/:id は、アラートのスレッドと詳細を開く', async ({ page }) => {
+	test('Push 通知の URL (/channels/…/threads/…) は、アラートのスレッドと詳細を開く', async ({ page }) => {
 		await login(page)
-		await page.goto('/alerts/42')
-		await expect(page).toHaveURL(/\/channels\/C01ALERTS\/threads\/1700002000\.000100$/)
+		await page.goto('/channels/C01ALERTS/threads/1700002000.000100')
+		await expect(page).toHaveURL(/\/tabs\/home\/channels\/C01ALERTS\/threads\/1700002000\.000100$/)
 		await expect(page.locator('.history-detail-panel').filter({ visible: true })).toBeVisible()
 		await expect(page.getByText('alertname:').filter({ visible: true })).toBeVisible()
 	})
@@ -245,11 +245,13 @@ test.describe('Nuage Notify (Ionic) スマホ E2E', () => {
 
 		await segment('一般').click()
 		await expect(items).toHaveCount(1)
-		await expect(items.first()).toContainText('Argo CD')
+		await expect(items.first()).toContainText('monitoring-pwa を同期した')
+		await expect(items.first()).toContainText('# argocd')
 
 		await segment('発生中').click()
+		await expect(items).toHaveCount(1)
 		await items.first().click()
-		await expect(page).toHaveURL(/\/channels\/C01ALERTS\/threads\/1700002000\.000100$/)
+		await expect(page).toHaveURL(/\/tabs\/activity\/channels\/C01ALERTS\/threads\/1700002000\.000100$/)
 	})
 
 	test('ホームの検索から該当するスレッドを開ける', async ({ page }) => {
@@ -278,12 +280,10 @@ test.describe('Nuage Notify (Ionic) スマホ E2E', () => {
 		}
 	})
 
-	test('以前の URL (/channels/…・/alerts/…) はタブの中のパスへ移る', async ({ page }) => {
+	test('/channels/… はタブの中のパスへ移る', async ({ page }) => {
 		await login(page)
 		await page.goto('/channels/C01GENERAL')
 		await expect(page).toHaveURL(/\/tabs\/home\/channels\/C01GENERAL$/)
-		await page.goto('/alerts/42')
-		await expect(page).toHaveURL(/\/tabs\/activity\/channels\/C01ALERTS\/threads\/1700002000\.000100$/)
 	})
 
 	test('中身の無いチャンネルは、その旨を表示する', async ({ page }) => {
@@ -295,19 +295,15 @@ test.describe('Nuage Notify (Ionic) スマホ E2E', () => {
 		await expect(page.locator('.channel-empty').filter({ visible: true })).toContainText('まだメッセージはない')
 	})
 
-	test('DM はホームのチャンネルの下に並び、旧 DM タブのパスはホームへ移る', async ({ page }) => {
+	test('DM はホームのチャンネルの下に並ぶ', async ({ page }) => {
 		await login(page)
 		await expect(page.locator('ion-list-header').filter({ hasText: 'ダイレクトメッセージ' })).toBeVisible()
 		await page.locator('ion-item').filter({ hasText: 'nuage-bot' }).filter({ visible: true }).click()
 		await expect(page).toHaveURL(/\/channels\/D01BOT$/)
-		await page.goto('/tabs/dms')
-		await expect(page).toHaveURL(/\/tabs\/home$/)
 	})
 
-	test('ホーム画面 PWA 用の旧パスと未知のパスはホームへ移る', async ({ page }) => {
+	test('未知のパスはホームへ移る', async ({ page }) => {
 		await login(page)
-		await page.goto('/settings')
-		await expect(page).toHaveURL(/\/tabs\/settings$/)
 		await page.goto('/no-such-page')
 		await expect(page).toHaveURL(/\/tabs\/home$/)
 	})

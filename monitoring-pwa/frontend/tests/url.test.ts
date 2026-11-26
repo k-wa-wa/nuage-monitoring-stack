@@ -3,8 +3,6 @@ import {
 	GRAFANA_BASE_URL,
 	extractExternalLinks,
 	getLogsUrl,
-	parseAppRoute,
-	parseChatRoute,
 	rewriteGeneratorUrl,
 	sanitizeExternalUrl
 } from '../src/utils/url'
@@ -97,85 +95,5 @@ describe('extractExternalLinks', () => {
 		expect(links[0].url).toBe(
 			getLogsUrl({ alertname: 'PodCrashLooping', namespace: 'default', pod: 'api-1' }) || ''
 		)
-	})
-})
-
-describe('parseAppRoute', () => {
-	test('通知詳細・設定・旧ルートを正しく判定する', () => {
-		expect(parseAppRoute('/')).toEqual({
-			tab: 'notifications',
-			selectedUid: null,
-			detailKind: null,
-			detailId: null,
-			legacyHistoryId: null
-		})
-		expect(parseAppRoute('/settings')).toEqual({
-			tab: 'settings',
-			selectedUid: null,
-			detailKind: null,
-			detailId: null,
-			legacyHistoryId: null
-		})
-		expect(parseAppRoute('/alerts/12')).toEqual({
-			tab: 'notifications',
-			selectedUid: 'alert-12',
-			detailKind: 'alert',
-			detailId: 12,
-			legacyHistoryId: null
-		})
-		expect(parseAppRoute('/notifications/5')).toEqual({
-			tab: 'notifications',
-			selectedUid: 'notification-5',
-			detailKind: 'notification',
-			detailId: 5,
-			legacyHistoryId: null
-		})
-		expect(parseAppRoute('/history/7')).toEqual({
-			tab: 'notifications',
-			selectedUid: null,
-			detailKind: null,
-			detailId: null,
-			legacyHistoryId: 7
-		})
-	})
-})
-
-describe('parseChatRoute', () => {
-	test('チャンネル・スレッド・ディープリンク・設定ルートを判定する', () => {
-		expect(parseChatRoute('/channels/C01ALERTMGR')).toEqual({
-			view: 'chat',
-			channelId: 'C01ALERTMGR',
-			threadTs: null,
-			deepLinkKind: null,
-			deepLinkId: null
-		})
-		expect(parseChatRoute('/channels/C01ALERTMGR/threads/1700000000.000100')).toEqual({
-			view: 'chat',
-			channelId: 'C01ALERTMGR',
-			threadTs: '1700000000.000100',
-			deepLinkKind: null,
-			deepLinkId: null
-		})
-		expect(parseChatRoute('/alerts/12')).toEqual({
-			view: 'chat',
-			channelId: null,
-			threadTs: null,
-			deepLinkKind: 'alert',
-			deepLinkId: 12
-		})
-		expect(parseChatRoute('/notifications/5')).toEqual({
-			view: 'chat',
-			channelId: null,
-			threadTs: null,
-			deepLinkKind: 'notification',
-			deepLinkId: 5
-		})
-		expect(parseChatRoute('/settings')).toEqual({
-			view: 'settings',
-			channelId: null,
-			threadTs: null,
-			deepLinkKind: null,
-			deepLinkId: null
-		})
 	})
 })

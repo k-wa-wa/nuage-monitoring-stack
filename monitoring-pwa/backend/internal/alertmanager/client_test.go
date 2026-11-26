@@ -10,7 +10,7 @@ import (
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 )
 
-func TestGetActiveAlerts(t *testing.T) {
+func TestListAlerts(t *testing.T) {
 	mockResponse := `[
 		{
 			"annotations": {
@@ -79,6 +79,11 @@ func TestGetActiveAlerts(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
+		// 突き合わせでは、サイレンス・抑制中のものも含めて取る
+		q := r.URL.Query()
+		if q.Get("silenced") != "true" || q.Get("inhibited") != "true" {
+			t.Errorf("expected silenced=true&inhibited=true, got %s", r.URL.RawQuery)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(mockResponse))
@@ -89,30 +94,22 @@ func TestGetActiveAlerts(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	alerts, err := client.GetActiveAlerts(ctx)
+	alerts, err := client.ListAlerts(ctx)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(alerts) != 1 {
-		t.Fatalf("expected 1 active alert, got %d", len(alerts))
+	// Watchdog・InfoInhibitor・抑制中のものも含め、Alertmanager にあるものはすべて返す
+	if len(alerts) != 4 {
+		t.Fatalf("expected 4 alerts, got %d", len(alerts))
 	}
 
 	a := alerts[0]
-	if a.Alertname != "DiskSpaceLow" {
-		t.Errorf("expected alertname DiskSpaceLow, got %s", a.Alertname)
+	if a.Alertname != "DiskSpaceLow" || a.Suppressed {
+		t.Errorf("unexpected first alert: %+v", a)
 	}
-	if a.Level != "error" {
-		t.Errorf("expected level error for critical severity, got %s", a.Level)
-	}
-	if a.Summary != "Disk Space Low" {
-		t.Errorf("expected summary 'Disk Space Low', got %s", a.Summary)
-	}
-	if a.Status != "firing" {
-		t.Errorf("expected status firing, got %s", a.Status)
-	}
-	if a.ID == 0 {
-		t.Errorf("expected non-zero ID, got %d", a.ID)
+	if a.Annotations["summary"] != "Disk Space Low" || a.GeneratorURL != "http://grafana/explore" {
+		t.Errorf("annotations / generatorURL not carried: %+v", a)
 	}
 	expectedFP := push.GenerateFingerprint(map[string]string{
 		"severity":  "critical",
@@ -120,5 +117,18 @@ func TestGetActiveAlerts(t *testing.T) {
 	})
 	if a.Fingerprint != expectedFP {
 		t.Errorf("expected fingerprint %q (matching push.GenerateFingerprint), got %q", expectedFP, a.Fingerprint)
+	}
+	if !alerts[3].Suppressed {
+		t.Errorf("expected suppressed state to be reported for %s", alerts[3].Alertname)
+	}
+}
+
+func TestListAlertsError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusBadGateway)
+	}))
+	defer ts.Close()
+	if _, err := NewClient(ts.URL).ListAlerts(context.Background()); err == nil {
+		t.Fatal("expected an error when alertmanager responds with non-200")
 	}
 }

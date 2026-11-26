@@ -16,8 +16,8 @@ export function messageToUnified(msg: ChatMessage): UnifiedNotification {
 			: 'info'
 
 	return {
-		uid: `${kind}-${msg.source_id || msg.id}`,
-		id: msg.source_id || msg.id,
+		uid: `${kind}-${msg.id}`,
+		id: msg.id,
 		kind,
 		source: msg.username.toLowerCase(),
 		title: msg.username,
@@ -34,18 +34,3 @@ export function messageToUnified(msg: ChatMessage): UnifiedNotification {
 	}
 }
 
-export type ActivityFilter = 'all' | 'firing' | 'resolved' | 'notice'
-
-// filterNotifications は通知タブの絞り込み (すべて・発生中・解決済み・一般) を行う。
-export function filterNotifications(items: UnifiedNotification[], filter: ActivityFilter) {
-	switch (filter) {
-		case 'firing':
-			return items.filter((n) => n.kind === 'alert' && n.status === 'firing')
-		case 'resolved':
-			return items.filter((n) => n.kind === 'alert' && n.status === 'resolved')
-		case 'notice':
-			return items.filter((n) => n.kind === 'notification')
-		default:
-			return items
-	}
-}

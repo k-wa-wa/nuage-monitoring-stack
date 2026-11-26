@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -31,13 +30,13 @@ func NewClient(baseURL string) *Client {
 
 // alertmanagerAlert は Alertmanager /api/v2/alerts のレスポンス要素である。
 type alertmanagerAlert struct {
-	Annotations map[string]string `json:"annotations"`
-	EndsAt      time.Time         `json:"endsAt"`
-	Fingerprint string            `json:"fingerprint"`
-	GeneratorURL string           `json:"generatorURL"`
-	Labels      map[string]string `json:"labels"`
-	StartsAt    time.Time         `json:"startsAt"`
-	Status      struct {
+	Annotations  map[string]string `json:"annotations"`
+	EndsAt       time.Time         `json:"endsAt"`
+	Fingerprint  string            `json:"fingerprint"`
+	GeneratorURL string            `json:"generatorURL"`
+	Labels       map[string]string `json:"labels"`
+	StartsAt     time.Time         `json:"startsAt"`
+	Status       struct {
 		InhibitedBy []string `json:"inhibitedBy"`
 		SilencedBy  []string `json:"silencedBy"`
 		State       string   `json:"state"`
@@ -45,16 +44,23 @@ type alertmanagerAlert struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// idFromFingerprint は fingerprint 文字列から一意な正の int64 ID を生成する。
-func idFromFingerprint(fp string) int64 {
-	h := fnv.New64a()
-	h.Write([]byte(fp))
-	return int64(h.Sum64() & 0x7FFFFFFFFFFFFFFF)
+// Alert は Alertmanager に今あるアラート 1 件である。
+type Alert struct {
+	// Fingerprint は Webhook と同じ作り方 (push.GenerateFingerprint) でラベルから作る
+	Fingerprint  string
+	Alertname    string
+	Labels       map[string]string
+	Annotations  map[string]string
+	GeneratorURL string
+	StartsAt     time.Time
+	// Suppressed はサイレンス・抑制で通知が止められていることを表す (発生はしている)
+	Suppressed bool
 }
 
-// GetActiveAlerts は Alertmanager から現在 active なアラート一覧を取得し、push.Alert 型に変換して返す。
-func (c *Client) GetActiveAlerts(ctx context.Context) ([]push.Alert, error) {
-	reqURL := fmt.Sprintf("%s/api/v2/alerts?active=true&silenced=false&inhibited=false", c.baseURL)
+// ListAlerts は Alertmanager に今あるアラートを、サイレンス・抑制中のものも含めて返す。
+// 突き合わせでは「Alertmanager から消えたか」を見るため、通知が止められているだけのものも含める。
+func (c *Client) ListAlerts(ctx context.Context) ([]Alert, error) {
+	reqURL := fmt.Sprintf("%s/api/v2/alerts?active=true&silenced=true&inhibited=true&unprocessed=true", c.baseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -75,64 +81,27 @@ func (c *Client) GetActiveAlerts(ctx context.Context) ([]push.Alert, error) {
 		return nil, fmt.Errorf("failed to decode alertmanager response: %w", err)
 	}
 
-	var activeAlerts []push.Alert
+	alerts := make([]Alert, 0, len(rawAlerts))
 	for _, a := range rawAlerts {
-		// 抑制状態のアラートは除外する
-		if a.Status.State != "active" {
-			continue
+		name := a.Labels["alertname"]
+		if name == "" {
+			name = "Alert"
 		}
-
-		alertname := a.Labels["alertname"]
-		if alertname == "" {
-			alertname = "Alert"
-		}
-
-		// 常時発報のダミー/ヘルスチェックアラートは除外する
-		if alertname == "Watchdog" || alertname == "InfoInhibitor" {
-			continue
-		}
-
-		level := "warning"
-		severity := a.Labels["severity"]
-		if severity == "critical" {
-			level = "error"
-		} else if severity == "info" {
-			level = "info"
-		}
-
-		summary := a.Annotations["summary"]
-		if summary == "" {
-			summary = a.Annotations["description"]
-		}
-		if summary == "" {
-			summary = alertname
-		}
-		description := a.Annotations["description"]
-
-		detailsBytes, _ := json.Marshal(a)
-
 		fp := a.Fingerprint
 		if len(a.Labels) > 0 {
 			fp = push.GenerateFingerprint(a.Labels)
 		}
-		id := idFromFingerprint(fp)
-
-		activeAlerts = append(activeAlerts, push.Alert{
-			ID:          id,
-			Fingerprint: fp,
-			Alertname:   alertname,
-			Status:      "firing",
-			Level:       level,
-			Summary:     summary,
-			Description: description,
-			URL:         a.GeneratorURL,
-			Details:     string(detailsBytes),
-			FiredAt:     a.StartsAt,
-			CreatedAt:   a.StartsAt,
-			UpdatedAt:   a.UpdatedAt,
+		alerts = append(alerts, Alert{
+			Fingerprint:  fp,
+			Alertname:    name,
+			Labels:       a.Labels,
+			Annotations:  a.Annotations,
+			GeneratorURL: a.GeneratorURL,
+			StartsAt:     a.StartsAt,
+			Suppressed:   a.Status.State == "suppressed",
 		})
 	}
 
-	slog.Debug("fetched active alerts from alertmanager", "count", len(activeAlerts))
-	return activeAlerts, nil
+	slog.Debug("fetched alerts from alertmanager", "count", len(alerts))
+	return alerts, nil
 }

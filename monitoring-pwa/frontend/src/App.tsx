@@ -24,8 +24,9 @@ function NotificationClickBridge() {
 	return null
 }
 
-// 以前の URL (Push 通知の遷移先・ブックマーク) を、タブの中のパスへ移す
-function LegacyRedirect({ to }: { to: (params: Record<string, string | undefined>) => string }) {
+// Push 通知が開く URL (/channels/<ch>/threads/<ts>) を、タブの中のパスへ移す。
+// バックエンドが画面のタブの作りを知らずに済むよう、Push には決まった形の URL を載せている
+function ChannelLinkRedirect({ to }: { to: (params: Record<string, string | undefined>) => string }) {
 	const params = useParams()
 	return <Navigate to={to(params)} replace />
 }
@@ -52,20 +53,14 @@ function Shell() {
 				<Route path="/tabs/*" element={<Tabs />} />
 				<Route
 					path="/channels/:channelId"
-					element={<LegacyRedirect to={(p) => `/tabs/home/channels/${enc(p.channelId)}`} />}
+					element={<ChannelLinkRedirect to={(p) => `/tabs/home/channels/${enc(p.channelId)}`} />}
 				/>
 				<Route
 					path="/channels/:channelId/threads/:ts"
 					element={
-						<LegacyRedirect to={(p) => `/tabs/home/channels/${enc(p.channelId)}/threads/${enc(p.ts)}`} />
+						<ChannelLinkRedirect to={(p) => `/tabs/home/channels/${enc(p.channelId)}/threads/${enc(p.ts)}`} />
 					}
 				/>
-				<Route path="/alerts/:id" element={<LegacyRedirect to={(p) => `/tabs/activity/alerts/${enc(p.id)}`} />} />
-				<Route
-					path="/notifications/:id"
-					element={<LegacyRedirect to={(p) => `/tabs/activity/notifications/${enc(p.id)}`} />}
-				/>
-				<Route path="/settings" element={<Navigate to="/tabs/settings" replace />} />
 				<Route path="/" element={<Navigate to="/tabs/home" replace />} />
 				<Route path="*" element={<Navigate to="/tabs/home" replace />} />
 			</IonRouterOutlet>

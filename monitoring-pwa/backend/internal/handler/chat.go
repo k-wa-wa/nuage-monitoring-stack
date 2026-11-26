@@ -267,30 +267,50 @@ func (h *ChatHandler) Search(c echo.Context) error {
 	return c.JSON(http.StatusOK, results)
 }
 
-// DeepLink は `/alerts/:id` や `/notifications/:id` からチャット上のチャンネル・メッセージ座標を返す。
-func (h *ChatHandler) DeepLink(c echo.Context) error {
-	kind := c.Param("kind")
-	if kind != "alert" && kind != "notification" {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid deeplink kind")
+// Activity は通知タブ用に、アラート・通知のスレッドの親メッセージを新しい順に返す。
+// filter: all (既定) / firing / resolved / notice、before: この ts より古いものだけ、limit: 件数。
+func (h *ChatHandler) Activity(c echo.Context) error {
+	filter := push.ActivityFilter(strings.TrimSpace(c.QueryParam("filter")))
+	switch filter {
+	case "":
+		filter = push.ActivityAll
+	case push.ActivityAll, push.ActivityFiring, push.ActivityResolved, push.ActivityNotice:
+	default:
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid filter")
 	}
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid deeplink id")
-	}
-
-	msg, err := h.db.GetMessageBySourceRef(kind, id)
+	limit := parseLimitParam(c, 50, 200)
+	items, hasMore, err := h.db.ListActivity(filter, strings.TrimSpace(c.QueryParam("before")), limit)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusNotFound, "message not found for reference")
-		}
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to resolve deeplink")
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to list activity")
 	}
-
+	if items == nil {
+		items = []push.ActivityItem{}
+	}
+	firing, err := h.db.CountFiringAlerts()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to count firing alerts")
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"channel_id": msg.ChannelID,
-		"ts":         msg.TS,
-		"message":    msg,
+		"items":        items,
+		"has_more":     hasMore,
+		"firing_count": firing,
 	})
+}
+
+// parseLimitParam は limit クエリを読む。無い・不正なら既定値、上限を超えたら上限にする。
+func parseLimitParam(c echo.Context, defaultLimit, maxLimit int) int {
+	raw := strings.TrimSpace(c.QueryParam("limit"))
+	if raw == "" {
+		return defaultLimit
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return defaultLimit
+	}
+	if n > maxLimit {
+		return maxLimit
+	}
+	return n
 }
 
 // Events はログイン済みブラウザ向けに Server-Sent Events (SSE) で新着・状態変化を配信する。

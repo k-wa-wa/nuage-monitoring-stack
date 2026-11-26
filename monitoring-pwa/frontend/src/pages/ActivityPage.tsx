@@ -21,24 +21,19 @@ import {
 import { alertCircle, checkmarkCircle, closeCircle, notifications, warning } from 'ionicons/icons'
 import { API_BASE, useChat } from '../state/chatStore'
 import { formatMessageTime } from '../utils/date'
-import type { UnifiedNotification } from '../types/notification'
-import { filterNotifications, type ActivityFilter } from '../utils/notification'
+import { threadPath } from '../state/routes'
+import type { ActivityItem, ActivityResponse, ChatMessage } from '../types/chat'
+
+type ActivityFilter = 'all' | 'firing' | 'resolved' | 'notice'
 
 
-const SOURCE_LABEL: Record<string, string> = {
-	alertmanager: 'Alertmanager',
-	argocd: 'Argo CD',
-	keel: 'Keel',
-	generic: 'Webhook'
-}
-
-function iconFor(item: UnifiedNotification) {
-	if (item.kind === 'alert') {
-		return item.status === 'firing'
+function iconFor(m: ChatMessage) {
+	if (m.source_kind === 'alert') {
+		return m.alert_status === 'firing'
 			? { icon: alertCircle, color: 'danger' }
 			: { icon: checkmarkCircle, color: 'success' }
 	}
-	switch (item.level) {
+	switch (m.level) {
 		case 'error':
 			return { icon: closeCircle, color: 'danger' }
 		case 'warning':
@@ -48,6 +43,19 @@ function iconFor(item: UnifiedNotification) {
 		default:
 			return { icon: notifications, color: 'primary' }
 	}
+}
+
+// 本文 (Markdown) の 1 行目を見出し、残りを本文として、記号を落として出す
+function summarize(text: string): { title: string; body: string } {
+	const plain = (t: string) =>
+		t
+			.replace(/<[^>]+>/g, '')
+			.replace(/[*_~`]/g, '')
+			.replace(/^\s*[🔥✅]\s*/u, '')
+			.replace(/^\[(firing|resolved)\]\s*/, '')
+			.trim()
+	const lines = text.split('\n').map(plain).filter(Boolean)
+	return { title: lines[0] ?? '', body: lines.slice(1).join(' ') }
 }
 
 function durationLabel(firedAt?: string, resolvedAt?: string): string | null {
@@ -63,19 +71,22 @@ function durationLabel(firedAt?: string, resolvedAt?: string): string | null {
 
 export default function ActivityPage() {
 	const { activityVersion } = useChat()
-	const [items, setItems] = useState<UnifiedNotification[] | null>(null)
+	const [items, setItems] = useState<ActivityItem[] | null>(null)
+	const [firingCount, setFiringCount] = useState(0)
 	const [filter, setFilter] = useState<ActivityFilter>('all')
 
 	const fetchItems = useCallback(async () => {
 		try {
-			const res = await fetch(`${API_BASE}/api/notifications`, { credentials: 'include' })
-			if (res.ok) setItems((await res.json()) as UnifiedNotification[])
-			else setItems((prev) => prev ?? [])
+			const res = await fetch(`${API_BASE}/api/activity?filter=${filter}&limit=100`, { credentials: 'include' })
+			if (!res.ok) throw new Error(`HTTP ${res.status}`)
+			const data = (await res.json()) as ActivityResponse
+			setItems(data.items)
+			setFiringCount(data.firing_count)
 		} catch (err) {
-			console.error('Failed to fetch notifications:', err)
+			console.error('Failed to fetch activity:', err)
 			setItems((prev) => prev ?? [])
 		}
-	}, [])
+	}, [filter])
 
 	useEffect(() => {
 		void fetchItems()
@@ -86,9 +97,7 @@ export default function ActivityPage() {
 		e.detail.complete()
 	}
 
-	const all = useMemo(() => items ?? [], [items])
-	const shown = useMemo(() => filterNotifications(all, filter), [all, filter])
-	const count = (f: ActivityFilter) => filterNotifications(all, f).length
+	const shown = useMemo(() => items ?? [], [items])
 
 	return (
 		<IonPage>
@@ -99,14 +108,17 @@ export default function ActivityPage() {
 				<IonToolbar>
 					<IonSegment
 						value={filter}
-						onIonChange={(e) => setFilter((e.detail.value as ActivityFilter) ?? 'all')}
+						onIonChange={(e) => {
+							setItems(null)
+							setFilter((e.detail.value as ActivityFilter) ?? 'all')
+						}}
 						aria-label="通知の絞り込み"
 					>
 						<IonSegmentButton value="all">
 							<IonLabel>すべて</IonLabel>
 						</IonSegmentButton>
 						<IonSegmentButton value="firing">
-							<IonLabel>発生中{count('firing') > 0 ? ` ${count('firing')}` : ''}</IonLabel>
+							<IonLabel>発生中{firingCount > 0 ? ` ${firingCount}` : ''}</IonLabel>
 						</IonSegmentButton>
 						<IonSegmentButton value="resolved">
 							<IonLabel>解決済み</IonLabel>
@@ -139,38 +151,34 @@ export default function ActivityPage() {
 				) : (
 					<IonList inset className="activity-list">
 						<IonItemGroup>
-							{shown.map((item) => {
-								const { icon, color } = iconFor(item)
-								const link =
-									item.kind === 'alert'
-										? `/tabs/activity/alerts/${item.id}`
-										: `/tabs/activity/notifications/${item.id}`
-								const resolvedIn = item.kind === 'alert' ? durationLabel(item.fired_at, item.resolved_at) : null
+							{shown.map(({ channel_id, channel_name, message: m }) => {
+								const { icon, color } = iconFor(m)
+								const { title, body } = summarize(m.text)
+								const resolvedIn = m.source_kind === 'alert' ? durationLabel(m.fired_at, m.resolved_at) : null
 								return (
 									<IonItem
-										key={item.uid}
+										key={`${channel_id}-${m.ts}`}
 										button
 										detail={false}
-										routerLink={link}
+										routerLink={threadPath('/tabs/activity', channel_id, m.ts)}
 										className="activity-item"
-										data-uid={item.uid}
 									>
 										<IonIcon slot="start" icon={icon} color={color} className="activity-icon" />
 										<IonLabel>
 											<div className="activity-head">
-												<span className="activity-source">{SOURCE_LABEL[item.source] ?? item.source}</span>
-												{item.kind === 'alert' && (
-													<span className={`msg-status ${item.status === 'firing' ? 'firing' : 'resolved'}`}>
-														{item.status === 'firing' ? '発生中' : '解決済み'}
+												<span className="activity-source"># {channel_name}</span>
+												{m.source_kind === 'alert' && m.alert_status && (
+													<span className={`msg-status ${m.alert_status === 'firing' ? 'firing' : 'resolved'}`}>
+														{m.alert_status === 'firing' ? '発生中' : '解決済み'}
 													</span>
 												)}
 											</div>
-											<h2 className="activity-title">{item.title}</h2>
-											<p className="activity-body">{item.body}</p>
+											<h2 className="activity-title">{title}</h2>
+											{body && <p className="activity-body">{body}</p>}
 											{resolvedIn && <p className="activity-sub">{resolvedIn}</p>}
 										</IonLabel>
 										<IonNote slot="end" className="activity-time">
-											{formatMessageTime(item.fired_at || item.created_at)}
+											{formatMessageTime(m.fired_at || m.created_at)}
 										</IonNote>
 									</IonItem>
 								)

@@ -19,9 +19,13 @@ import (
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/auth"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/config"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/handler"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/notify"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/realtime"
 )
+
+// alertReconcileInterval は Alertmanager と発生中のスレッドを突き合わせる間隔である。
+const alertReconcileInterval = time.Minute
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -49,11 +53,15 @@ func main() {
 	hub := realtime.NewHub()
 	amClient := alertmanager.NewClient(cfg.AlertmanagerURL)
 	sender := push.NewSender(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, db)
+	svc := notify.New(db, hub, sender)
 
-	e := NewRouter(cfg, db, hub, sender, amClient)
+	e := NewRouter(cfg, db, hub, sender, svc)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// 解決・発生の Webhook の取りこぼしを、Alertmanager との突き合わせで埋める
+	go svc.RunReconciler(ctx, amClient, alertReconcileInterval)
 
 	go func() {
 		slog.Info("starting server", "port", cfg.Port, "db_path", cfg.DBPath)
@@ -74,10 +82,9 @@ func main() {
 }
 
 // NewRouter は認証・チャット・Slack 互換 API・Webhook を含む Echo ルーターを構築する。
-func NewRouter(cfg config.Config, db *push.DB, hub *realtime.Hub, sender handler.PushSender, amClient handler.ActiveAlertsFetcher) *echo.Echo {
+func NewRouter(cfg config.Config, db *push.DB, hub *realtime.Hub, sender handler.PushSender, svc *notify.Service) *echo.Echo {
 	subscribeH := handler.NewSubscribeHandler(cfg.VAPIDPublicKey, db)
-	webhookH := handler.NewWebhookHandlerWithHub(sender, db, hub)
-	historyH := handler.NewHistoryHandler(db, amClient)
+	webhookH := handler.NewWebhookHandler(svc, sender)
 	authH := handler.NewAuthHandler([]byte(cfg.CookieSigningKey), cfg.Users)
 	chatH := handler.NewChatHandler(cfg, db, hub)
 	slackH := handler.NewSlackHandler(cfg, db, hub, sender)
@@ -119,19 +126,14 @@ func NewRouter(cfg config.Config, db *push.DB, hub *realtime.Hub, sender handler
 	api.POST("/channels/:id/messages", chatH.PostMessage)
 	api.POST("/channels/:id/read", chatH.MarkRead)
 	api.GET("/search", chatH.Search)
-	api.GET("/deeplink/:kind/:id", chatH.DeepLink)
+	api.GET("/activity", chatH.Activity)
 	api.GET("/events", chatH.Events)
 
-	// 既存 Push / 履歴 API
+	// Web Push
 	api.GET("/vapid-public-key", subscribeH.VAPIDPublicKey)
 	api.POST("/subscribe", subscribeH.Subscribe)
 	api.POST("/unsubscribe", subscribeH.Unsubscribe)
 	api.POST("/test-notify", webhookH.TestNotify)
-	api.GET("/history", historyH.History)
-	api.GET("/alerts/active", historyH.ActiveAlerts)
-	api.GET("/alerts/history", historyH.AlertHistory)
-	api.GET("/notifications", historyH.UnifiedNotifications)
-	api.GET("/notifications/:kind/:id", historyH.GetNotificationDetail)
 
 	// Slack 互換 API (bot / app トークン必須) & Socket Mode WebSocket
 	e.POST("/slack/api/:method", slackH.DispatchMethod)

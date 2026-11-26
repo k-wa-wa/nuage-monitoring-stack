@@ -16,6 +16,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/config"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/notify"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/realtime"
 )
@@ -498,13 +499,13 @@ func (h *SlackHandler) chatPostMessage(c echo.Context, params map[string]interfa
 	if h.sender != nil {
 		pushURL := fmt.Sprintf("/channels/%s", chID)
 		if msg.ThreadTS != "" {
-			pushURL = fmt.Sprintf("/channels/%s/threads/%s", chID, msg.ThreadTS)
+			pushURL = notify.ThreadURL(chID, msg.ThreadTS)
 		}
 		pushTitle := fmt.Sprintf("%s (#%s)", username, ch.Name)
 		if ch.IsIM {
 			pushTitle = fmt.Sprintf("%s (DM)", username)
 		}
-		payloadObj := notificationPayload{
+		payloadObj := notify.PushPayload{
 			Title: pushTitle,
 			Body:  text,
 			URL:   pushURL,
