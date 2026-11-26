@@ -61,7 +61,11 @@ func main() {
 	defer stop()
 
 	// 解決・発生の Webhook の取りこぼしを、Alertmanager との突き合わせで埋める
-	go svc.RunReconciler(ctx, amClient, alertReconcileInterval)
+	if cfg.AlertReconcile {
+		go svc.RunReconciler(ctx, amClient, alertReconcileInterval)
+	} else {
+		slog.Warn("alert reconcile is disabled by ALERT_RECONCILE=off; missed alertmanager webhooks will not be recovered")
+	}
 
 	go func() {
 		slog.Info("starting server", "port", cfg.Port, "db_path", cfg.DBPath)

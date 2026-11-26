@@ -42,6 +42,22 @@ func TestLoadConfigValidation(t *testing.T) {
 		}
 	})
 
+	t.Run("ALERT_RECONCILE は既定で on、off で止まり、それ以外はエラーになること", func(t *testing.T) {
+		setValidEnv(t)
+		cfg, err := Load()
+		if err != nil || !cfg.AlertReconcile {
+			t.Fatalf("expected reconcile on by default, got %v (err=%v)", cfg.AlertReconcile, err)
+		}
+		t.Setenv("ALERT_RECONCILE", "off")
+		if cfg, err := Load(); err != nil || cfg.AlertReconcile {
+			t.Fatalf("expected reconcile off, got %v (err=%v)", cfg.AlertReconcile, err)
+		}
+		t.Setenv("ALERT_RECONCILE", "false")
+		if _, err := Load(); err == nil {
+			t.Fatal("expected error for unknown ALERT_RECONCILE value")
+		}
+	})
+
 	t.Run("署名鍵が欠落または短い場合はエラーになること", func(t *testing.T) {
 		setValidEnv(t)
 		t.Setenv("COOKIE_SIGNING_KEY", "short")

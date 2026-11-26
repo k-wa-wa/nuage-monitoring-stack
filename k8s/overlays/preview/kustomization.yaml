@@ -90,3 +90,15 @@ patches:
       kind: PodDisruptionBudget
       metadata:
         name: monitoring-pwa-frontend-pdb
+  # preview は nuage-cluster の preview-isolation-guardrail (CiliumClusterwideNetworkPolicy) で
+  # 本番の namespace へ通れず、本番の Alertmanager と突き合わせられない。明示的に止める
+  # (Alertmanager の Webhook も preview には届かない。試す時は preview の /webhook/alertmanager に送る)。
+  - target:
+      kind: Deployment
+      name: monitoring-pwa-backend
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ALERT_RECONCILE
+          value: "off"

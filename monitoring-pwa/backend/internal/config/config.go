@@ -28,12 +28,15 @@ func (u UserConfig) EffectiveName() string {
 
 // Config はアプリケーションの設定情報を保持する構造体である。
 type Config struct {
-	Port             string
-	VAPIDPublicKey   string
-	VAPIDPrivateKey  string
-	VAPIDSubject     string
-	DBPath           string
-	AlertmanagerURL  string
+	Port            string
+	VAPIDPublicKey  string
+	VAPIDPrivateKey string
+	VAPIDSubject    string
+	DBPath          string
+	AlertmanagerURL string
+	// AlertReconcile は Alertmanager との突き合わせを行うか (ALERT_RECONCILE=on|off、既定は on)。
+	// preview は NetworkPolicy で本番の Alertmanager へ通れないため off にする。
+	AlertReconcile   bool
 	CookieSigningKey string
 	Users            []UserConfig
 	SlackBotToken    string
@@ -52,6 +55,15 @@ func Load() (Config, error) {
 		dbPath = "./monitoring-pwa.db"
 	}
 
+	alertReconcile := true
+	switch v := strings.TrimSpace(os.Getenv("ALERT_RECONCILE")); v {
+	case "", "on":
+	case "off":
+		alertReconcile = false
+	default:
+		return Config{}, fmt.Errorf("ALERT_RECONCILE は on か off で指定する (%q は使えない)", v)
+	}
+
 	alertmanagerURL := strings.TrimSpace(os.Getenv("ALERTMANAGER_URL"))
 	if alertmanagerURL == "" {
 		alertmanagerURL = "http://vmalertmanager-vm:9093"
@@ -64,6 +76,7 @@ func Load() (Config, error) {
 		VAPIDSubject:     strings.TrimSpace(os.Getenv("VAPID_SUBJECT")),
 		DBPath:           dbPath,
 		AlertmanagerURL:  alertmanagerURL,
+		AlertReconcile:   alertReconcile,
 		CookieSigningKey: strings.TrimSpace(os.Getenv("COOKIE_SIGNING_KEY")),
 		SlackBotToken:    strings.TrimSpace(os.Getenv("SLACK_BOT_TOKEN")),
 		SlackAppToken:    strings.TrimSpace(os.Getenv("SLACK_APP_TOKEN")),
