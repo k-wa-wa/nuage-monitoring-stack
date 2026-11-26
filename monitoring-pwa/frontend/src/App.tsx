@@ -7,6 +7,7 @@ import ThreadPane from './components/ThreadPane'
 import SearchModal from './components/SearchModal'
 import Settings from './components/Settings'
 import { useVisualViewport } from './hooks/useVisualViewport'
+import { useDocumentScrollLock } from './hooks/useDocumentScrollLock'
 import { useSwipeBack, type SwipeTargetLayer } from './hooks/useSwipeBack'
 import { parseChatRoute } from './utils/url'
 import { syncExistingPushSubscription } from './utils/pushSubscription'
@@ -45,6 +46,7 @@ function prefersReducedMotion(): boolean {
 
 export default function App() {
 	useVisualViewport()
+	useDocumentScrollLock()
 
 	const initialRoute = useMemo(() => parseChatRoute(window.location.pathname), [])
 	const initialMobileScreen: MobileScreen = useMemo(() => {

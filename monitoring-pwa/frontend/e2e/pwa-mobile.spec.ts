@@ -547,4 +547,65 @@ test.describe('PWA スマホ最適化 E2E', () => {
 		await expect(page.locator('.thread-pane')).toBeVisible()
 		await expect(page.getByText('スレッド返信 #25')).toBeVisible()
 	})
+
+	test('アプリが画面全体を覆い、スクロールできない場所のタッチで文書が動かない', async ({ page }) => {
+		await loginAsTestUser(page)
+		// チャンネル一覧 (中身が少なくスクロールできない) を表示した状態
+		await expect(page.locator('.sidebar-scroll')).toBeVisible()
+
+		const coverage = await page.evaluate(() => {
+			const rect = document.getElementById('root')!.getBoundingClientRect()
+			return {
+				top: rect.top,
+				bottom: rect.bottom,
+				innerHeight: window.innerHeight,
+				inlineAppHeight: document.documentElement.style.getPropertyValue('--app-height')
+			}
+		})
+		// キーボードが閉じている間は高さを固定せず、画面の下端まで覆う
+		expect(coverage.top).toBe(0)
+		expect(Math.abs(coverage.bottom - coverage.innerHeight)).toBeLessThanOrEqual(1)
+		expect(coverage.inlineAppHeight).toBe('')
+
+		const dispatchMove = (selector: string, dy: number) =>
+			page.evaluate(
+				({ selector, dy }) => {
+					const el = document.querySelector(selector)!
+					const rect = el.getBoundingClientRect()
+					const x = rect.left + rect.width / 2
+					const y = rect.top + rect.height / 2
+					const mk = (cy: number) =>
+						new Touch({ identifier: 1, target: el, clientX: x, clientY: cy })
+					el.dispatchEvent(
+						new TouchEvent('touchstart', {
+							bubbles: true,
+							cancelable: true,
+							touches: [mk(y)],
+							changedTouches: [mk(y)]
+						})
+					)
+					const move = new TouchEvent('touchmove', {
+						bubbles: true,
+						cancelable: true,
+						touches: [mk(y + dy)],
+						changedTouches: [mk(y + dy)]
+					})
+					el.dispatchEvent(move)
+					el.dispatchEvent(
+						new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], changedTouches: [mk(y + dy)] })
+					)
+					return move.defaultPrevented
+				},
+				{ selector, dy }
+			)
+
+		// スクロールできないヘッダーと、中身の少ないチャンネル一覧では文書へ伝えない
+		expect(await dispatchMove('.sidebar-header', -60)).toBe(true)
+		expect(await dispatchMove('.sidebar-scroll', -60)).toBe(true)
+
+		// スクロールできるメッセージ一覧では妨げない (一番下にいるので、上へ戻る向きに動かす)
+		await page.getByRole('button', { name: /general/ }).click()
+		await expect(page.locator('#chat-msg-1700000080\\.000100')).toBeVisible()
+		expect(await dispatchMove('.chat-timeline', 60)).toBe(false)
+	})
 })

@@ -33,13 +33,16 @@ export function useVisualViewport(): void {
 			const keyboardOpen =
 				baselineHeight - visibleHeight > 120 && isEditableElement(document.activeElement)
 
-			root.style.setProperty('--app-height', `${Math.round(visibleHeight)}px`)
-
 			if (keyboardOpen) {
 				root.dataset.keyboardOpen = 'true'
+				root.style.setProperty('--app-height', `${Math.round(visibleHeight)}px`)
 				root.style.setProperty('--app-offset-top', `${Math.round(offsetTop)}px`)
 			} else {
+				// キーボードが閉じている間は CSS (#root の inset: 0) で画面全体を覆う。
+				// iOS のホーム画面 PWA では、起動直後の visualViewport.height がセーフエリア分だけ短いことがあり、
+				// その値で高さを固定すると下に隙間が残るため、ここでは高さを指定しない。
 				delete root.dataset.keyboardOpen
+				root.style.removeProperty('--app-height')
 				root.style.setProperty('--app-offset-top', '0px')
 				// キーボードが閉じた直後にレイアウトビューポートのスクロールずれを補正する
 				if (wasKeyboardOpen || window.scrollY !== 0 || window.scrollX !== 0 || offsetTop > 0) {

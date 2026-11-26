@@ -84,6 +84,9 @@ body {
   height: 100%;
   width: 100%;
   overflow: hidden;
+  /* iOS Safari のタブ表示で文書全体がスクロール・ゴム跳ねしないよう固定する (useDocumentScrollLock と併用) */
+  position: fixed;
+  inset: 0;
   overscroll-behavior: none;
   background-color: var(--bg);
   color: var(--fg);
@@ -186,14 +189,19 @@ a {
   display: flex;
   flex-direction: column;
   position: fixed;
-  top: var(--app-offset-top, 0px);
-  left: 0;
+  /* キーボードが閉じている間は画面全体を覆う。開いている間だけ見えている高さに合わせる (下の規則) */
+  inset: 0;
   width: 100%;
-  height: var(--app-height, 100dvh);
   margin: 0;
   background-color: var(--bg);
   overflow: hidden;
   overscroll-behavior: none;
+}
+
+html[data-keyboard-open="true"] #root {
+  top: var(--app-offset-top, 0px);
+  bottom: auto;
+  height: var(--app-height, 100dvh);
 }
 
 .iframe-fallback {
