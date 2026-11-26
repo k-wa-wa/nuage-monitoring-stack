@@ -211,6 +211,13 @@ a {
     --app-height: 100lvh;
   }
 
+  /* html/body が 100% (=793) のままだと、その高さで #root の描画が切り取られる (実機で確認) */
+  html,
+  body {
+    height: 100vh;
+    height: 100lvh;
+  }
+
   #root {
     bottom: auto;
     height: 100vh;

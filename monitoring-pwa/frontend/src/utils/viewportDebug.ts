@@ -146,7 +146,7 @@ export function installViewportDebug(): void {
 			`inner=${window.innerWidth}x${window.innerHeight} clientH=${document.documentElement.clientHeight}`,
 			`vv h=${vv ? Math.round(vv.height) : '-'} top=${vv ? Math.round(vv.offsetTop) : '-'} pageTop=${vv ? Math.round(vv.pageTop) : '-'} scale=${vv ? vv.scale.toFixed(2) : '-'}`,
 			`scrollY=${Math.round(window.scrollY)} se=${se ? describe(se) : '-'} seTop=${se ? Math.round(se.scrollTop) : '-'} seH=${se ? `${se.scrollHeight}/${se.clientHeight}` : '-'}`,
-			`body top=${Math.round(br.top)} h=${Math.round(br.height)} pos=${getComputedStyle(document.body).position}`,
+			`html h=${Math.round(document.documentElement.getBoundingClientRect().height)} body top=${Math.round(br.top)} h=${Math.round(br.height)} pos=${getComputedStyle(document.body).position}`,
 			`#root top=${rr ? Math.round(rr.top) : '-'} bottom=${rr ? Math.round(rr.bottom) : '-'} h=${rr ? Math.round(rr.height) : '-'}`,
 			`safe top=${ps.paddingTop} bottom=${ps.paddingBottom}`,
 			sizers.map(([h, el]) => `${h}=${Math.round(el.getBoundingClientRect().height)}`).join(' '),
