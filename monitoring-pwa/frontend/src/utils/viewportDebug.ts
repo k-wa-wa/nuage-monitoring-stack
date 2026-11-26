@@ -1,6 +1,8 @@
 /**
  * 実機 (iOS Safari・ホーム画面 PWA) で、画面の高さとスクロールの値を確かめるための一時的な計測表示である。
  * URL に `?debug=viewport` を付けて開くと有効になり、`?debug=off` で消える (localStorage に覚える)。
+ * iOS のホーム画面 PWA は Safari と localStorage を共有せず URL も打てないため、
+ * 画面上部の「Nuage Notify」の文字を 2 秒以内に 5 回タップしても切り替えられる。
  * 原因が分かったら取り除く。
  */
 
@@ -29,7 +31,36 @@ function isEnabled(): boolean {
 	}
 }
 
+function installTapToggle(): void {
+	let count = 0
+	let firstAt = 0
+	document.addEventListener(
+		'click',
+		(e) => {
+			const target = e.target instanceof Element ? e.target : null
+			if (!target?.closest('.sidebar-workspace-title, .login-title')) return
+			const now = Date.now()
+			if (now - firstAt > 2000) {
+				count = 0
+				firstAt = now
+			}
+			count += 1
+			if (count < 5) return
+			count = 0
+			try {
+				if (localStorage.getItem(STORAGE_KEY) === '1') localStorage.removeItem(STORAGE_KEY)
+				else localStorage.setItem(STORAGE_KEY, '1')
+			} catch {
+				return
+			}
+			window.location.reload()
+		},
+		{ capture: true }
+	)
+}
+
 export function installViewportDebug(): void {
+	installTapToggle()
 	if (!isEnabled()) return
 
 	const panel = document.createElement('pre')
