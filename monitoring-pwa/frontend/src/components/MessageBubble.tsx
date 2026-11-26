@@ -63,6 +63,7 @@ export default function MessageBubble({
 	return (
 		<article
 			id={`chat-msg-${message.ts}`}
+			data-msg-ts={message.ts}
 			className={`bubble-row ${isSelf ? 'self' : 'other'}`}
 		>
 			{!isSelf && <div className={`bubble-avatar ${levelClass}`}>{renderMessageAvatar(message, false)}</div>}

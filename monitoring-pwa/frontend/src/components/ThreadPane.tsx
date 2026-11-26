@@ -1,7 +1,8 @@
-import { useState, type KeyboardEvent } from 'react'
-import { ChevronLeft, Send, WifiOff, X } from 'lucide-react'
+import { useMemo, useState, type KeyboardEvent } from 'react'
+import { ArrowDown, ChevronLeft, Send, WifiOff, X } from 'lucide-react'
 import MessageBubble from './MessageBubble'
 import NotificationDetailPanel from './NotificationDetailPanel'
+import { useChatScroll } from '../hooks/useChatScroll'
 import { GRAFANA_BASE_URL } from '../utils/url'
 import type { BotInfo, ChatMessage } from '../types/chat'
 import type { UnifiedNotification } from '../types/notification'
@@ -9,11 +10,13 @@ import type { UnifiedNotification } from '../types/notification'
 interface ThreadPaneProps {
 	parent: ChatMessage
 	replies: ChatMessage[]
+	loadingReplies?: boolean
 	channelsById: Record<string, string>
 	currentUserId: string
 	bot: BotInfo
 	sending: boolean
 	sendError: string | null
+	transitionClass?: string
 	onClose: () => void
 	onSendReply: (text: string) => Promise<boolean>
 }
@@ -54,11 +57,13 @@ function messageToUnified(msg: ChatMessage): UnifiedNotification {
 export default function ThreadPane({
 	parent,
 	replies,
+	loadingReplies = false,
 	channelsById,
 	currentUserId,
 	bot,
 	sending,
 	sendError,
+	transitionClass = '',
 	onClose,
 	onSendReply
 }: ThreadPaneProps) {
@@ -66,12 +71,26 @@ export default function ThreadPane({
 	const hasDetailPanel = Boolean(parent.details || parent.url || parent.source_kind)
 	const unifiedItem = hasDetailPanel ? messageToUnified(parent) : null
 
+	const itemIds = useMemo(
+		() => [parent.ts, ...replies.map((r) => r.ts)],
+		[parent.ts, replies]
+	)
+
+	const { scrollRef, hasNewMessages, scrollToBottom, markStickBottomOnSend, handleScroll } =
+		useChatScroll({
+			scrollKey: `${parent.channel_id}:${parent.ts}`,
+			itemIds,
+			isInitialLoading: loadingReplies
+		})
+
 	const submitReply = async () => {
 		const text = draft.trim()
 		if (!text || sending) return
+		markStickBottomOnSend()
 		const ok = await onSendReply(text)
 		if (ok) {
 			setDraft('')
+			scrollToBottom()
 		}
 	}
 
@@ -84,7 +103,7 @@ export default function ThreadPane({
 	}
 
 	return (
-		<aside className="thread-pane" aria-label="スレッド">
+		<aside className={`thread-pane ${transitionClass}`.trim()} aria-label="スレッド">
 			<header className="thread-header">
 				<div className="thread-header-left">
 					<button
@@ -107,44 +126,58 @@ export default function ThreadPane({
 				</button>
 			</header>
 
-			<div className="thread-scroll">
-				<div className="thread-parent">
-					<MessageBubble
-						message={parent}
-						currentUserId={currentUserId}
-						botUserId={bot.user_id}
-						botName={bot.name}
-						channelsById={channelsById}
-						inThread
-					/>
-					{unifiedItem && (unifiedItem.details || unifiedItem.url) && (
-						<div className="thread-detail-wrap">
-							<NotificationDetailPanel item={unifiedItem} grafanaBase={GRAFANA_BASE_URL} />
-						</div>
-					)}
+			<div className="thread-scroll-wrap">
+				<div ref={scrollRef} onScroll={handleScroll} className="thread-scroll">
+					<div className="thread-parent">
+						<MessageBubble
+							message={parent}
+							currentUserId={currentUserId}
+							botUserId={bot.user_id}
+							botName={bot.name}
+							channelsById={channelsById}
+							inThread
+						/>
+						{unifiedItem && (unifiedItem.details || unifiedItem.url) && (
+							<div className="thread-detail-wrap">
+								<NotificationDetailPanel item={unifiedItem} grafanaBase={GRAFANA_BASE_URL} />
+							</div>
+						)}
+					</div>
+
+					<div className="thread-divider">
+						<span>{replies.length}件の返信</span>
+					</div>
+
+					<div className="thread-replies">
+						{replies.length === 0 ? (
+							<div className="thread-empty">まだ返信は存在しない。</div>
+						) : (
+							replies.map((reply) => (
+								<MessageBubble
+									key={reply.ts}
+									message={reply}
+									currentUserId={currentUserId}
+									botUserId={bot.user_id}
+									botName={bot.name}
+									channelsById={channelsById}
+									inThread
+								/>
+							))
+						)}
+					</div>
 				</div>
 
-				<div className="thread-divider">
-					<span>{replies.length}件の返信</span>
-				</div>
-
-				<div className="thread-replies">
-					{replies.length === 0 ? (
-						<div className="thread-empty">まだ返信は存在しない。</div>
-					) : (
-						replies.map((reply) => (
-							<MessageBubble
-								key={reply.ts}
-								message={reply}
-								currentUserId={currentUserId}
-								botUserId={bot.user_id}
-								botName={bot.name}
-								channelsById={channelsById}
-								inThread
-							/>
-						))
-					)}
-				</div>
+				{hasNewMessages && (
+					<button
+						type="button"
+						onClick={scrollToBottom}
+						className="new-messages-btn"
+						aria-label="最新の返信へ移動"
+					>
+						<ArrowDown size={14} />
+						<span>新着あり ↓</span>
+					</button>
+				)}
 			</div>
 
 			<div className="thread-composer">

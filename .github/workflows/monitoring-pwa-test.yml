@@ -64,3 +64,9 @@ jobs:
           bun run lint
           bun run build
           bun test
+
+      - name: Install Playwright browsers and run mobile E2E tests
+        working-directory: monitoring-pwa/frontend
+        run: |
+          bunx playwright install --with-deps chromium
+          bun run test:e2e

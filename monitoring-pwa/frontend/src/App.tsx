@@ -6,6 +6,8 @@ import MessageList from './components/MessageList'
 import ThreadPane from './components/ThreadPane'
 import SearchModal from './components/SearchModal'
 import Settings from './components/Settings'
+import { useVisualViewport } from './hooks/useVisualViewport'
+import { useSwipeBack, type SwipeTargetLayer } from './hooks/useSwipeBack'
 import { parseChatRoute } from './utils/url'
 import { syncExistingPushSubscription } from './utils/pushSubscription'
 import type {
@@ -19,9 +21,37 @@ import type {
 
 type AuthState = 'loading' | 'unauthenticated' | 'authenticated'
 type MobileScreen = 'channels' | 'messages' | 'thread'
+type HistoryScreen = MobileScreen | 'settings'
+
+interface ChatHistoryState {
+	nuageDepth?: number
+	screen?: HistoryScreen
+	prevScreen?: HistoryScreen
+}
+
+const SLIDE_DURATION_MS = 280
+
+function isMobileViewport(): boolean {
+	return typeof window !== 'undefined' && window.innerWidth < 768
+}
+
+function prefersReducedMotion(): boolean {
+	return (
+		typeof window !== 'undefined' &&
+		typeof window.matchMedia === 'function' &&
+		window.matchMedia('(prefers-reduced-motion: reduce)').matches
+	)
+}
 
 export default function App() {
+	useVisualViewport()
+
 	const initialRoute = useMemo(() => parseChatRoute(window.location.pathname), [])
+	const initialMobileScreen: MobileScreen = useMemo(() => {
+		if (initialRoute.threadTs || initialRoute.deepLinkKind) return 'thread'
+		if (initialRoute.channelId || initialRoute.view === 'settings') return 'messages'
+		return 'channels'
+	}, [initialRoute])
 
 	const [authState, setAuthState] = useState<AuthState>('loading')
 	const [user, setUser] = useState<AuthUser | null>(null)
@@ -34,14 +64,11 @@ export default function App() {
 	const [channels, setChannels] = useState<Channel[]>([])
 	const [activeView, setActiveView] = useState<'chat' | 'settings'>(initialRoute.view)
 	const [activeChannelId, setActiveChannelId] = useState<string | null>(initialRoute.channelId)
-	const [mobileScreen, setMobileScreen] = useState<MobileScreen>(() => {
-		if (initialRoute.threadTs || initialRoute.deepLinkKind) return 'thread'
-		if (initialRoute.channelId) return 'messages'
-		return 'channels'
-	})
+	const [mobileScreen, setMobileScreen] = useState<MobileScreen>(initialMobileScreen)
 	const [routePath, setRoutePath] = useState(() => window.location.pathname)
 
 	const [messages, setMessages] = useState<ChatMessage[]>([])
+	const [loadingMessages, setLoadingMessages] = useState(false)
 	const [hasMore, setHasMore] = useState(false)
 	const [loadingOlder, setLoadingOlder] = useState(false)
 	const [sending, setSending] = useState(false)
@@ -49,6 +76,11 @@ export default function App() {
 
 	const [threadParent, setThreadParent] = useState<ChatMessage | null>(null)
 	const [threadReplies, setThreadReplies] = useState<ChatMessage[]>([])
+	const [loadingThread, setLoadingThread] = useState(false)
+	const [threadEntering, setThreadEntering] = useState(false)
+	const [threadExiting, setThreadExiting] = useState(false)
+	const [settingsEntering, setSettingsEntering] = useState(false)
+	const [settingsExiting, setSettingsExiting] = useState(false)
 	const [searchOpen, setSearchOpen] = useState(false)
 
 	// Push 通知設定関連
@@ -56,11 +88,20 @@ export default function App() {
 	const [submitting, setSubmitting] = useState(false)
 	const [logs, setLogs] = useState<string[]>([])
 
+	const chatShellRef = useRef<HTMLDivElement | null>(null)
 	const activeChannelIdRef = useRef<string | null>(activeChannelId)
+	const loadedChannelIdRef = useRef<string | null>(null)
 	const threadParentTsRef = useRef<string | null>(null)
 	const threadChannelIdRef = useRef<string | null>(null)
 	const userIdRef = useRef<string | null>(null)
 	const resolvedRouteRef = useRef<string | null>(null)
+	const historyDepthRef = useRef<number>(
+		typeof (window.history.state as ChatHistoryState | null)?.nuageDepth === 'number'
+			? ((window.history.state as ChatHistoryState).nuageDepth ?? 0)
+			: 0
+	)
+	const threadExitTimerRef = useRef<number | null>(null)
+	const settingsExitTimerRef = useRef<number | null>(null)
 
 	useEffect(() => {
 		activeChannelIdRef.current = activeChannelId
@@ -74,6 +115,32 @@ export default function App() {
 	useEffect(() => {
 		userIdRef.current = user?.id || null
 	}, [user])
+
+	// 初期履歴エントリにアプリ独自の深さメタ情報を付与する（URL は維持）
+	useEffect(() => {
+		const curState = (window.history.state as ChatHistoryState | null) || {}
+		if (typeof curState.nuageDepth !== 'number') {
+			const screen: HistoryScreen =
+				initialRoute.view === 'settings' ? 'settings' : initialMobileScreen
+			window.history.replaceState(
+				{ ...curState, nuageDepth: 0, screen } satisfies ChatHistoryState,
+				'',
+				window.location.pathname + window.location.search
+			)
+			historyDepthRef.current = 0
+		}
+	}, [initialRoute.view, initialMobileScreen])
+
+	useEffect(() => {
+		return () => {
+			if (threadExitTimerRef.current !== null) {
+				window.clearTimeout(threadExitTimerRef.current)
+			}
+			if (settingsExitTimerRef.current !== null) {
+				window.clearTimeout(settingsExitTimerRef.current)
+			}
+		}
+	}, [])
 
 	const channelsById = useMemo(() => {
 		const map: Record<string, string> = {}
@@ -89,6 +156,105 @@ export default function App() {
 	const log = useCallback((msg: string) => {
 		setLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev])
 	}, [])
+
+	const cancelThreadExit = useCallback(() => {
+		if (threadExitTimerRef.current !== null) {
+			window.clearTimeout(threadExitTimerRef.current)
+			threadExitTimerRef.current = null
+		}
+		setThreadExiting(false)
+	}, [])
+
+	const closeThreadWithAnimation = useCallback((immediate = false) => {
+		if (threadExitTimerRef.current !== null) {
+			window.clearTimeout(threadExitTimerRef.current)
+			threadExitTimerRef.current = null
+		}
+		if (immediate || !isMobileViewport() || prefersReducedMotion()) {
+			setThreadExiting(false)
+			setThreadParent(null)
+			setThreadReplies([])
+			return
+		}
+		setThreadExiting(true)
+		threadExitTimerRef.current = window.setTimeout(() => {
+			threadExitTimerRef.current = null
+			setThreadExiting(false)
+			setThreadParent(null)
+			setThreadReplies([])
+		}, SLIDE_DURATION_MS)
+	}, [])
+
+	const triggerThreadEnterAnimation = useCallback(() => {
+		if (!isMobileViewport() || prefersReducedMotion()) {
+			setThreadEntering(false)
+			return
+		}
+		setThreadEntering(true)
+		window.requestAnimationFrame(() => {
+			window.requestAnimationFrame(() => {
+				setThreadEntering(false)
+			})
+		})
+	}, [])
+
+	const openSettingsView = useCallback(() => {
+		if (settingsExitTimerRef.current !== null) {
+			window.clearTimeout(settingsExitTimerRef.current)
+			settingsExitTimerRef.current = null
+		}
+		setSettingsExiting(false)
+		setActiveView('settings')
+		setMobileScreen('messages')
+		if (isMobileViewport() && !prefersReducedMotion()) {
+			setSettingsEntering(true)
+			window.requestAnimationFrame(() => {
+				window.requestAnimationFrame(() => {
+					setSettingsEntering(false)
+				})
+			})
+		} else {
+			setSettingsEntering(false)
+		}
+	}, [])
+
+	const closeSettingsWithAnimation = useCallback((immediate = false) => {
+		if (settingsExitTimerRef.current !== null) {
+			window.clearTimeout(settingsExitTimerRef.current)
+			settingsExitTimerRef.current = null
+		}
+		if (immediate || !isMobileViewport() || prefersReducedMotion()) {
+			setSettingsExiting(false)
+			setActiveView('chat')
+			return
+		}
+		setSettingsExiting(true)
+		settingsExitTimerRef.current = window.setTimeout(() => {
+			settingsExitTimerRef.current = null
+			setSettingsExiting(false)
+			setActiveView('chat')
+		}, SLIDE_DURATION_MS)
+	}, [])
+
+	const pushHistoryRoute = useCallback(
+		(newPath: string, screen: HistoryScreen, prevScreen?: HistoryScreen) => {
+			const nextDepth = historyDepthRef.current + 1
+			historyDepthRef.current = nextDepth
+			resolvedRouteRef.current = newPath
+			setRoutePath(newPath)
+			const nextState: ChatHistoryState = {
+				nuageDepth: nextDepth,
+				screen,
+				prevScreen
+			}
+			if (window.location.pathname !== newPath) {
+				window.history.pushState(nextState, '', newPath)
+			} else {
+				window.history.replaceState(nextState, '', newPath)
+			}
+		},
+		[]
+	)
 
 	const markChannelRead = useCallback(
 		async (channelId: string, ts?: string) => {
@@ -111,6 +277,13 @@ export default function App() {
 
 	const loadChannelMessages = useCallback(
 		async (channelId: string) => {
+			const isChannelSwitch = loadedChannelIdRef.current !== channelId
+			if (isChannelSwitch) {
+				loadedChannelIdRef.current = channelId
+				setMessages([])
+				setHasMore(false)
+				setLoadingMessages(true)
+			}
 			try {
 				const res = await fetch(
 					`${apiBase}/api/channels/${encodeURIComponent(channelId)}/messages?limit=40`,
@@ -122,6 +295,9 @@ export default function App() {
 				}
 				if (!res.ok) return
 				const data: { messages: ChatMessage[]; has_more: boolean } = await res.json()
+				if (activeChannelIdRef.current && activeChannelIdRef.current !== channelId) {
+					return
+				}
 				setMessages(data.messages || [])
 				setHasMore(Boolean(data.has_more))
 				const latestTs =
@@ -131,6 +307,8 @@ export default function App() {
 				void markChannelRead(channelId, latestTs)
 			} catch (err) {
 				console.error('Failed to load messages:', err)
+			} finally {
+				setLoadingMessages(false)
 			}
 		},
 		[apiBase, markChannelRead]
@@ -138,6 +316,7 @@ export default function App() {
 
 	const loadThread = useCallback(
 		async (channelId: string, threadTs: string) => {
+			setLoadingThread(true)
 			try {
 				const res = await fetch(
 					`${apiBase}/api/channels/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(threadTs)}`,
@@ -149,14 +328,17 @@ export default function App() {
 				}
 				if (!res.ok) return
 				const data: { parent: ChatMessage; replies: ChatMessage[] } = await res.json()
+				cancelThreadExit()
 				setThreadParent(data.parent)
 				setThreadReplies(data.replies || [])
 				setMobileScreen('thread')
 			} catch (err) {
 				console.error('Failed to load thread:', err)
+			} finally {
+				setLoadingThread(false)
 			}
 		},
-		[apiBase]
+		[apiBase, cancelThreadExit]
 	)
 
 	const loadBootstrap = useCallback(async () => {
@@ -205,12 +387,19 @@ export default function App() {
 
 		const parsed = parseChatRoute(routePath)
 		if (parsed.view === 'settings') {
+			setSettingsExiting(false)
 			setActiveView('settings')
+			setMobileScreen('messages')
+			closeThreadWithAnimation(true)
 			resolvedRouteRef.current = routePath
 			return
 		}
 
-		setActiveView('chat')
+		if (activeView === 'settings') {
+			closeSettingsWithAnimation(false)
+		} else {
+			setActiveView('chat')
+		}
 
 		if (parsed.deepLinkKind && parsed.deepLinkId !== null) {
 			resolvedRouteRef.current = routePath
@@ -231,18 +420,36 @@ export default function App() {
 		if (parsed.channelId) {
 			setActiveChannelId(parsed.channelId)
 			if (parsed.threadTs) {
+				if (!threadParentTsRef.current) {
+					triggerThreadEnterAnimation()
+				}
 				void loadThread(parsed.channelId, parsed.threadTs)
 			} else {
-				setThreadParent(null)
-				setThreadReplies([])
+				if (threadParentTsRef.current) {
+					closeThreadWithAnimation(false)
+				}
 				setMobileScreen('messages')
 			}
 			resolvedRouteRef.current = routePath
 			return
 		}
 
+		// ルート '/' への遷移（popstate 等）
+		if (threadParentTsRef.current) {
+			closeThreadWithAnimation(false)
+		}
+		setMobileScreen('channels')
 		resolvedRouteRef.current = routePath
-	}, [authState, routePath, apiBase, loadThread])
+	}, [
+		authState,
+		routePath,
+		apiBase,
+		activeView,
+		loadThread,
+		triggerThreadEnterAnimation,
+		closeThreadWithAnimation,
+		closeSettingsWithAnimation
+	])
 
 	// SSE でリアルタイム更新を受信し、再接続・復帰時に欠損を同期する
 	useEffect(() => {
@@ -367,23 +574,24 @@ export default function App() {
 		}
 	}, [authState, apiBase, markChannelRead, loadBootstrap, loadChannelMessages, loadThread])
 
-	const navigateToPath = useCallback((newPath: string) => {
-		resolvedRouteRef.current = null
-		setRoutePath(newPath)
-		if (window.location.pathname !== newPath) {
-			window.history.pushState(null, '', newPath)
-		}
-	}, [])
+	const navigateToPath = useCallback(
+		(newPath: string, screen: HistoryScreen = 'messages', prevScreen?: HistoryScreen) => {
+			pushHistoryRoute(newPath, screen, prevScreen)
+		},
+		[pushHistoryRoute]
+	)
 
 	// 戻る・進むボタンと Service Worker からの通知クリックを受信する
 	useEffect(() => {
-		const handlePopState = () => {
+		const handlePopState = (event: PopStateEvent) => {
+			const state = (event.state as ChatHistoryState | null) || null
+			historyDepthRef.current = typeof state?.nuageDepth === 'number' ? state.nuageDepth : 0
 			resolvedRouteRef.current = null
 			setRoutePath(window.location.pathname)
 		}
 		const handleSwMessage = (event: MessageEvent) => {
 			if (event.data?.type === 'NOTIFICATION_CLICK' && typeof event.data.url === 'string') {
-				navigateToPath(event.data.url)
+				navigateToPath(event.data.url, 'thread')
 			}
 		}
 		window.addEventListener('popstate', handlePopState)
@@ -524,63 +732,104 @@ export default function App() {
 		setAuthState('unauthenticated')
 		setUser(null)
 		setMessages([])
+		cancelThreadExit()
 		setThreadParent(null)
 		setThreadReplies([])
 	}
 
 	const handleSelectChannel = (channelId: string) => {
+		const prevScreen: HistoryScreen =
+			activeView === 'settings' ? 'settings' : mobileScreen
+		closeSettingsWithAnimation(true)
+		cancelThreadExit()
 		setActiveView('chat')
 		setActiveChannelId(channelId)
 		setThreadParent(null)
 		setThreadReplies([])
 		setSendError(null)
 		setMobileScreen('messages')
-		const nextPath = `/channels/${channelId}`
-		resolvedRouteRef.current = nextPath
-		setRoutePath(nextPath)
-		if (window.location.pathname !== nextPath) {
-			window.history.pushState(null, '', nextPath)
-		}
+		const nextPath = `/channels/${encodeURIComponent(channelId)}`
+		pushHistoryRoute(nextPath, 'messages', prevScreen)
 	}
 
 	const handleOpenThread = (msg: ChatMessage) => {
+		cancelThreadExit()
+		triggerThreadEnterAnimation()
 		setThreadParent(msg)
 		setThreadReplies([])
 		setMobileScreen('thread')
-		const nextPath = `/channels/${msg.channel_id}/threads/${msg.ts}`
-		resolvedRouteRef.current = nextPath
-		setRoutePath(nextPath)
-		if (window.location.pathname !== nextPath) {
-			window.history.pushState(null, '', nextPath)
-		}
+		const nextPath = `/channels/${encodeURIComponent(msg.channel_id)}/threads/${encodeURIComponent(msg.ts)}`
+		pushHistoryRoute(nextPath, 'thread', 'messages')
 		void loadThread(msg.channel_id, msg.ts)
 	}
 
-	const handleCloseThread = () => {
-		setThreadParent(null)
-		setThreadReplies([])
+	const handleCloseThread = useCallback(() => {
+		const curState = window.history.state as ChatHistoryState | null
+		const canPopBack =
+			curState?.prevScreen === 'messages' &&
+			typeof curState?.nuageDepth === 'number' &&
+			curState.nuageDepth > 0
+
 		setMobileScreen('messages')
-		if (activeChannelId) {
-			const nextPath = `/channels/${activeChannelId}`
-			resolvedRouteRef.current = nextPath
-			setRoutePath(nextPath)
-			if (window.location.pathname !== nextPath) {
-				window.history.pushState(null, '', nextPath)
-			}
+		closeThreadWithAnimation(false)
+
+		if (canPopBack) {
+			window.history.back()
+			return
 		}
-	}
+
+		const targetChannelId = threadParent?.channel_id || activeChannelId
+		if (targetChannelId) {
+			const nextPath = `/channels/${encodeURIComponent(targetChannelId)}`
+			pushHistoryRoute(nextPath, 'messages', 'thread')
+		}
+	}, [threadParent, activeChannelId, closeThreadWithAnimation, pushHistoryRoute])
+
+	const handleBackMobile = useCallback(() => {
+		const curState = window.history.state as ChatHistoryState | null
+		const canPopBack =
+			curState?.prevScreen === 'channels' &&
+			typeof curState?.nuageDepth === 'number' &&
+			curState.nuageDepth > 0
+
+		if (activeView === 'settings') {
+			closeSettingsWithAnimation(false)
+			if (!isMobileViewport()) {
+				const targetPath = activeChannelId ? `/channels/${encodeURIComponent(activeChannelId)}` : '/'
+				setMobileScreen('messages')
+				pushHistoryRoute(targetPath, 'messages', 'settings')
+				return
+			}
+			setMobileScreen('channels')
+			if (canPopBack) {
+				window.history.back()
+				return
+			}
+			pushHistoryRoute('/', 'channels', 'settings')
+			return
+		}
+
+		setMobileScreen('channels')
+		if (canPopBack) {
+			window.history.back()
+			return
+		}
+		pushHistoryRoute('/', 'channels', 'messages')
+	}, [activeView, activeChannelId, closeSettingsWithAnimation, pushHistoryRoute])
 
 	const handleLoadOlder = async () => {
 		if (!activeChannelId || loadingOlder || messages.length === 0) return
+		const targetChannel = activeChannelId
 		const oldestTs = messages[0].ts
 		setLoadingOlder(true)
 		try {
 			const res = await fetch(
-				`${apiBase}/api/channels/${encodeURIComponent(activeChannelId)}/messages?limit=40&before=${encodeURIComponent(oldestTs)}`,
+				`${apiBase}/api/channels/${encodeURIComponent(targetChannel)}/messages?limit=40&before=${encodeURIComponent(oldestTs)}`,
 				{ credentials: 'include' }
 			)
 			if (!res.ok) return
 			const data: { messages: ChatMessage[]; has_more: boolean } = await res.json()
+			if (activeChannelIdRef.current !== targetChannel) return
 			if (data.messages && data.messages.length > 0) {
 				setMessages((prev) => {
 					const existing = new Set(prev.map((m) => m.ts))
@@ -643,16 +892,46 @@ export default function App() {
 
 	const handleSelectSearchResult = (res: SearchResult) => {
 		setSearchOpen(false)
+		closeSettingsWithAnimation(true)
 		setActiveView('chat')
 		setActiveChannelId(res.channel_id)
 		const targetThreadTs = res.message.thread_ts || res.message.ts
+		triggerThreadEnterAnimation()
 		setMobileScreen('thread')
-		const nextPath = `/channels/${res.channel_id}/threads/${targetThreadTs}`
-		resolvedRouteRef.current = nextPath
-		setRoutePath(nextPath)
-		window.history.pushState(null, '', nextPath)
+		const nextPath = `/channels/${encodeURIComponent(res.channel_id)}/threads/${encodeURIComponent(targetThreadTs)}`
+		pushHistoryRoute(nextPath, 'thread', 'channels')
 		void loadThread(res.channel_id, targetThreadTs)
 	}
+
+	const swipeTargetLayer: SwipeTargetLayer = useMemo(() => {
+		if (authState !== 'authenticated') return null
+		if (mobileScreen === 'thread' && threadParent && !threadExiting) {
+			return 'thread'
+		}
+		if (activeView === 'settings' && !settingsExiting) {
+			return 'layer1'
+		}
+		if (mobileScreen === 'messages') {
+			return 'layer1'
+		}
+		return null
+	}, [authState, mobileScreen, threadParent, threadExiting, activeView, settingsExiting])
+
+	const handleSwipeBack = useCallback(() => {
+		if (swipeTargetLayer === 'thread') {
+			handleCloseThread()
+		} else if (swipeTargetLayer === 'layer1') {
+			handleBackMobile()
+		}
+	}, [swipeTargetLayer, handleCloseThread, handleBackMobile])
+
+	useSwipeBack({
+		shellRef: chatShellRef,
+		targetLayer: swipeTargetLayer,
+		enabled: authState === 'authenticated',
+		disabled: searchOpen || authState !== 'authenticated',
+		onBack: handleSwipeBack
+	})
 
 	if (window.self !== window.top) {
 		return <div className="iframe-fallback">Nuage Notify is loaded inside an iframe.</div>
@@ -671,9 +950,23 @@ export default function App() {
 	}
 
 	const activeChannel = channels.find((c) => c.id === activeChannelId) || channels[0] || null
+	const showSettings = activeView === 'settings' || settingsExiting
+	const settingsTransitionClass = settingsExiting
+		? 'pane-exiting'
+		: settingsEntering
+		? 'pane-entering'
+		: ''
+	const threadTransitionClass = threadExiting
+		? 'pane-exiting'
+		: threadEntering
+		? 'pane-entering'
+		: ''
 
 	return (
-		<div className={`chat-shell mobile-${mobileScreen} ${activeView === 'settings' ? 'view-settings' : ''}`}>
+		<div
+			ref={chatShellRef}
+			className={`chat-shell mobile-${mobileScreen} ${activeView === 'settings' && !settingsExiting ? 'view-settings' : ''}`.trim()}
+		>
 			<ChannelSidebar
 				channels={channels}
 				activeChannelId={activeChannel?.id || null}
@@ -683,24 +976,22 @@ export default function App() {
 				onSelectChannel={handleSelectChannel}
 				onOpenSearch={() => setSearchOpen(true)}
 				onOpenSettings={() => {
-					setActiveView('settings')
-					setMobileScreen('messages')
-					navigateToPath('/settings')
+					const prevScreen: HistoryScreen =
+						mobileScreen === 'thread' ? 'thread' : mobileScreen
+					closeThreadWithAnimation(true)
+					openSettingsView()
+					pushHistoryRoute('/settings', 'settings', prevScreen)
 				}}
 				onLogout={() => void handleLogout()}
 			/>
 
-			{activeView === 'settings' ? (
-				<section className="settings-pane" aria-label="設定">
+			{showSettings && (
+				<section className={`settings-pane ${settingsTransitionClass}`.trim()} aria-label="設定">
 					<header className="chat-header">
 						<div className="chat-header-left">
 							<button
 								type="button"
-								onClick={() => {
-									setActiveView('chat')
-									setMobileScreen('channels')
-									navigateToPath(activeChannel ? `/channels/${activeChannel.id}` : '/')
-								}}
+								onClick={handleBackMobile}
 								className="icon-btn"
 								aria-label="チャットへ戻る"
 							>
@@ -724,7 +1015,9 @@ export default function App() {
 						</div>
 					</div>
 				</section>
-			) : (
+			)}
+
+			{!showSettings && (
 				<>
 					{activeChannel ? (
 						<MessageList
@@ -733,11 +1026,12 @@ export default function App() {
 							channelsById={channelsById}
 							hasMore={hasMore}
 							loadingOlder={loadingOlder}
+							loadingInitial={loadingMessages}
 							currentUserId={user.id}
 							bot={bot}
 							sending={sending}
 							sendError={sendError}
-							onBackMobile={() => setMobileScreen('channels')}
+							onBackMobile={handleBackMobile}
 							onLoadOlder={handleLoadOlder}
 							onSendMessage={(text) => handlePostMessage(text)}
 							onOpenThread={handleOpenThread}
@@ -753,11 +1047,13 @@ export default function App() {
 						<ThreadPane
 							parent={threadParent}
 							replies={threadReplies}
+							loadingReplies={loadingThread}
 							channelsById={channelsById}
 							currentUserId={user.id}
 							bot={bot}
 							sending={sending}
 							sendError={sendError}
+							transitionClass={threadTransitionClass}
 							onClose={handleCloseThread}
 							onSendReply={(text) => handlePostMessage(text, threadParent.ts)}
 						/>

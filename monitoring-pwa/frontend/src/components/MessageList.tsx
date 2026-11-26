@@ -1,13 +1,12 @@
 import {
 	useEffect,
-	useLayoutEffect,
-	useRef,
+	useMemo,
 	useState,
-	type KeyboardEvent,
-	type UIEvent
+	type KeyboardEvent
 } from 'react'
-import { ArrowUp, AtSign, Hash, Bot, ChevronLeft, Search, Send, WifiOff } from 'lucide-react'
+import { ArrowDown, ArrowUp, AtSign, Hash, Bot, ChevronLeft, Search, Send, WifiOff } from 'lucide-react'
 import MessageBubble from './MessageBubble'
+import { useChatScroll } from '../hooks/useChatScroll'
 import type { BotInfo, Channel, ChatMessage } from '../types/chat'
 
 interface MessageListProps {
@@ -16,6 +15,7 @@ interface MessageListProps {
 	channelsById: Record<string, string>
 	hasMore: boolean
 	loadingOlder: boolean
+	loadingInitial?: boolean
 	currentUserId: string
 	bot: BotInfo
 	sending: boolean
@@ -34,6 +34,7 @@ export default function MessageList({
 	channelsById,
 	hasMore,
 	loadingOlder,
+	loadingInitial = false,
 	currentUserId,
 	bot,
 	sending,
@@ -46,60 +47,28 @@ export default function MessageList({
 }: MessageListProps) {
 	const [draft, setDraft] = useState('')
 	const [offlineNotice, setOfflineNotice] = useState(false)
-	const scrollRef = useRef<HTMLDivElement | null>(null)
-	const prevScrollHeightRef = useRef<number>(0)
-	const prevFirstTsRef = useRef<string | null>(null)
-	const prevLastTsRef = useRef<string | null>(null)
-	const shouldStickBottomRef = useRef<boolean>(true)
-	const loadingOlderRef = useRef<boolean>(false)
+
+	const itemIds = useMemo(() => messages.map((m) => m.ts), [messages])
+
+	const {
+		scrollRef,
+		hasNewMessages,
+		scrollToBottom,
+		markStickBottomOnSend,
+		handleScroll,
+		prepareLoadOlder
+	} = useChatScroll({
+		scrollKey: channel.id,
+		itemIds,
+		isInitialLoading: loadingInitial,
+		hasMore,
+		loadingOlder,
+		onLoadOlder
+	})
 
 	useEffect(() => {
-		loadingOlderRef.current = loadingOlder
-	}, [loadingOlder])
-
-	// チャンネル切り替え時は最下部へスクロール
-	useEffect(() => {
-		shouldStickBottomRef.current = true
-		prevFirstTsRef.current = null
-		prevLastTsRef.current = null
 		setOfflineNotice(false)
 	}, [channel.id])
-
-	useLayoutEffect(() => {
-		const el = scrollRef.current
-		if (!el) return
-
-		const firstTs = messages[0]?.ts || null
-		const lastTs = messages[messages.length - 1]?.ts || null
-
-		// 上方向へ古いメッセージが追加された場合はスクロール位置を維持する
-		if (
-			prevFirstTsRef.current &&
-			firstTs &&
-			firstTs < prevFirstTsRef.current &&
-			prevScrollHeightRef.current > 0
-		) {
-			const diff = el.scrollHeight - prevScrollHeightRef.current
-			el.scrollTop += diff
-		} else if (shouldStickBottomRef.current || (lastTs && lastTs !== prevLastTsRef.current)) {
-			el.scrollTop = el.scrollHeight
-		}
-
-		prevFirstTsRef.current = firstTs
-		prevLastTsRef.current = lastTs
-		prevScrollHeightRef.current = el.scrollHeight
-	}, [messages, channel.id])
-
-	const handleScroll = (e: UIEvent<HTMLDivElement>) => {
-		const el = e.currentTarget
-		const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-		shouldStickBottomRef.current = distanceFromBottom < 80
-
-		if (el.scrollTop < 60 && hasMore && !loadingOlderRef.current) {
-			prevScrollHeightRef.current = el.scrollHeight
-			void onLoadOlder()
-		}
-	}
 
 	const submitMessage = async () => {
 		const text = draft.trim()
@@ -107,9 +76,11 @@ export default function MessageList({
 		if (!bot.online) {
 			setOfflineNotice(true)
 		}
+		markStickBottomOnSend()
 		const ok = await onSendMessage(text)
 		if (ok) {
 			setDraft('')
+			scrollToBottom()
 		}
 	}
 
@@ -172,44 +143,56 @@ export default function MessageList({
 				</div>
 			)}
 
-			<div ref={scrollRef} onScroll={handleScroll} className="chat-timeline">
-				{hasMore && (
-					<div className="load-older-wrap">
-						<button
-							type="button"
-							disabled={loadingOlder}
-							onClick={() => {
-								if (scrollRef.current) {
-									prevScrollHeightRef.current = scrollRef.current.scrollHeight
-								}
-								void onLoadOlder()
-							}}
-							className="load-older-btn"
-						>
-							<ArrowUp size={13} />
-							{loadingOlder ? '読み込み中...' : 'さらに古い履歴を読み込む'}
-						</button>
-					</div>
-				)}
+			<div className="chat-timeline-wrap">
+				<div ref={scrollRef} onScroll={handleScroll} className="chat-timeline">
+					{hasMore && (
+						<div className="load-older-wrap">
+							<button
+								type="button"
+								disabled={loadingOlder}
+								onClick={() => {
+									prepareLoadOlder()
+									void onLoadOlder()
+								}}
+								className="load-older-btn"
+							>
+								<ArrowUp size={13} />
+								{loadingOlder ? '読み込み中...' : 'さらに古い履歴を読み込む'}
+							</button>
+						</div>
+					)}
 
-				{messages.length === 0 ? (
-					<div className="empty-state">
-						{channel.is_im
-							? `${bot.name} へのダイレクトメッセージはまだ存在しない。`
-							: `#${channel.name} のメッセージはまだ存在しない。`}
-					</div>
-				) : (
-					messages.map((msg) => (
-						<MessageBubble
-							key={msg.ts}
-							message={msg}
-							currentUserId={currentUserId}
-							botUserId={bot.user_id}
-							botName={bot.name}
-							channelsById={channelsById}
-							onOpenThread={onOpenThread}
-						/>
-					))
+					{messages.length === 0 && !loadingInitial ? (
+						<div className="empty-state">
+							{channel.is_im
+								? `${bot.name} へのダイレクトメッセージはまだ存在しない。`
+								: `#${channel.name} のメッセージはまだ存在しない。`}
+						</div>
+					) : (
+						messages.map((msg) => (
+							<MessageBubble
+								key={msg.ts}
+								message={msg}
+								currentUserId={currentUserId}
+								botUserId={bot.user_id}
+								botName={bot.name}
+								channelsById={channelsById}
+								onOpenThread={onOpenThread}
+							/>
+						))
+					)}
+				</div>
+
+				{hasNewMessages && (
+					<button
+						type="button"
+						onClick={scrollToBottom}
+						className="new-messages-btn"
+						aria-label="最新のメッセージへ移動"
+					>
+						<ArrowDown size={14} />
+						<span>新着あり ↓</span>
+					</button>
 				)}
 			</div>
 

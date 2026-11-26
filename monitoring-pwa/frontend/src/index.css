@@ -58,9 +58,18 @@
   --scale-button-active: 0.94;
   --scale-icon-active: 0.88;
 
-  /* セーフエリア */
+  /* セーフエリア・動的ビューポート */
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --effective-safe-bottom: var(--safe-bottom);
+  --app-height: 100dvh;
+  --app-offset-top: 0px;
+}
+
+html[data-keyboard-open="true"] {
+  --effective-safe-bottom: 0px;
 }
 
 * {
@@ -72,19 +81,24 @@
 
 html,
 body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   background-color: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 body {
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
 }
 
 button:focus:not(:focus-visible),
@@ -106,10 +120,47 @@ button,
 .nav-item,
 .history-detail-toggle-btn,
 .history-link,
-.copy-btn {
+.copy-btn,
+.icon-btn,
+.channel-item,
+.thread-open-btn,
+.mention-chip-btn,
+.load-older-btn,
+.new-messages-btn,
+.chat-header,
+.thread-header,
+.sidebar-header,
+.sidebar-footer {
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+select,
+.bubble-body,
+.bubble-body *,
+.slack-mrkdwn,
+.slack-mrkdwn *,
+.slack-codeblock,
+.slack-inline-code,
+.log-code,
+.details-parsed,
+.details-parsed *,
+.webhook-code-block pre,
+.syslog-body,
+.search-result-text {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.slack-image-trigger {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 a {
@@ -131,24 +182,18 @@ a {
   border-radius: var(--radius-full);
 }
 
-@media (max-width: 768px) {
-  input,
-  textarea,
-  select {
-    font-size: 16px;
-  }
-}
-
 #root {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
+  position: fixed;
+  top: var(--app-offset-top, 0px);
+  left: 0;
   width: 100%;
+  height: var(--app-height, 100dvh);
   margin: 0;
-  position: relative;
   background-color: var(--bg);
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .iframe-fallback {
@@ -809,6 +854,8 @@ a {
   word-break: break-all;
   max-height: 240px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* 設定画面・汎用カード */
@@ -947,6 +994,8 @@ a {
   font-size: 11px;
   color: var(--muted);
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
   position: relative;
 }
 
@@ -993,6 +1042,8 @@ a {
 .syslog-body {
   max-height: 120px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
@@ -1006,10 +1057,15 @@ a {
    ========================================================= */
 .login-shell {
   flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: calc(20px + var(--safe-top)) calc(20px + var(--safe-right)) calc(20px + var(--effective-safe-bottom)) calc(20px + var(--safe-left));
   background-color: var(--bg);
 }
 
@@ -1100,6 +1156,7 @@ a {
   flex: 1;
   min-height: 0;
   width: 100%;
+  overflow: hidden;
   background-color: var(--bg);
 }
 
@@ -1136,7 +1193,7 @@ a {
 }
 
 .sidebar-header {
-  padding: calc(12px + var(--safe-top)) 12px 12px;
+  padding: calc(12px + var(--safe-top)) calc(12px + var(--safe-right)) 12px calc(12px + var(--safe-left));
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -1179,8 +1236,11 @@ a {
 
 .sidebar-scroll {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 12px 8px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px calc(8px + var(--safe-right)) 12px calc(8px + var(--safe-left));
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -1300,7 +1360,7 @@ a {
 }
 
 .sidebar-footer {
-  padding: 10px 12px calc(10px + var(--safe-bottom));
+  padding: 10px calc(12px + var(--safe-right)) calc(10px + var(--effective-safe-bottom)) calc(12px + var(--safe-left));
   border-top: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -1357,10 +1417,11 @@ a {
 }
 
 .chat-header {
-  padding: calc(10px + var(--safe-top)) 16px 10px;
+  padding: calc(10px + var(--safe-top)) calc(16px + var(--safe-right)) 10px calc(16px + var(--safe-left));
   border-bottom: 1px solid var(--line);
   background-color: var(--surface-translucent);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1417,14 +1478,51 @@ a {
   flex-shrink: 0;
 }
 
+.chat-timeline-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-timeline {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px calc(16px + var(--safe-right)) 16px calc(16px + var(--safe-left));
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.new-messages-btn {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--accent-border);
+  background-color: var(--accent);
+  color: var(--on-accent);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  transition: transform var(--duration-release) var(--ease-spring), opacity 0.15s ease;
+}
+
+.new-messages-btn:active {
+  transform: translateX(-50%) scale(var(--scale-button-active));
 }
 
 .load-older-wrap {
@@ -1629,6 +1727,8 @@ a {
   border-radius: var(--radius-md);
   padding: 10px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
   margin: 4px 0;
 }
 
@@ -1686,7 +1786,29 @@ a {
 
 .gfm-table-wrap {
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
   margin: 6px 0;
+}
+
+.slack-image-trigger {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0;
+  margin: 4px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: zoom-in;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.slack-inline-image {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  object-fit: contain;
 }
 
 .gfm-table {
@@ -1746,7 +1868,7 @@ a {
 
 /* コンポーザー */
 .composer-wrap {
-  padding: 10px 16px calc(12px + var(--safe-bottom));
+  padding: 10px calc(16px + var(--safe-right)) calc(12px + var(--effective-safe-bottom)) calc(16px + var(--safe-left));
   border-top: 1px solid var(--line);
   background-color: var(--bg);
   flex-shrink: 0;
@@ -1844,11 +1966,13 @@ a {
 }
 
 .thread-header {
-  padding: calc(10px + var(--safe-top)) 14px 10px;
+  padding: calc(10px + var(--safe-top)) calc(14px + var(--safe-right)) 10px calc(14px + var(--safe-left));
   border-bottom: 1px solid var(--line);
+  background-color: var(--card);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .thread-header-left {
@@ -1863,11 +1987,21 @@ a {
   color: var(--fg);
 }
 
+.thread-scroll-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .thread-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 14px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px calc(14px + var(--safe-right)) 14px calc(14px + var(--safe-left));
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1914,12 +2048,13 @@ a {
 }
 
 .thread-composer {
-  padding: 10px 12px calc(10px + var(--safe-bottom));
+  padding: 10px calc(12px + var(--safe-right)) calc(10px + var(--effective-safe-bottom)) calc(12px + var(--safe-left));
   border-top: 1px solid var(--line);
   background-color: var(--bg);
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .thread-offline-hint {
@@ -1933,8 +2068,11 @@ a {
 /* 設定ペイン */
 .settings-scroll {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 16px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px calc(16px + var(--safe-right)) calc(16px + var(--effective-safe-bottom)) calc(16px + var(--safe-left));
 }
 
 .settings-inner {
@@ -1953,14 +2091,21 @@ a {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 48px 16px 16px;
+  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--effective-safe-bottom)) calc(16px + var(--safe-left));
   z-index: 50;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 768px) {
+  .modal-backdrop {
+    padding-top: 48px;
+  }
 }
 
 .search-modal {
   width: 100%;
   max-width: 600px;
-  max-height: 80vh;
+  max-height: calc(var(--app-height, 100dvh) - var(--safe-top) - var(--effective-safe-bottom) - 32px);
   background-color: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -1991,6 +2136,7 @@ a {
 
 .search-input {
   flex: 1;
+  min-width: 0;
   background-color: var(--bg);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -2001,7 +2147,11 @@ a {
 }
 
 .search-results {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -2060,6 +2210,80 @@ a {
   -webkit-box-orient: vertical;
 }
 
+/* 画像ライトボックス (全画面拡大ビューア) */
+.image-lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background-color: rgba(0, 0, 0, 0.92);
+  display: flex;
+  flex-direction: column;
+  padding: var(--safe-top) var(--safe-right) var(--effective-safe-bottom) var(--safe-left);
+  overscroll-behavior: contain;
+}
+
+.image-lightbox-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  flex-shrink: 0;
+}
+
+.image-lightbox-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(33, 31, 28, 0.85);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.image-lightbox-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y pinch-zoom;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.image-lightbox-stage.zoomed {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.image-lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  cursor: zoom-in;
+}
+
+.image-lightbox-img.zoomed {
+  max-width: none;
+  max-height: none;
+  min-width: min(160vw, 1200px);
+  width: auto;
+  height: auto;
+  cursor: zoom-out;
+}
+
 /* レスポンシブ (スマホ < 768px) */
 .mobile-only-btn {
   display: none;
@@ -2074,35 +2298,168 @@ a {
     display: none;
   }
 
+  .chat-shell {
+    position: relative;
+    overflow: hidden;
+  }
+
   .chat-sidebar,
   .chat-main,
   .thread-pane,
   .settings-pane {
+    position: absolute;
+    inset: 0;
     width: 100%;
+    height: 100%;
     border: none;
+    will-change: transform;
+    transition:
+      transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 280ms;
+  }
+
+  .chat-sidebar {
+    z-index: 1;
+  }
+
+  .chat-main,
+  .settings-pane {
+    z-index: 2;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
+  }
+
+  .thread-pane {
+    z-index: 3;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
+  }
+
+  /* 状態 0: チャンネル一覧 */
+  .chat-shell.mobile-channels .chat-sidebar {
+    transform: translate3d(0, 0, 0);
+    visibility: visible;
+    pointer-events: auto;
+    transition:
+      transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 0s;
   }
 
   .chat-shell.mobile-channels .chat-main,
-  .chat-shell.mobile-channels .thread-pane,
-  .chat-shell.mobile-channels .settings-pane {
-    display: none;
+  .chat-shell.mobile-channels .settings-pane,
+  .chat-shell.mobile-channels .thread-pane {
+    transform: translate3d(100%, 0, 0);
+    visibility: hidden;
+    pointer-events: none;
   }
 
+  /* 状態 1: メッセージ一覧 / 設定 */
   .chat-shell.mobile-messages .chat-sidebar,
-  .chat-shell.mobile-messages .thread-pane {
-    display: none;
+  .chat-shell.view-settings .chat-sidebar {
+    transform: translate3d(-25%, 0, 0);
+    visibility: hidden;
+    pointer-events: none;
   }
 
+  .chat-shell.mobile-messages .chat-main,
+  .chat-shell.view-settings .settings-pane {
+    transform: translate3d(0, 0, 0);
+    visibility: visible;
+    pointer-events: auto;
+    transition:
+      transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 0s;
+  }
+
+  .chat-shell.mobile-messages .thread-pane {
+    transform: translate3d(100%, 0, 0);
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* 状態 2: スレッド */
   .chat-shell.mobile-thread .chat-sidebar,
   .chat-shell.mobile-thread .chat-main {
-    display: none;
+    transform: translate3d(-25%, 0, 0);
+    visibility: hidden;
+    pointer-events: none;
   }
 
-  .chat-shell.view-settings .chat-sidebar {
-    display: none;
+  .chat-shell.mobile-thread .thread-pane {
+    transform: translate3d(0, 0, 0);
+    visibility: visible;
+    pointer-events: auto;
+    transition:
+      transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 0s;
+  }
+
+  /* マウント開始 / アンマウント終了用の明示的スライド補助 */
+  .thread-pane.pane-entering,
+  .settings-pane.pane-entering {
+    transform: translate3d(100%, 0, 0);
+  }
+
+  .thread-pane.pane-exiting,
+  .settings-pane.pane-exiting {
+    transform: translate3d(100%, 0, 0);
+    pointer-events: none;
+  }
+
+  /* 左端スワイプ追従中 */
+  .chat-shell.is-swiping .chat-sidebar,
+  .chat-shell.is-swiping .chat-main,
+  .chat-shell.is-swiping .settings-pane,
+  .chat-shell.is-swiping .thread-pane {
+    transition: none;
+  }
+
+  .chat-shell.is-swiping.is-swiping-thread .thread-pane {
+    transform: translate3d(calc(var(--swipe-progress, 0) * 100%), 0, 0);
+    visibility: visible;
+  }
+
+  .chat-shell.is-swiping.is-swiping-thread .chat-main {
+    transform: translate3d(calc(-25% * (1 - var(--swipe-progress, 0))), 0, 0);
+    visibility: visible;
+  }
+
+  .chat-shell.is-swiping.is-swiping-layer1 .chat-main,
+  .chat-shell.is-swiping.is-swiping-layer1 .settings-pane {
+    transform: translate3d(calc(var(--swipe-progress, 0) * 100%), 0, 0);
+    visibility: visible;
+  }
+
+  .chat-shell.is-swiping.is-swiping-layer1 .chat-sidebar {
+    transform: translate3d(calc(-25% * (1 - var(--swipe-progress, 0))), 0, 0);
+    visibility: visible;
   }
 
   .bubble-card {
     max-width: 90%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-sidebar,
+  .chat-main,
+  .settings-pane,
+  .thread-pane,
+  .new-messages-btn {
+    transition: none;
+  }
+
+  .history-detail-panel {
+    animation: none;
+  }
+}
+
+/* iOS 自動拡大防止: すべての入力欄をスマホ幅で 16px 以上にする */
+@media (max-width: 768px) {
+  body input,
+  body textarea,
+  body select,
+  body .login-input,
+  body .composer-textarea,
+  body .search-input {
+    font-size: 16px;
   }
 }
