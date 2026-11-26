@@ -487,3 +487,57 @@ func TestLoginRateLimit(t *testing.T) {
 		t.Fatalf("expected 200 from another IP, got code=%d err=%v", recOther.Code, err)
 	}
 }
+
+func TestAlertmanagerWebhookDeduplicatesSameStatusReplies(t *testing.T) {
+	db := setupTestDB(t)
+	wh := NewWebhookHandler(&mockSender{}, db)
+	e := echo.New()
+
+	postAlert := func(status, summary string) {
+		body := `{
+			"status": "` + status + `",
+			"alerts": [{
+				"status": "` + status + `",
+				"labels": {"alertname": "HighCPU", "instance": "node01", "severity": "warning"},
+				"annotations": {"summary": "` + summary + `"}
+			}]
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/webhook/alertmanager", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		if err := wh.AlertmanagerWebhook(e.NewContext(req, httptest.NewRecorder())); err != nil {
+			t.Fatalf("AlertmanagerWebhook(%s) failed: %v", status, err)
+		}
+	}
+
+	// firing を 3 回連続送信してもスレッド返信が増えないこと
+	postAlert("firing", "CPU 90%")
+	postAlert("firing", "CPU 92%")
+	postAlert("firing", "CPU 95%")
+
+	parents, _, err := db.ListChannelMessagesAsc(push.ChannelAlertmanager, "", 20)
+	if err != nil {
+		t.Fatalf("ListChannelMessagesAsc failed: %v", err)
+	}
+	if len(parents) != 1 {
+		t.Fatalf("expected 1 parent message, got %d", len(parents))
+	}
+	if parents[0].ReplyCount != 0 || parents[0].AlertStatus != "firing" {
+		t.Fatalf("expected reply_count=0 and firing on repeated firing, got %+v", parents[0])
+	}
+
+	// resolved へ遷移したら返信が 1 件だけ付くこと
+	postAlert("resolved", "CPU normal")
+	// resolved の再送では返信が増えないこと
+	postAlert("resolved", "CPU normal")
+
+	parents, _, err = db.ListChannelMessagesAsc(push.ChannelAlertmanager, "", 20)
+	if err != nil {
+		t.Fatalf("ListChannelMessagesAsc after resolved failed: %v", err)
+	}
+	if len(parents) != 1 {
+		t.Fatalf("expected 1 parent message after resolved, got %d", len(parents))
+	}
+	if parents[0].ReplyCount != 1 || parents[0].AlertStatus != "resolved" {
+		t.Fatalf("expected reply_count=1 and resolved without duplicate reply, got %+v", parents[0])
+	}
+}

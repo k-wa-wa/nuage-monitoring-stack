@@ -140,3 +140,71 @@ func TestEndToEndAuthBoundary(t *testing.T) {
 		t.Fatalf("expected localhost ACAO, got %q", acao)
 	}
 }
+
+func TestLoginRateLimitBehindTrustedProxy(t *testing.T) {
+	hashAlice, _ := bcrypt.GenerateFromPassword([]byte("alice-secret"), bcrypt.MinCost)
+	cfg := config.Config{
+		Port:             "8080",
+		VAPIDPublicKey:   "pub",
+		VAPIDPrivateKey:  "priv",
+		CookieSigningKey: strings.Repeat("s", 32),
+		SlackBotToken:    "xoxb-e2e-bot-token",
+		SlackAppToken:    "xapp-e2e-app-token",
+		Users: []config.UserConfig{
+			{ID: "U01ALICE", Name: "alice", DisplayName: "Alice", PassphraseHash: string(hashAlice)},
+		},
+	}
+
+	db, err := push.InitDB(filepath.Join(t.TempDir(), "ratelimit.db"))
+	if err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer db.Close()
+	if err := db.EnsureUserChannels(cfg.Users); err != nil {
+		t.Fatalf("EnsureUserChannels failed: %v", err)
+	}
+
+	e := NewRouter(cfg, db, realtime.NewHub(), noopSender{}, alertmanager.NewClient("http://localhost:9093"))
+
+	sendLogin := func(remoteAddr, xff, passphrase string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"passphrase":"`+passphrase+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = remoteAddr
+		if xff != "" {
+			req.Header.Set("X-Forwarded-For", xff)
+		}
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	// 1. Cilium Ingress (10.244.x.x) 経由で攻撃者 (203.0.113.10) が 10 回失敗しても、
+	// クライアント偽装の XFF 左端は無視され、実クライアント IP 単位で制限されること。
+	for i := 0; i < 10; i++ {
+		code := sendLogin("10.244.1.15:45678", "198.51.100.99, 203.0.113.10", "wrong")
+		if code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %d", i, code)
+		}
+	}
+
+	// 同じ攻撃者 IP は XFF 左端を変えても 429 になること
+	if code := sendLogin("10.244.1.15:45679", "198.51.100.77, 203.0.113.10", "alice-secret"); code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 for rate-limited client IP, got %d", code)
+	}
+
+	// 同じ Ingress 経由でも別 IP (203.0.113.20) の本人はログインできること
+	if code := sendLogin("10.244.1.15:45680", "203.0.113.20", "alice-secret"); code != http.StatusOK {
+		t.Fatalf("expected 200 for another client IP behind ingress, got %d", code)
+	}
+
+	// 2. 非信頼 IP (198.51.100.5) からの直接接続では X-Forwarded-For 偽装が効かないこと
+	for i := 0; i < 10; i++ {
+		code := sendLogin("198.51.100.5:1111", "203.0.113.200", "wrong")
+		if code != http.StatusUnauthorized {
+			t.Fatalf("direct attempt %d: expected 401, got %d", i, code)
+		}
+	}
+	if code := sendLogin("198.51.100.5:1112", "203.0.113.201", "alice-secret"); code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 when untrusted peer spoofs XFF, got %d", code)
+	}
+}

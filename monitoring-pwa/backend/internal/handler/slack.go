@@ -436,13 +436,9 @@ func (h *SlackHandler) chatPostMessage(c echo.Context, params map[string]interfa
 		return slackErr(c, "internal_error")
 	}
 
-	text := paramString(params, "text")
-	blocksJSON := extractBlocksJSON(params["blocks"])
-	if strings.TrimSpace(text) == "" && blocksJSON == "" {
-		return slackErr(c, "no_text")
-	}
-	if strings.TrimSpace(text) == "" && blocksJSON != "" {
-		text = extractTextFromBlocks(blocksJSON)
+	text, blocksJSON, errCode := extractMessageContent(params)
+	if errCode != "" {
+		return slackErr(c, errCode)
 	}
 
 	threadTS := paramString(params, "thread_ts")
@@ -546,13 +542,9 @@ func (h *SlackHandler) chatUpdate(c echo.Context, params map[string]interface{})
 		return slackErr(c, "internal_error")
 	}
 
-	text := paramString(params, "text")
-	blocksJSON := extractBlocksJSON(params["blocks"])
-	if strings.TrimSpace(text) == "" && blocksJSON == "" {
-		return slackErr(c, "no_text")
-	}
-	if strings.TrimSpace(text) == "" && blocksJSON != "" {
-		text = extractTextFromBlocks(blocksJSON)
+	text, blocksJSON, errCode := extractMessageContent(params)
+	if errCode != "" {
+		return slackErr(c, errCode)
 	}
 
 	updated, err := h.db.UpdateMessage(chID, ts, text, blocksJSON)
@@ -677,23 +669,65 @@ func channelTypeFor(ch *push.Channel) string {
 	return "channel"
 }
 
-func extractBlocksJSON(raw interface{}) string {
+func extractMessageContent(params map[string]interface{}) (string, string, string) {
+	text := paramString(params, "text")
+	blocksJSON, err := extractBlocksJSON(params["blocks"])
+	if err != nil {
+		return "", "", "invalid_blocks"
+	}
+	hasBlocks := blocksJSON != "" && blocksJSON != "[]"
+	if strings.TrimSpace(text) == "" && !hasBlocks {
+		return "", "", "no_text"
+	}
+	if blocksJSON == "[]" {
+		blocksJSON = ""
+	}
+	if strings.TrimSpace(text) == "" && blocksJSON != "" {
+		text = extractTextFromBlocks(blocksJSON)
+	}
+	return text, blocksJSON, ""
+}
+
+func validateBlocksArrayJSON(raw string) error {
+	if !json.Valid([]byte(raw)) {
+		return errors.New("invalid json")
+	}
+	var arr []json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &arr); err != nil {
+		return err
+	}
+	if arr == nil {
+		return errors.New("blocks must be a JSON array")
+	}
+	return nil
+}
+
+func extractBlocksJSON(raw interface{}) (string, error) {
 	if raw == nil {
-		return ""
+		return "", nil
 	}
 	switch v := raw.(type) {
 	case string:
 		trimmed := strings.TrimSpace(v)
 		if trimmed == "" || trimmed == "null" {
-			return ""
+			return "", nil
 		}
-		return trimmed
+		if err := validateBlocksArrayJSON(trimmed); err != nil {
+			return "", err
+		}
+		return trimmed, nil
 	default:
 		b, err := json.Marshal(v)
-		if err != nil || string(b) == "null" {
-			return ""
+		if err != nil {
+			return "", err
 		}
-		return string(b)
+		if string(b) == "null" {
+			return "", nil
+		}
+		if err := validateBlocksArrayJSON(string(b)); err != nil {
+			return "", err
+		}
+		return string(b), nil
 	}
 }
 

@@ -576,54 +576,53 @@ func (db *DB) UpdateMessage(channelID, ts, text, blocks string) (*Message, error
 // PostAlertChatMessage は Alertmanager の発報・解決を同じスレッドにまとめて保存する。
 // 返り値は (投稿したメッセージ, 親メッセージまたは更新された親メッセージ, error) である。
 func (db *DB) PostAlertChatMessage(alert *Alert, isNewCycle bool, title, summary, details, targetURL string) (*Message, *Message, error) {
+	return db.SyncAlertChatMessage(alert, isNewCycle, false, title, summary, details, targetURL)
+}
+
+// SyncAlertChatMessage は Alertmanager の発報・解決をチャットスレッドへ反映する。
+// skipReply が true で既存スレッドが存在する場合は返信を作成せず親メッセージのみを更新する。
+func (db *DB) SyncAlertChatMessage(alert *Alert, isNewCycle, skipReply bool, title, summary, details, targetURL string) (*Message, *Message, error) {
 	if !isNewCycle {
-		// 既存の親スレッドを探し、そこに返信する
+		// 既存の親スレッドを探し、状態遷移時のみ返信を足す
 		parent, err := db.GetLatestAlertParentMessage(alert.ID)
 		if err == nil && parent != nil {
-			var replyText string
-			var replyLevel string
-			if alert.Status == "resolved" {
-				replyText = fmt.Sprintf("✅ **[resolved] %s**\nアラートが解決した。", title)
-				replyLevel = "success"
-			} else {
-				replyText = fmt.Sprintf("🔥 **[firing] %s**\n%s", title, summary)
-				replyLevel = alert.Level
+			var reply *Message
+			if !skipReply {
+				var replyText string
+				var replyLevel string
+				if alert.Status == "resolved" {
+					replyText = fmt.Sprintf("✅ **[resolved] %s**\nアラートが解決した。", title)
+					replyLevel = "success"
+				} else {
+					replyText = fmt.Sprintf("🔥 **[firing] %s**\n%s", title, summary)
+					replyLevel = alert.Level
+				}
+
+				reply, err = db.CreateMessage(CreateMessageParams{
+					ChannelID:   ChannelAlertmanager,
+					ThreadTS:    parent.TS,
+					UserID:      SystemBotUserID,
+					BotID:       SystemBotID,
+					Username:    "Alertmanager",
+					Text:        replyText,
+					Level:       replyLevel,
+					SourceKind:  "alert",
+					SourceID:    alert.ID,
+					AlertStatus: alert.Status,
+					FiredAt:     &alert.FiredAt,
+					ResolvedAt:  alert.ResolvedAt,
+				})
+				if err != nil {
+					return nil, nil, err
+				}
 			}
 
-			reply, err := db.CreateMessage(CreateMessageParams{
-				ChannelID:   ChannelAlertmanager,
-				ThreadTS:    parent.TS,
-				UserID:      SystemBotUserID,
-				BotID:       SystemBotID,
-				Username:    "Alertmanager",
-				Text:        replyText,
-				Level:       replyLevel,
-				SourceKind:  "alert",
-				SourceID:    alert.ID,
-				AlertStatus: alert.Status,
-				FiredAt:     &alert.FiredAt,
-				ResolvedAt:  alert.ResolvedAt,
-			})
+			updatedParent, err := db.updateAlertParentMessage(parent.ID, alert, details, targetURL)
 			if err != nil {
+				if reply != nil {
+					return reply, parent, nil
+				}
 				return nil, nil, err
-			}
-
-			// 親メッセージの状態・解決時刻・レベルを更新する
-			parentLevel := alert.Level
-			if alert.Status == "resolved" {
-				parentLevel = "success"
-			}
-			now := time.Now()
-			if _, err := db.conn.Exec(
-				`UPDATE messages SET alert_status = ?, level = ?, resolved_at = ?, updated_at = ?
-				 WHERE id = ?`,
-				alert.Status, parentLevel, alert.ResolvedAt, now, parent.ID,
-			); err != nil {
-				return nil, nil, err
-			}
-			updatedParent, err := db.GetMessageByID(parent.ID)
-			if err != nil {
-				return reply, parent, nil
 			}
 			return reply, updatedParent, nil
 		}
@@ -656,6 +655,29 @@ func (db *DB) PostAlertChatMessage(alert *Alert, isNewCycle bool, title, summary
 		return nil, nil, err
 	}
 	return parent, parent, nil
+}
+
+func (db *DB) updateAlertParentMessage(parentID int64, alert *Alert, details, targetURL string) (*Message, error) {
+	parentLevel := alert.Level
+	if alert.Status == "resolved" {
+		parentLevel = "success"
+	}
+	now := time.Now()
+	if _, err := db.conn.Exec(
+		`UPDATE messages
+		 SET alert_status = ?, level = ?, resolved_at = ?,
+		     details = CASE WHEN ? != '' THEN ? ELSE details END,
+		     url = CASE WHEN ? != '' THEN ? ELSE url END,
+		     updated_at = ?
+		 WHERE id = ?`,
+		alert.Status, parentLevel, alert.ResolvedAt,
+		details, details,
+		targetURL, targetURL,
+		now, parentID,
+	); err != nil {
+		return nil, err
+	}
+	return db.GetMessageByID(parentID)
 }
 
 // GetLatestAlertParentMessage は指定 alert ID に紐づく最新のルートメッセージを取得する。

@@ -225,6 +225,56 @@ func TestSlackWebAPIMethods(t *testing.T) {
 			t.Fatalf("expected DM push only to U01ALICE, got %+v", sender.userPayloads)
 		}
 	})
+
+	t.Run("不正なblocksはinvalid_blocksで拒否しチャンネル取得を壊さない", func(t *testing.T) {
+		validPost := callSlackMethod(t, e, "chat.postMessage", cfg.SlackBotToken, map[string]interface{}{
+			"channel": push.ChannelGeneral,
+			"text":    "正常なメッセージ",
+		})
+		if validPost["ok"] != true {
+			t.Fatalf("valid post failed: %+v", validPost)
+		}
+		validTS := validPost["ts"].(string)
+
+		// form 経由の壊れた JSON 文字列
+		badForm := url.Values{}
+		badForm.Set("channel", push.ChannelGeneral)
+		badForm.Set("blocks", `[{"type":"section"`)
+		badPostRes := callSlackMethod(t, e, "chat.postMessage", cfg.SlackBotToken, badForm)
+		if badPostRes["ok"] != false || badPostRes["error"] != "invalid_blocks" {
+			t.Fatalf("expected invalid_blocks for broken JSON form blocks, got %+v", badPostRes)
+		}
+
+		// JSON 配列でない値（オブジェクト / 数値）
+		badObjRes := callSlackMethod(t, e, "chat.postMessage", cfg.SlackBotToken, map[string]interface{}{
+			"channel": push.ChannelGeneral,
+			"text":    "obj",
+			"blocks":  map[string]string{"type": "section"},
+		})
+		if badObjRes["ok"] != false || badObjRes["error"] != "invalid_blocks" {
+			t.Fatalf("expected invalid_blocks for non-array blocks, got %+v", badObjRes)
+		}
+
+		// chat.update でも同様に拒否されること
+		badUpdateForm := url.Values{}
+		badUpdateForm.Set("channel", push.ChannelGeneral)
+		badUpdateForm.Set("ts", validTS)
+		badUpdateForm.Set("blocks", `[{"type":"section"`)
+		badUpdRes := callSlackMethod(t, e, "chat.update", cfg.SlackBotToken, badUpdateForm)
+		if badUpdRes["ok"] != false || badUpdRes["error"] != "invalid_blocks" {
+			t.Fatalf("expected invalid_blocks on chat.update, got %+v", badUpdRes)
+		}
+
+		// 既存の人間向けメッセージ一覧 API が 200 を返し続けること
+		token, _ := auth.IssueSessionToken([]byte(cfg.CookieSigningKey), "U01ALICE", time.Now())
+		listReq := httptest.NewRequest(http.MethodGet, "/api/channels/"+push.ChannelGeneral+"/messages", nil)
+		listReq.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: token})
+		listRec := httptest.NewRecorder()
+		e.ServeHTTP(listRec, listReq)
+		if listRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 on /api/channels/%s/messages, got %d: %s", push.ChannelGeneral, listRec.Code, listRec.Body.String())
+		}
+	})
 }
 
 func TestSocketModeLifecycleAndEvents(t *testing.T) {

@@ -138,7 +138,9 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 		alertDetails, _ := json.Marshal(alert)
 
 		isNewCycle := true
+		var prevStatus string
 		if existing, findErr := h.db.GetAlertByFingerprint(fingerprint); findErr == nil && existing != nil {
+			prevStatus = existing.Status
 			if alert.Status != "firing" || existing.Status == "firing" {
 				isNewCycle = false
 			} else if parent, pErr := h.db.GetLatestAlertParentMessage(existing.ID); pErr == nil && parent != nil && parent.AlertStatus == "firing" {
@@ -162,7 +164,8 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 		if err != nil {
 			slog.Error("failed to upsert alert", "fingerprint", fingerprint, "error", err)
 		} else if savedAlert != nil {
-			msg, parent, chatErr := h.db.PostAlertChatMessage(savedAlert, isNewCycle, name, summary, string(alertDetails), alert.GeneratorURL)
+			skipReply := !isNewCycle && prevStatus == alert.Status
+			msg, parent, chatErr := h.db.SyncAlertChatMessage(savedAlert, isNewCycle, skipReply, name, summary, string(alertDetails), alert.GeneratorURL)
 			if chatErr != nil {
 				slog.Error("failed to post alert chat message", "fingerprint", fingerprint, "error", chatErr)
 			} else {
@@ -364,20 +367,25 @@ func (h *WebhookHandler) saveAndEmitNotificationChat(noteID int64, source, title
 }
 
 func (h *WebhookHandler) emitSystemMessage(channelID string, msg, updatedParent *push.Message) {
-	if h.hub == nil || msg == nil {
+	if h.hub == nil {
 		return
 	}
-	h.hub.PublishBrowser("", realtime.BrowserEvent{
-		Type:      "message_created",
-		ChannelID: channelID,
-		Payload:   msg,
-	})
-	if updatedParent != nil && updatedParent.TS != msg.TS {
+	if msg != nil {
+		h.hub.PublishBrowser("", realtime.BrowserEvent{
+			Type:      "message_created",
+			ChannelID: channelID,
+			Payload:   msg,
+		})
+	}
+	if updatedParent != nil && (msg == nil || updatedParent.TS != msg.TS) {
 		h.hub.PublishBrowser("", realtime.BrowserEvent{
 			Type:      "message_updated",
 			ChannelID: channelID,
 			Payload:   updatedParent,
 		})
+	}
+	if msg == nil {
+		return
 	}
 	ev := map[string]interface{}{
 		"type":         "message",

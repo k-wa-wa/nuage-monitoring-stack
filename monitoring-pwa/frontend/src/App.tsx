@@ -7,6 +7,7 @@ import ThreadPane from './components/ThreadPane'
 import SearchModal from './components/SearchModal'
 import Settings from './components/Settings'
 import { parseChatRoute } from './utils/url'
+import { syncExistingPushSubscription } from './utils/pushSubscription'
 import type {
 	AuthUser,
 	BootstrapResponse,
@@ -397,19 +398,22 @@ export default function App() {
 		}
 	}, [navigateToPath])
 
-	// プッシュ通知の購読状態チェック
+	// プッシュ通知の購読状態チェックと既存購読のログインユーザー紐づけ同期
 	const checkSubscription = useCallback(async () => {
 		if ('serviceWorker' in navigator && 'PushManager' in window) {
 			try {
 				const reg = await navigator.serviceWorker.ready
 				const sub = await reg.pushManager.getSubscription()
 				setIsSubscribed(!!sub)
+				if (sub) {
+					await syncExistingPushSubscription(apiBase, sub, log)
+				}
 			} catch (err: unknown) {
 				const message = err instanceof Error ? err.message : String(err)
 				log(`購読チェック失敗: ${message}`)
 			}
 		}
-	}, [log])
+	}, [apiBase, log])
 
 	useEffect(() => {
 		if (authState === 'authenticated') {
