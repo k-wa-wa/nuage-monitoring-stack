@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import { IonBadge, IonIcon, IonLabel, IonRouterOutlet, IonTabBar, IonTabButton, IonTabs } from '@ionic/react'
 import { Navigate, Route } from 'react-router-dom'
-import { chatbubbles, home, notifications, settings } from 'ionicons/icons'
+import { home, notifications, settings } from 'ionicons/icons'
 import ActivityPage from './ActivityPage'
-import DmsPage from './DmsPage'
 import HomePage from './HomePage'
 import SettingsPage from './SettingsPage'
 import { API_BASE, useChat } from '../state/chatStore'
@@ -33,14 +32,14 @@ function useFiringCount(): number {
 export default function Tabs() {
 	const { channels } = useChat()
 	const firing = useFiringCount()
-	const unreadChannels = channels.filter((c) => !c.is_im).reduce((n, c) => n + c.unread_count, 0)
-	const unreadDms = channels.filter((c) => c.is_im).reduce((n, c) => n + c.unread_count, 0)
+	// ホームにチャンネルと DM を並べるので、両方の未読を合わせて出す
+	const unread = channels.reduce((n, c) => n + c.unread_count, 0)
 
 	return (
 		<IonTabs>
 			<IonRouterOutlet>
 				<Route path="home" element={<HomePage />} />
-				<Route path="dms" element={<DmsPage />} />
+				<Route path="dms" element={<Navigate to="/tabs/home" replace />} />
 				<Route path="activity" element={<ActivityPage />} />
 				<Route path="settings" element={<SettingsPage />} />
 				<Route index element={<Navigate to="home" replace />} />
@@ -49,12 +48,7 @@ export default function Tabs() {
 				<IonTabButton tab="home" href="/tabs/home">
 					<IonIcon icon={home} aria-hidden="true" />
 					<IonLabel>ホーム</IonLabel>
-					{unreadChannels > 0 && <IonBadge color="danger">{unreadChannels}</IonBadge>}
-				</IonTabButton>
-				<IonTabButton tab="dms" href="/tabs/dms">
-					<IonIcon icon={chatbubbles} aria-hidden="true" />
-					<IonLabel>DM</IonLabel>
-					{unreadDms > 0 && <IonBadge color="danger">{unreadDms}</IonBadge>}
+					{unread > 0 && <IonBadge color="danger">{unread}</IonBadge>}
 				</IonTabButton>
 				<IonTabButton tab="activity" href="/tabs/activity">
 					<IonIcon icon={notifications} aria-hidden="true" />

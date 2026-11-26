@@ -8,9 +8,10 @@
  * Ionic の部品は rem で大きさが決まり、iOS では html の文字の大きさが
  * 端末の「本文」の大きさ (標準 17px) になる。Slack に近い詰まった見た目にするため、
  * 基準をここで 1 つの値に固定する。全体を大きく・小さくしたい時はこの値だけを変える。
+ * (iOS 26 テーマはリスト項目を「高さ 53px・文字は最低 17px」に固定するため、下の「リスト項目」で上書きする)
  * --------------------------------------------------------------- */
 :root {
-  --app-base-font: 14px;
+  --app-base-font: 13px;
   --app-subtle-fill: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.06);
   --app-subtle-line: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.12);
   --app-secondary-text: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.55);
@@ -88,15 +89,45 @@ html[data-keyboard-open='true'] #root {
 }
 
 /* ---------------------------------------------------------------
+ * リスト項目 (iOS 26 テーマの 53px・17px 固定を、基準の文字の大きさに合わせて詰める)
+ * --------------------------------------------------------------- */
+/* テーマの指定 (クラス 5 個分の詳細度) に勝つよう、同じ形に .ios を重ねて 1 段強くする */
+ion-list.list-inset.ios.ios > ion-item-group:not(.ios26-disabled) ion-item:not(.ios-theme-disabled):not(.ios26-disabled) {
+  --min-height: 40px;
+  font-size: 1.1rem;
+  line-height: 1.35;
+}
+
+body ion-list.list-inset {
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+
+/* ---------------------------------------------------------------
  * ホーム・DM
  * --------------------------------------------------------------- */
-.bot-status-line {
+.home-title {
   display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.home-title-name {
+  font-weight: 700;
+}
+
+.bot-status-line {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin: 4px 20px 0;
-  font-size: 0.9rem;
+  justify-content: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 400;
   color: var(--app-secondary-text);
+}
+
+.home-search {
+  padding: 4px 8px 0;
 }
 
 .status-dot {
@@ -124,23 +155,23 @@ html[data-keyboard-open='true'] #root {
 
 .dm-avatar {
   position: relative;
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: rgba(var(--ion-color-primary-rgb), 0.15);
   color: var(--ion-color-primary);
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .dm-presence {
   position: absolute;
   right: -3px;
   bottom: -3px;
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   border: 2px solid var(--ion-item-background, var(--ion-background-color));
   background: var(--ion-color-medium);
@@ -257,6 +288,15 @@ ion-label p.activity-body {
 }
 
 .channel-intro-text {
+  color: var(--app-secondary-text);
+}
+
+.channel-empty {
+  margin: 24px 16px;
+  padding: 20px 16px;
+  border-radius: 14px;
+  background: var(--app-subtle-fill);
+  text-align: center;
   color: var(--app-secondary-text);
 }
 

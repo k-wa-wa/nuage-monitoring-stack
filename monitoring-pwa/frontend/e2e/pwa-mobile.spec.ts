@@ -111,16 +111,16 @@ test.describe('Nuage Notify (Ionic) スマホ E2E', () => {
 		const composer = page.locator('.composer-input textarea').filter({ visible: true })
 		expect(await fontSize(composer)).toBeGreaterThanOrEqual(16)
 
-		// 本文の基準は Slack に近い 15px 前後 (14px 基準 × 1.07rem)
+		// 本文は 14px 前後 (基準 13px × 1.07rem)。情報量を多くするため Slack よりやや小さめ
 		const bodySize = await fontSize(page.locator('#chat-msg-1700000080\\.000100 .msg-body'))
-		expect(bodySize).toBeGreaterThanOrEqual(14)
-		expect(bodySize).toBeLessThanOrEqual(16)
+		expect(bodySize).toBeGreaterThanOrEqual(13)
+		expect(bodySize).toBeLessThanOrEqual(15)
 	})
 
-	test('タブが 4 つあり、未読と発生中のアラートの数がバッジに出る', async ({ page }) => {
+	test('タブが 3 つ (ホーム・通知・設定) あり、未読と発生中のアラートの数がバッジに出る', async ({ page }) => {
 		await login(page)
 		const tabs = page.locator('ion-tab-button')
-		await expect(tabs).toHaveCount(4)
+		await expect(tabs).toHaveCount(3)
 		await expect(page.locator('ion-tab-button[tab="home"] ion-badge')).toHaveText('2')
 		await expect(page.locator('ion-tab-button[tab="activity"] ion-badge')).toHaveText('1')
 
@@ -259,6 +259,24 @@ test.describe('Nuage Notify (Ionic) スマホ E2E', () => {
 		await expect(result).toHaveCount(1)
 		await result.click()
 		await expect(page).toHaveURL(/\/channels\/C01GENERAL\/threads\/1700000080\.000100$/)
+	})
+
+	test('中身の無いチャンネルは、その旨を表示する', async ({ page }) => {
+		await page.route('**/api/channels/C01ALERTS/messages**', (route) =>
+			route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ messages: [], has_more: false }) })
+		)
+		await login(page)
+		await page.locator('ion-item').filter({ hasText: 'alertmanager' }).filter({ visible: true }).click()
+		await expect(page.locator('.channel-empty').filter({ visible: true })).toContainText('まだメッセージはない')
+	})
+
+	test('DM はホームのチャンネルの下に並び、旧 DM タブのパスはホームへ移る', async ({ page }) => {
+		await login(page)
+		await expect(page.locator('ion-list-header').filter({ hasText: 'ダイレクトメッセージ' })).toBeVisible()
+		await page.locator('ion-item').filter({ hasText: 'nuage-bot' }).filter({ visible: true }).click()
+		await expect(page).toHaveURL(/\/channels\/D01BOT$/)
+		await page.goto('/tabs/dms')
+		await expect(page).toHaveURL(/\/tabs\/home$/)
 	})
 
 	test('ホーム画面 PWA 用の旧パスと未知のパスはホームへ移る', async ({ page }) => {

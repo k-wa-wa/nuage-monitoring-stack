@@ -16,7 +16,7 @@ import {
 	IonTitle,
 	IonToolbar
 } from '@ionic/react'
-import { chatbubbles } from 'ionicons/icons'
+import { hardwareChip } from 'ionicons/icons'
 import { API_BASE, useChat } from '../state/chatStore'
 import { formatMessageTime } from '../utils/date'
 import type { SearchResult } from '../types/chat'
@@ -66,30 +66,32 @@ export default function HomePage() {
 	}, [query])
 
 	const publicChannels = channels.filter((c) => c.is_channel && !c.is_im)
+	const dms = channels.filter((c) => c.is_im)
 
 	return (
 		<IonPage>
 			<IonHeader translucent>
 				<IonToolbar>
-					<IonTitle>ホーム</IonTitle>
+					<IonTitle>
+						<div className="home-title app-title-tap">
+							<span className="home-title-name">Nuage Notify</span>
+							<span className="bot-status-line">
+								<span className={`status-dot ${bot.online ? 'online' : ''}`} />
+								{bot.name}: {bot.online ? 'オンライン' : 'オフライン'}
+							</span>
+						</div>
+					</IonTitle>
 				</IonToolbar>
 			</IonHeader>
 			<IonContent fullscreen color="light">
-				<IonHeader collapse="condense">
-					<IonToolbar color="light">
-						<IonTitle size="large" className="app-title-tap">
-							Nuage Notify
-						</IonTitle>
-					</IonToolbar>
-					<IonToolbar color="light">
-						<IonSearchbar
-							placeholder="検索"
-							value={query}
-							debounce={0}
-							onIonInput={(e) => setQuery(e.detail.value ?? '')}
-						/>
-					</IonToolbar>
-				</IonHeader>
+				<div className="home-search">
+					<IonSearchbar
+						placeholder="検索"
+						value={query}
+						debounce={0}
+						onIonInput={(e) => setQuery(e.detail.value ?? '')}
+					/>
+				</div>
 
 				{results !== null ? (
 					<IonList inset>
@@ -129,10 +131,6 @@ export default function HomePage() {
 					</IonList>
 				) : (
 					<>
-						<div className="bot-status-line">
-							<span className={`status-dot ${bot.online ? 'online' : ''}`} />
-							{bot.name}: {bot.online ? 'オンライン' : 'オフライン'}
-						</div>
 						<IonList inset>
 							<IonListHeader>
 								<IonLabel>チャンネル</IonLabel>
@@ -159,8 +157,40 @@ export default function HomePage() {
 								))}
 								{publicChannels.length === 0 && (
 									<IonItem>
-										<IonIcon slot="start" icon={chatbubbles} color="medium" />
 										<IonLabel color="medium">チャンネルはまだない</IonLabel>
+									</IonItem>
+								)}
+							</IonItemGroup>
+						</IonList>
+
+						<IonList inset>
+							<IonListHeader>
+								<IonLabel>ダイレクトメッセージ</IonLabel>
+							</IonListHeader>
+							<IonItemGroup>
+								{dms.map((ch) => (
+									<IonItem
+										key={ch.id}
+										button
+										detail={false}
+										routerLink={`/channels/${encodeURIComponent(ch.id)}`}
+										className={ch.unread_count > 0 ? 'channel-item unread' : 'channel-item'}
+									>
+										<div slot="start" className="dm-avatar" aria-hidden="true">
+											<IonIcon icon={hardwareChip} />
+											<span className={`dm-presence ${bot.online ? 'online' : ''}`} />
+										</div>
+										<IonLabel>{ch.name || bot.name}</IonLabel>
+										{ch.unread_count > 0 && (
+											<IonBadge slot="end" color="danger">
+												{ch.unread_count}
+											</IonBadge>
+										)}
+									</IonItem>
+								))}
+								{dms.length === 0 && (
+									<IonItem>
+										<IonLabel color="medium">DM はまだない</IonLabel>
 									</IonItem>
 								)}
 							</IonItemGroup>

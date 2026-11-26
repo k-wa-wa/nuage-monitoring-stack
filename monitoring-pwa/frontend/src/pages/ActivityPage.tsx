@@ -96,36 +96,31 @@ export default function ActivityPage() {
 				<IonToolbar>
 					<IonTitle>通知</IonTitle>
 				</IonToolbar>
+				<IonToolbar>
+					<IonSegment
+						value={filter}
+						onIonChange={(e) => setFilter((e.detail.value as ActivityFilter) ?? 'all')}
+						aria-label="通知の絞り込み"
+					>
+						<IonSegmentButton value="all">
+							<IonLabel>すべて</IonLabel>
+						</IonSegmentButton>
+						<IonSegmentButton value="firing">
+							<IonLabel>発生中{count('firing') > 0 ? ` ${count('firing')}` : ''}</IonLabel>
+						</IonSegmentButton>
+						<IonSegmentButton value="resolved">
+							<IonLabel>解決済み</IonLabel>
+						</IonSegmentButton>
+						<IonSegmentButton value="notice">
+							<IonLabel>一般</IonLabel>
+						</IonSegmentButton>
+					</IonSegment>
+				</IonToolbar>
 			</IonHeader>
 			<IonContent fullscreen color="light">
 				<IonRefresher slot="fixed" onIonRefresh={handleRefresh}>
 					<IonRefresherContent />
 				</IonRefresher>
-				<IonHeader collapse="condense">
-					<IonToolbar color="light">
-						<IonTitle size="large">通知</IonTitle>
-					</IonToolbar>
-					<IonToolbar color="light">
-						<IonSegment
-							value={filter}
-							onIonChange={(e) => setFilter((e.detail.value as ActivityFilter) ?? 'all')}
-							aria-label="通知の絞り込み"
-						>
-							<IonSegmentButton value="all">
-								<IonLabel>すべて</IonLabel>
-							</IonSegmentButton>
-							<IonSegmentButton value="firing">
-								<IonLabel>発生中{count('firing') > 0 ? ` ${count('firing')}` : ''}</IonLabel>
-							</IonSegmentButton>
-							<IonSegmentButton value="resolved">
-								<IonLabel>解決済み</IonLabel>
-							</IonSegmentButton>
-							<IonSegmentButton value="notice">
-								<IonLabel>一般</IonLabel>
-							</IonSegmentButton>
-						</IonSegment>
-					</IonToolbar>
-				</IonHeader>
 
 				{items === null ? (
 					<div className="center-spinner">

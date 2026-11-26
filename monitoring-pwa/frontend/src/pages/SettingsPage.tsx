@@ -102,11 +102,6 @@ export default function SettingsPage() {
 				</IonToolbar>
 			</IonHeader>
 			<IonContent fullscreen color="light">
-				<IonHeader collapse="condense">
-					<IonToolbar color="light">
-						<IonTitle size="large">設定</IonTitle>
-					</IonToolbar>
-				</IonHeader>
 
 				<IonList inset>
 					<IonListHeader>

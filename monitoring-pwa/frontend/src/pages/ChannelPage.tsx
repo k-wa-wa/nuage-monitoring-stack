@@ -72,7 +72,7 @@ export default function ChannelPage() {
 			<IonHeader translucent>
 				<IonToolbar>
 					<IonButtons slot="start">
-						<IonBackButton defaultHref={isDm ? '/tabs/dms' : '/tabs/home'} text="" />
+						<IonBackButton defaultHref="/tabs/home" text="" />
 					</IonButtons>
 					<IonTitle>
 						<div className="chat-title">
@@ -110,6 +110,12 @@ export default function ChannelPage() {
 				{!data?.loaded ? (
 					<div className="center-spinner">
 						<IonSpinner name="crescent" />
+					</div>
+				) : messages.length === 0 ? (
+					<div className="channel-empty">
+						{isDm
+							? `まだメッセージはない。${channel?.name || bot.name} に話しかけてみよう。`
+							: 'まだメッセージはない。通知が届くとここに並ぶ。'}
 					</div>
 				) : (
 					<MessageTimeline
