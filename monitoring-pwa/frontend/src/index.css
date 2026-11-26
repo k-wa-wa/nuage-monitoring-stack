@@ -198,33 +198,6 @@ a {
   overscroll-behavior: none;
 }
 
-/*
- * iOS のホーム画面 PWA (viewport-fit=cover + black-translucent) では、
- * innerHeight と 100dvh が画面の高さからステータスバー分 (safe-area-inset-top) を引いた値になる一方、
- * 描画は画面の最上端から始まるため、inset: 0 だけでは下にステータスバー分の隙間が残る
- * (実機 iPhone で screen=852, innerHeight=100dvh=793, 100vh=100lvh=852, safe top=59 を確認)。
- * ホーム画面で開いた時だけ、画面全体の高さ (100lvh) を使う。
- * Safari のタブでは 100lvh がツールバーの裏まで伸びるので使わない。
- */
-@media (display-mode: standalone) {
-  :root {
-    --app-height: 100lvh;
-  }
-
-  /* html/body が 100% (=793) のままだと、その高さで #root の描画が切り取られる (実機で確認) */
-  html,
-  body {
-    height: 100vh;
-    height: 100lvh;
-  }
-
-  #root {
-    bottom: auto;
-    height: 100vh;
-    height: 100lvh;
-  }
-}
-
 html[data-keyboard-open="true"] #root {
   top: var(--app-offset-top, 0px);
   bottom: auto;

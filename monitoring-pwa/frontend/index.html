@@ -10,7 +10,13 @@
     <title>Nuage Notify</title>
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!--
+      black-translucent (ステータスバーの下に中身を潜らせる) にすると、iOS のホーム画面 PWA で
+      画面がステータスバー分 (59pt) 縮んだまま最上端に置かれ、下に描けない帯が残った
+      (iPhone 実機: screen=852 に対し innerHeight=793、html/body/#root を 852 にしても 793 で切れる)。
+      不透明なステータスバーにして、画面がステータスバーの直下から下端まで届くようにする。
+    -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Notify" />
     <meta name="theme-color" content="#191816" />
     <!-- Nuage UI 設計標準の IBM Plex Sans / IBM Plex Sans JP / IBM Plex Mono を使用する -->
