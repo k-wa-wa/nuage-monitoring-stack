@@ -608,4 +608,31 @@ test.describe('PWA スマホ最適化 E2E', () => {
 		await expect(page.locator('#chat-msg-1700000080\\.000100')).toBeVisible()
 		expect(await dispatchMove('.chat-timeline', 60)).toBe(false)
 	})
+
+	test('ホーム画面 PWA (display-mode: standalone) では画面全体の高さ (100lvh) を使う規則がある', async ({ page }) => {
+		// Chromium では display-mode: standalone を再現できないため、規則が入っていることを確かめる。
+		// 実際の高さは iPhone 実機で確認した (innerHeight=100dvh=793 に対し画面は 852、差はステータスバーの 59)。
+		await page.goto('/')
+		const rule = await page.evaluate(() => {
+			for (const sheet of Array.from(document.styleSheets)) {
+				let rules: CSSRuleList
+				try {
+					rules = sheet.cssRules
+				} catch {
+					continue
+				}
+				for (const r of Array.from(rules)) {
+					if (r instanceof CSSMediaRule && r.conditionText.includes('display-mode: standalone')) {
+						for (const inner of Array.from(r.cssRules)) {
+							if (inner instanceof CSSStyleRule && inner.selectorText === '#root') {
+								return { height: inner.style.height, bottom: inner.style.bottom }
+							}
+						}
+					}
+				}
+			}
+			return null
+		})
+		expect(rule).toEqual({ height: '100lvh', bottom: 'auto' })
+	})
 })
