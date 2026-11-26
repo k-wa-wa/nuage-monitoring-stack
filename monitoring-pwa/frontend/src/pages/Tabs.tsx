@@ -3,6 +3,9 @@ import { IonBadge, IonIcon, IonLabel, IonRouterOutlet, IonTabBar, IonTabButton, 
 import { Navigate, Route } from 'react-router-dom'
 import { home, notifications, settings } from 'ionicons/icons'
 import ActivityPage from './ActivityPage'
+import ChannelPage from './ChannelPage'
+import DeepLinkPage from './DeepLinkPage'
+import ThreadPage from './ThreadPage'
 import HomePage from './HomePage'
 import SettingsPage from './SettingsPage'
 import { API_BASE, useChat } from '../state/chatStore'
@@ -39,8 +42,14 @@ export default function Tabs() {
 		<IonTabs>
 			<IonRouterOutlet>
 				<Route path="home" element={<HomePage />} />
+				<Route path="home/channels/:channelId" element={<ChannelPage />} />
+				<Route path="home/channels/:channelId/threads/:ts" element={<ThreadPage />} />
 				<Route path="dms" element={<Navigate to="/tabs/home" replace />} />
 				<Route path="activity" element={<ActivityPage />} />
+				<Route path="activity/alerts/:id" element={<DeepLinkPage kind="alert" />} />
+				<Route path="activity/notifications/:id" element={<DeepLinkPage kind="notification" />} />
+				<Route path="activity/channels/:channelId" element={<ChannelPage />} />
+				<Route path="activity/channels/:channelId/threads/:ts" element={<ThreadPage />} />
 				<Route path="settings" element={<SettingsPage />} />
 				<Route index element={<Navigate to="home" replace />} />
 			</IonRouterOutlet>

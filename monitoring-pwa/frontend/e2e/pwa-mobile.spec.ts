@@ -261,6 +261,31 @@ test.describe('Nuage Notify (Ionic) スマホ E2E', () => {
 		await expect(page).toHaveURL(/\/channels\/C01GENERAL\/threads\/1700000080\.000100$/)
 	})
 
+	test('チャンネルを開いている間もホームの画面は残り、戻るとホームが見える (真っ暗にならない)', async ({ page }) => {
+		await login(page)
+		for (const name of ['general', 'alertmanager', 'general']) {
+			await page.locator('ion-item').filter({ hasText: name }).filter({ visible: true }).click()
+			await settle(page)
+			await expect(page).toHaveURL(/\/tabs\/home\/channels\//)
+			// タブバーは隠れ、ホームの一覧は (隠れているが) DOM に残っている
+			await expect(page.locator('ion-tab-bar')).toBeHidden()
+			await expect(page.locator('ion-item').filter({ hasText: 'alertmanager' })).toHaveCount(1)
+			await backButton(page).click()
+			await settle(page)
+			await expect(page).toHaveURL(/\/tabs\/home$/)
+			await expect(page.locator('ion-item').filter({ hasText: name }).filter({ visible: true }).first()).toBeVisible()
+			await expect(page.locator('ion-tab-bar')).toBeVisible()
+		}
+	})
+
+	test('以前の URL (/channels/…・/alerts/…) はタブの中のパスへ移る', async ({ page }) => {
+		await login(page)
+		await page.goto('/channels/C01GENERAL')
+		await expect(page).toHaveURL(/\/tabs\/home\/channels\/C01GENERAL$/)
+		await page.goto('/alerts/42')
+		await expect(page).toHaveURL(/\/tabs\/activity\/channels\/C01ALERTS\/threads\/1700002000\.000100$/)
+	})
+
 	test('中身の無いチャンネルは、その旨を表示する', async ({ page }) => {
 		await page.route('**/api/channels/C01ALERTS/messages**', (route) =>
 			route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ messages: [], has_more: false }) })

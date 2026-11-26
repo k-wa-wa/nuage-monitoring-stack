@@ -21,6 +21,7 @@ import NotificationDetailPanel from '../components/NotificationDetailPanel'
 import { useIonChatScroll } from '../hooks/useIonChatScroll'
 import { channelTitle, threadKey, useChat } from '../state/chatStore'
 import { useChannelsById } from '../state/selectors'
+import { channelPath, useTabBase } from '../state/routes'
 import { GRAFANA_BASE_URL } from '../utils/url'
 import { messageToUnified } from '../utils/notification'
 
@@ -28,6 +29,7 @@ export default function ThreadPage() {
 	const { channelId = '', ts = '' } = useParams<{ channelId: string; ts: string }>()
 	const { user, bot, channels, threadData, loadThread, postMessage, enterChannel } = useChat()
 	const channelsById = useChannelsById()
+	const base = useTabBase()
 	const channel = channels.find((c) => c.id === channelId)
 	const data = threadData[threadKey(channelId, ts)]
 	const parent = data?.parent ?? null
@@ -77,7 +79,7 @@ export default function ThreadPage() {
 			<IonHeader translucent>
 				<IonToolbar>
 					<IonButtons slot="start">
-						<IonBackButton defaultHref={`/channels/${encodeURIComponent(channelId)}`} text="" />
+						<IonBackButton defaultHref={channelPath(base, channelId)} text="" />
 					</IonButtons>
 					<IonTitle>
 						<div className="chat-title">

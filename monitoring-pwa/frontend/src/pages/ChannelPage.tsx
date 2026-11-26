@@ -19,12 +19,14 @@ import NewMessagesButton from '../components/NewMessagesButton'
 import { useIonChatScroll } from '../hooks/useIonChatScroll'
 import { channelTitle, useChat } from '../state/chatStore'
 import { useChannelsById } from '../state/selectors'
+import { threadPath, useTabBase } from '../state/routes'
 
 export default function ChannelPage() {
 	const { channelId = '' } = useParams<{ channelId: string }>()
 	const { user, bot, channels, channelData, loadChannel, loadOlder, postMessage, enterChannel } =
 		useChat()
 	const channelsById = useChannelsById()
+	const base = useTabBase()
 	const channel = channels.find((c) => c.id === channelId)
 	const data = channelData[channelId]
 	const messages = useMemo(() => data?.messages ?? [], [data])
@@ -72,7 +74,7 @@ export default function ChannelPage() {
 			<IonHeader translucent>
 				<IonToolbar>
 					<IonButtons slot="start">
-						<IonBackButton defaultHref="/tabs/home" text="" />
+						<IonBackButton defaultHref={base} text="" />
 					</IonButtons>
 					<IonTitle>
 						<div className="chat-title">
@@ -125,9 +127,7 @@ export default function ChannelPage() {
 						botUserId={bot.user_id}
 						botName={bot.name}
 						channelsById={channelsById}
-						threadLinkFor={(m) =>
-							`/channels/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(m.ts)}`
-						}
+						threadLinkFor={(m) => threadPath(base, channelId, m.ts)}
 					/>
 				)}
 				</div>

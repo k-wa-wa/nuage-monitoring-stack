@@ -12,6 +12,7 @@ import {
 } from '@ionic/react'
 import { useParams } from 'react-router-dom'
 import { API_BASE } from '../state/chatStore'
+import { threadPath } from '../state/routes'
 
 // /alerts/:id と /notifications/:id (Push 通知・通知タブからの遷移先) を、
 // その通知が投稿されたスレッドへ置き換える。
@@ -31,7 +32,7 @@ export default function DeepLinkPage({ kind }: { kind: 'alert' | 'notification' 
 				if (cancelled) return
 				if (data?.channel_id && data.ts) {
 					routerRef.current.push(
-						`/channels/${encodeURIComponent(data.channel_id)}/threads/${encodeURIComponent(data.ts)}`,
+						threadPath('/tabs/activity', data.channel_id, data.ts),
 						'none',
 						'replace'
 					)

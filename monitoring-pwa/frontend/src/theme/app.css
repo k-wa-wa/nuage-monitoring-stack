@@ -244,6 +244,11 @@ ion-label p.activity-body {
 /* ---------------------------------------------------------------
  * チャット画面
  * --------------------------------------------------------------- */
+/* チャンネル・スレッドはタブの中に積むが、表示中はタブバーを隠す (iOS の「押し込んだ画面ではタブバーを隠す」と同じ) */
+ion-tabs:has(.chat-page:not(.ion-page-hidden)) ion-tab-bar {
+  display: none;
+}
+
 .chat-title {
   display: flex;
   flex-direction: column;

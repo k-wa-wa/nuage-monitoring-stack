@@ -141,7 +141,10 @@ export default function ActivityPage() {
 						<IonItemGroup>
 							{shown.map((item) => {
 								const { icon, color } = iconFor(item)
-								const link = item.kind === 'alert' ? `/alerts/${item.id}` : `/notifications/${item.id}`
+								const link =
+									item.kind === 'alert'
+										? `/tabs/activity/alerts/${item.id}`
+										: `/tabs/activity/notifications/${item.id}`
 								const resolvedIn = item.kind === 'alert' ? durationLabel(item.fired_at, item.resolved_at) : null
 								return (
 									<IonItem

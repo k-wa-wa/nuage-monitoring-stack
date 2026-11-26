@@ -146,6 +146,33 @@ export function installViewportDebug(): void {
 		{ passive: true }
 	)
 
+	// 画面が真っ暗になる不具合の調査用: JS のエラーと、Ionic の画面の重なりを出す
+	const errors: string[] = []
+	window.addEventListener('error', (e) => {
+		errors.unshift(`${e.message} @${(e.filename || '').split('/').pop()}:${e.lineno}`)
+		errors.length = Math.min(errors.length, 3)
+		render()
+	})
+	window.addEventListener('unhandledrejection', (e) => {
+		errors.unshift(`unhandled: ${String((e.reason as Error)?.message ?? e.reason)}`)
+		errors.length = Math.min(errors.length, 3)
+		render()
+	})
+	const describePages = () =>
+		Array.from(document.querySelectorAll('.ion-page'))
+			.filter((el) => el.tagName !== 'ION-APP')
+			.map((el) => {
+				const cls = el.className
+				const name =
+					cls.match(/\bchat-page\b/) ? 'chat' : el.querySelector(':scope > ion-tabs, :scope ion-tab-bar') ? 'tabs' : el.querySelector('ion-title')?.textContent?.slice(0, 8) || '?'
+				const flags = ['ion-page-hidden', 'ion-page-invisible', 'can-go-back']
+					.filter((f) => el.classList.contains(f))
+					.map((f) => f.replace('ion-page-', ''))
+				const shown = getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden'
+				return `  ${name}${flags.length ? `[${flags.join(',')}]` : ''} ${shown ? 'shown' : 'not-shown'} op=${getComputedStyle(el).opacity}`
+			})
+			.join('\n')
+
 	const render = () => {
 		const vv = window.visualViewport
 		const root = document.getElementById('root')
@@ -172,7 +199,10 @@ export function installViewportDebug(): void {
 			`--app-height=${document.documentElement.style.getPropertyValue('--app-height') || '(css)'} kb=${document.documentElement.dataset.keyboardOpen ?? 'no'}`,
 			`last scroll: ${lastScroll}`,
 			others ? `scrolled now:\n${others}` : 'scrolled now: (none)',
-			`last touchmove: ${lastTouch}`
+			`last touchmove: ${lastTouch}`,
+			`path: ${window.location.pathname}`,
+			`pages:\n${describePages()}`,
+			errors.length ? `errors:\n  ${errors.join('\n  ')}` : 'errors: (none)'
 		].join('\n')
 	}
 

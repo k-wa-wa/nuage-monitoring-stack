@@ -20,6 +20,7 @@ import { hardwareChip } from 'ionicons/icons'
 import { API_BASE, useChat } from '../state/chatStore'
 import { formatMessageTime } from '../utils/date'
 import type { SearchResult } from '../types/chat'
+import { channelPath, threadPath } from '../state/routes'
 
 const SEARCH_DEBOUNCE_MS = 250
 
@@ -112,7 +113,7 @@ export default function HomePage() {
 											key={`${r.channel_id}-${r.message.ts}`}
 											button
 											detail={false}
-											routerLink={`/channels/${encodeURIComponent(r.channel_id)}/threads/${encodeURIComponent(threadTs)}`}
+											routerLink={threadPath('/tabs/home', r.channel_id, threadTs)}
 											className="search-result-item"
 										>
 											<IonLabel>
@@ -141,7 +142,7 @@ export default function HomePage() {
 										key={ch.id}
 										button
 										detail={false}
-										routerLink={`/channels/${encodeURIComponent(ch.id)}`}
+										routerLink={channelPath('/tabs/home', ch.id)}
 										className={ch.unread_count > 0 ? 'channel-item unread' : 'channel-item'}
 									>
 										<span slot="start" className="channel-hash" aria-hidden="true">
@@ -173,7 +174,7 @@ export default function HomePage() {
 										key={ch.id}
 										button
 										detail={false}
-										routerLink={`/channels/${encodeURIComponent(ch.id)}`}
+										routerLink={channelPath('/tabs/home', ch.id)}
 										className={ch.unread_count > 0 ? 'channel-item unread' : 'channel-item'}
 									>
 										<div slot="start" className="dm-avatar" aria-hidden="true">
