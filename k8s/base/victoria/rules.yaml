@@ -298,12 +298,19 @@ spec:
           #    argo-server の WatchWorkflows ストリーム終了時に error="rpc error: code = ResourceExhausted desc = EOF"
           #    を含む Warning ログが出力され、誤検知が発生したため除外。
           # 2. Keel の PR プレビューイメージ未 push 時の 404 ログ
-          #    PR プレビュー環境の作成直後から CI によるイメージ push 完了までの間、Keel が
-          #    status=404 のエラーログを繰り返し出力するため keel Namespace に限定して除外する。
+          #    PR プレビュー環境の作成直後から CI によるイメージ push 完了までの間、Keel のイメージ監視処理
+          #    (RepositoryWatcher.addJob / Watch・manager) が pr-<番号> タグに対して status=404 を出力するため、
+          #    keel Namespace のプレビュータグ・監視処理に限定して即時アラートから除外する
+          #    (:latest 等の設定ミスによる 404 は即時検知し、pr-<番号> の 404 継続は下の KeelPreviewImageNotFound で検知する)。
           expr: |-
             _time:5m kubernetes.pod_namespace:~"^(pechka|bare-web-proxy|keel)$" ~"(?i)error"
               NOT ~"(?i)code = ResourceExhausted desc = EOF"
-              NOT (kubernetes.pod_namespace:="keel" "status=404")
+              NOT (
+                kubernetes.pod_namespace:="keel"
+                "status=404"
+                ~"/manifests/pr-[0-9]+([^0-9A-Za-z_-]|$)"
+                ~"msg=\"trigger\\.poll\\.(RepositoryWatcher\\.(addJob|Watch)|manager): "
+              )
             | rename kubernetes.pod_namespace as namespace, kubernetes.pod_name as pod, kubernetes.container_name as container
             | stats by (namespace, pod, container) count() as errors
             | filter errors:>0
@@ -312,6 +319,28 @@ spec:
           annotations:
             summary: "{{ $labels.namespace }}/{{ $labels.pod }} でエラーログを検出した"
             description: "container={{ $labels.container }} が過去5分間にエラーログを出力している。"
+        - alert: KeelPreviewImageNotFound
+          record: ""
+          # PR プレビュー用タグ (pr-<番号>) の初回 404 は上の KubernetesPodErrorLogs から除外するが、
+          # CI の失敗やマニフェスト設定ミス等で 404 が継続する場合は検知する。
+          # 通常の PR ビルド完了 (実測最大約 5 分) で誤検知しないよう for: 15m とし、
+          # image ごとに集計して別 PR の 404 が合算されないようにする。
+          expr: |-
+            _time:5m kubernetes.pod_namespace:="keel"
+              "status=404"
+              ~"/manifests/pr-[0-9]+([^0-9A-Za-z_-]|$)"
+              ~"msg=\"trigger\\.poll\\.(RepositoryWatcher\\.(addJob|Watch)|manager): "
+            | extract_regexp "/v2/(?P<repo>.+?)/manifests/(?P<tag>pr-[0-9]+)(?:[^0-9A-Za-z_-]|$)"
+            | format "<repo>:<tag>" as image
+            | rename kubernetes.pod_namespace as namespace, kubernetes.pod_name as pod, kubernetes.container_name as container
+            | stats by (namespace, pod, container, image) count() as errors
+            | filter errors:>0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} で PR プレビューイメージの 404 が継続している ({{ $labels.image }})"
+            description: "container={{ $labels.container }} が image={{ $labels.image }} の取得で status=404 を 15 分以上継続して出力している。CI のビルド・push 状況またはイメージタグ設定を確認すること。"
         - alert: HostSystemdUnitFailed
           record: ""
           # ホストの journald から systemd ユニットの失敗ログを検知する (メトリクス経路とは独立した保険)。
