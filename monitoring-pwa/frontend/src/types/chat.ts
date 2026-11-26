@@ -37,8 +37,8 @@ export interface SlackBlock {
 	elements?: SlackTextObject[]
 }
 
+// メッセージは (channel_id, ts) で識別する (Slack と同じ)。DB の id は API に出ない
 export interface ChatMessage {
-	id: number
 	channel_id: string
 	ts: string
 	thread_ts?: string

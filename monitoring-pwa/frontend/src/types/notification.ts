@@ -1,6 +1,5 @@
 export interface UnifiedNotification {
 	uid: string
-	id: number
 	kind: 'alert' | 'notification'
 	source: string
 	title: string

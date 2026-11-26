@@ -42,7 +42,8 @@ type Channel struct {
 
 // Message はチャンネルまたはスレッド内の1件のメッセージを表す構造体である。
 type Message struct {
-	ID          int64           `json:"id"`
+	// ID は DB の中だけで使う。メッセージは (ChannelID, TS) で識別する (Slack と同じ) ので API には出さない
+	ID          int64           `json:"-"`
 	ChannelID   string          `json:"channel_id"`
 	TS          string          `json:"ts"`
 	ThreadTS    string          `json:"thread_ts,omitempty"`
@@ -117,7 +118,7 @@ func (db *DB) migrateChatSchema() error {
 			dm_user_id TEXT NOT NULL DEFAULT '',
 			topic TEXT NOT NULL DEFAULT '',
 			purpose TEXT NOT NULL DEFAULT '',
-			created_at DATETIME NOT NULL
+			created_at TIMESTAMP NOT NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,10 +135,10 @@ func (db *DB) migrateChatSchema() error {
 			details TEXT NOT NULL DEFAULT '',
 			url TEXT NOT NULL DEFAULT '',
 			alert_status TEXT NOT NULL DEFAULT '',
-			fired_at DATETIME,
-			resolved_at DATETIME,
-			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL,
+			fired_at TIMESTAMP,
+			resolved_at TIMESTAMP,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL,
 			UNIQUE(channel_id, ts)
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_channel_thread_ts ON messages(channel_id, thread_ts, ts);`,
@@ -302,42 +303,54 @@ type CreateMessageParams struct {
 	ResolvedAt  *time.Time
 }
 
-// CreateMessage は新規メッセージを保存し、採番された ts を持つ Message を返す。
+// CreateMessage は新規メッセージを保存し、振った ts を持つ Message を返す。
 //
-// ts は Slack と同じ "秒.6桁" の形で、6 桁には DB が振る id の下 6 桁を使う。
-// プロセスのメモリに連番を持たないので、書き込む Pod が複数になっても ts はぶつからない
-// (id は DB が一意に振る。同じ秒に id が 100 万違う 2 件が入らない限り一意)。
+// ts は Slack と同じく実際の時刻 "秒.マイクロ秒" で振る。同じチャンネルで同じ ts が既にあれば
+// (同じ µs に書き込まれた、別の Pod が先に書いた等) 1µs ずらして書き直す。
+// プロセスのメモリにも DB の連番にも頼らないので、Pod が増えても DB を替えても同じ作りで動く。
 func (db *DB) CreateMessage(p CreateMessageParams) (*Message, error) {
-	now := time.Now()
-	tx, err := db.conn.Begin()
-	if err != nil {
-		return nil, err
+	now := nowFunc()
+	ts := now.UnixMicro()
+	for attempt := 0; attempt < createMessageMaxAttempts; attempt++ {
+		tsStr := formatTS(ts)
+		res, err := db.conn.Exec(
+			`INSERT INTO messages (
+				channel_id, ts, thread_ts, user_id, bot_id, username, text, blocks, level,
+				source_kind, details, url, alert_status, fired_at, resolved_at, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			p.ChannelID, tsStr, p.ThreadTS, p.UserID, p.BotID, p.Username, p.Text, p.Blocks, p.Level,
+			p.SourceKind, p.Details, p.URL, p.AlertStatus, p.FiredAt, p.ResolvedAt, now, now,
+		)
+		if err != nil {
+			if isUniqueViolation(err) {
+				ts++
+				continue
+			}
+			return nil, err
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			return nil, err
+		}
+		return db.GetMessageByID(id)
 	}
-	defer tx.Rollback()
+	return nil, fmt.Errorf("could not allocate a unique ts in channel %s after %d attempts", p.ChannelID, createMessageMaxAttempts)
+}
 
-	res, err := tx.Exec(
-		`INSERT INTO messages (
-			channel_id, ts, thread_ts, user_id, bot_id, username, text, blocks, level,
-			source_kind, details, url, alert_status, fired_at, resolved_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ChannelID, fmt.Sprintf("pending-%d", now.UnixNano()), p.ThreadTS, p.UserID, p.BotID, p.Username, p.Text, p.Blocks, p.Level,
-		p.SourceKind, p.Details, p.URL, p.AlertStatus, p.FiredAt, p.ResolvedAt, now, now,
-	)
-	if err != nil {
-		return nil, err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return nil, err
-	}
-	ts := fmt.Sprintf("%010d.%06d", now.Unix(), id%1000000)
-	if _, err := tx.Exec(`UPDATE messages SET ts = ? WHERE id = ?`, ts, id); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return db.GetMessageByID(id)
+const createMessageMaxAttempts = 16
+
+// nowFunc は ts を振る時刻である (テストで差し替える)。
+var nowFunc = time.Now
+
+// formatTS は µs の時刻を Slack の ts の形 ("1700000000.000100") にする。
+func formatTS(unixMicro int64) string {
+	return fmt.Sprintf("%010d.%06d", unixMicro/1_000_000, unixMicro%1_000_000)
+}
+
+// isUniqueViolation は一意制約の違反かを判定する。
+// SQLite (modernc) はエラーコードを型で公開していないため文言で判定する。Postgres へ移す時は SQLSTATE 23505 で判定する。
+func isUniqueViolation(err error) bool {
+	return strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
 // UpdateMessage は既存メッセージの本文・Blocks を更新する。

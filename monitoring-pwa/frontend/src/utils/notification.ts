@@ -16,8 +16,7 @@ export function messageToUnified(msg: ChatMessage): UnifiedNotification {
 			: 'info'
 
 	return {
-		uid: `${kind}-${msg.id}`,
-		id: msg.id,
+		uid: `${msg.channel_id}-${msg.ts}`,
 		kind,
 		source: msg.username.toLowerCase(),
 		title: msg.username,

@@ -32,22 +32,58 @@ type AlertLister interface {
 // 突き合わせで「取りこぼした発生」を作る時に、これらを拾わないようにする。
 var ignoredAlertnames = map[string]bool{"Watchdog": true, "InfoInhibitor": true}
 
+// Locker は key ごとの排他である。アラートの状態遷移 (Webhook と突き合わせ) を 1 つずつ処理し、
+// 同じ回のスレッドを 2 本作らないようにする。今は Pod の中の排他 (LocalLocker) で、
+// Pod を増やす時は Postgres の advisory lock などの Pod をまたぐ排他に差し替える。
+type Locker interface {
+	Lock(ctx context.Context, key string) (unlock func(), err error)
+}
+
+// LocalLocker は Pod の中だけで効く Locker である。
+type LocalLocker struct {
+	mu    sync.Mutex
+	locks map[string]*sync.Mutex
+}
+
+// NewLocalLocker は LocalLocker を作る。
+func NewLocalLocker() *LocalLocker {
+	return &LocalLocker{locks: map[string]*sync.Mutex{}}
+}
+
+// Lock は key の排他を取る。
+func (l *LocalLocker) Lock(_ context.Context, key string) (func(), error) {
+	l.mu.Lock()
+	m, ok := l.locks[key]
+	if !ok {
+		m = &sync.Mutex{}
+		l.locks[key] = m
+	}
+	l.mu.Unlock()
+	m.Lock()
+	return m.Unlock, nil
+}
+
+// alertsLockKey はアラートの状態遷移すべてで共有する排他の鍵である。
+// Webhook (1 件) と突き合わせ (全件) が同じアラートを同時に触らないよう、細かく分けずに 1 つにしている。
+const alertsLockKey = "notify:alerts"
+
 // Service はアラート・通知の投稿をまとめる。
 type Service struct {
 	db     *push.DB
 	hub    *realtime.Hub
 	sender PushSender
-	// アラートの状態遷移 (Webhook と突き合わせ) を 1 つずつ処理し、同じ回のスレッドを 2 本作らないようにする
-	alertMu sync.Mutex
+	locker Locker
 }
 
 // New は Service を作る。hub が nil なら画面・bot へは知らせない (テスト用)。
-func New(db *push.DB, hub *realtime.Hub, sender PushSender) *Service {
-	return &Service{db: db, hub: hub, sender: sender}
+func New(db *push.DB, hub *realtime.Hub, sender PushSender, locker Locker) *Service {
+	return &Service{db: db, hub: hub, sender: sender, locker: locker}
 }
 
 // IncomingAlert は Alertmanager の Webhook で届いたアラート 1 件である。
 type IncomingAlert struct {
+	// Fingerprint は Alertmanager が振るアラートの識別子。発生の回をまたいで同じアラートを指す
+	Fingerprint  string            `json:"fingerprint"`
 	Status       string            `json:"status"`
 	Labels       map[string]string `json:"labels"`
 	Annotations  map[string]string `json:"annotations"`
@@ -81,7 +117,7 @@ func viewOf(a IncomingAlert) alertView {
 	}
 	details, _ := json.Marshal(a)
 	return alertView{
-		fingerprint: push.GenerateFingerprint(a.Labels),
+		fingerprint: a.Fingerprint,
 		name:        name,
 		summary:     summary,
 		level:       level,
@@ -93,10 +129,16 @@ func viewOf(a IncomingAlert) alertView {
 // HandleAlert は Webhook で届いたアラートを、その回のスレッドに反映する。
 //   - firing: 発生中のスレッドが無ければ新しく作り、あれば親メッセージの詳細を更新する。どちらも Push を送る
 //   - resolved: 発生中のスレッドに「解決した」と返信し、親メッセージを解決済みにする。Push は送らない
-func (s *Service) HandleAlert(a IncomingAlert) error {
+func (s *Service) HandleAlert(ctx context.Context, a IncomingAlert) error {
+	if strings.TrimSpace(a.Fingerprint) == "" {
+		return fmt.Errorf("alert %q has no fingerprint", a.Labels["alertname"])
+	}
 	v := viewOf(a)
-	s.alertMu.Lock()
-	defer s.alertMu.Unlock()
+	unlock, err := s.locker.Lock(ctx, alertsLockKey)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	st, err := s.db.GetAlertState(v.fingerprint)
 	if err != nil {
@@ -209,8 +251,11 @@ func (s *Service) Reconcile(ctx context.Context, lister AlertLister) error {
 		present[a.Fingerprint] = a
 	}
 
-	s.alertMu.Lock()
-	defer s.alertMu.Unlock()
+	unlock, err := s.locker.Lock(ctx, alertsLockKey)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	openAlerts, err := s.db.ListOpenAlerts()
 	if err != nil {
@@ -238,7 +283,7 @@ func (s *Service) Reconcile(ctx context.Context, lister AlertLister) error {
 		if st != nil && st.OpenThreadTS != "" {
 			continue
 		}
-		v := viewOf(IncomingAlert{Status: "firing", Labels: a.Labels, Annotations: a.Annotations, GeneratorURL: a.GeneratorURL})
+		v := viewOf(IncomingAlert{Fingerprint: a.Fingerprint, Status: "firing", Labels: a.Labels, Annotations: a.Annotations, GeneratorURL: a.GeneratorURL})
 		root, err := s.openAlertThread(v, "発生の通知を取りこぼしたため、Alertmanager との突き合わせで作成した。")
 		if err != nil {
 			return err

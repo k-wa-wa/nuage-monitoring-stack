@@ -45,7 +45,6 @@ describe('extractExternalLinks', () => {
 	test('一般通知では対象アプリリンクを抽出する', () => {
 		const note: UnifiedNotification = {
 			uid: 'notification-1',
-			id: 1,
 			kind: 'notification',
 			source: 'argocd',
 			title: 'Argo CD Synced',
@@ -70,7 +69,6 @@ describe('extractExternalLinks', () => {
 	test('アラートではログ・Grafana・Runbook リンクを抽出する', () => {
 		const alert: UnifiedNotification = {
 			uid: 'alert-2',
-			id: 2,
 			kind: 'alert',
 			source: 'alertmanager',
 			title: 'PodCrashLooping',

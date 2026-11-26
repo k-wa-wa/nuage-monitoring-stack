@@ -70,10 +70,10 @@ func TestWebhookHandlers(t *testing.T) {
 	t.Run("Alertmanager の発生と解決を 1 本のスレッドにまとめ、Push はスレッドへ飛ぶ", func(t *testing.T) {
 		db := setupTestDB(t)
 		sender := &mockSender{}
-		h := NewWebhookHandler(notify.New(db, nil, sender), sender)
+		h := NewWebhookHandler(notify.New(db, nil, sender, notify.NewLocalLocker()), sender)
 
 		alert := func(status string) string {
-			return `{"status":"` + status + `","alerts":[{"status":"` + status + `",
+			return `{"status":"` + status + `","alerts":[{"fingerprint":"f0e1d2c3b4a59687","status":"` + status + `",
 				"labels":{"alertname":"PodCrashLooping","namespace":"default","severity":"critical"},
 				"annotations":{"summary":"Pod is crash looping"},
 				"generatorURL":"http://vm-grafana.nuage-monitoring-stack.svc/explore"}]}`
@@ -105,7 +105,7 @@ func TestWebhookHandlers(t *testing.T) {
 	t.Run("汎用と Keel の通知は送り手のチャンネルに投稿し、Push はスレッドへ飛ぶ", func(t *testing.T) {
 		db := setupTestDB(t)
 		sender := &mockSender{}
-		h := NewWebhookHandler(notify.New(db, nil, sender), sender)
+		h := NewWebhookHandler(notify.New(db, nil, sender, notify.NewLocalLocker()), sender)
 
 		// source 未指定でも、タイトルから Argo CD と判断する
 		g := `{"title":"[ArgoCD] nuage-app synced","body":"Deployment completed","url":"https://argocd.wpcapp.net/applications/nuage","direct_open":true}`
@@ -139,7 +139,7 @@ func TestWebhookHandlers(t *testing.T) {
 	t.Run("汎用 Webhook は title と body が無ければ 400", func(t *testing.T) {
 		db := setupTestDB(t)
 		sender := &mockSender{}
-		h := NewWebhookHandler(notify.New(db, nil, sender), sender)
+		h := NewWebhookHandler(notify.New(db, nil, sender, notify.NewLocalLocker()), sender)
 		if rec := postJSON(t, h.GenericWebhook, "/webhook/generic", `{"title":"only title"}`); rec.Code != http.StatusBadRequest {
 			t.Fatalf("expected 400, got %d", rec.Code)
 		}
@@ -149,8 +149,8 @@ func TestWebhookHandlers(t *testing.T) {
 func TestActivityAPI(t *testing.T) {
 	db := setupTestDB(t)
 	sender := &mockSender{}
-	svc := notify.New(db, nil, sender)
-	if err := svc.HandleAlert(notify.IncomingAlert{Status: "firing", Labels: map[string]string{"alertname": "A"}}); err != nil {
+	svc := notify.New(db, nil, sender, notify.NewLocalLocker())
+	if err := svc.HandleAlert(context.Background(), notify.IncomingAlert{Fingerprint: "0123456789abcdef", Status: "firing", Labels: map[string]string{"alertname": "A"}}); err != nil {
 		t.Fatalf("HandleAlert failed: %v", err)
 	}
 	if _, err := svc.PostNotification(notify.Notification{Source: "keel", Title: "t", Body: "b"}); err != nil {

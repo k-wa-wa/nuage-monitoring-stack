@@ -35,8 +35,8 @@ func TestInitDB(t *testing.T) {
 			t.Errorf("notifications table should not exist")
 		}
 		var version int
-		if err := db.conn.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != schemaVersion {
-			t.Fatalf("expected user_version %d, got %d (err=%v)", schemaVersion, version, err)
+		if err := db.conn.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != schemaVersion {
+			t.Fatalf("expected schema version %d, got %d (err=%v)", schemaVersion, version, err)
 		}
 	})
 
@@ -82,6 +82,21 @@ func TestInitDB(t *testing.T) {
 		}
 		if got := db.ListByUser("U01ALICE"); len(got) != 1 {
 			t.Fatalf("expected subscription bound to user, got %+v", got)
+		}
+	})
+
+	t.Run("自分より新しい版の DB では起動しないこと", func(t *testing.T) {
+		dbPath := filepath.Join(t.TempDir(), "newer.db")
+		db, err := InitDB(dbPath)
+		if err != nil {
+			t.Fatalf("InitDB failed: %v", err)
+		}
+		if _, err := db.conn.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, CURRENT_TIMESTAMP)`, schemaVersion+1); err != nil {
+			t.Fatalf("insert failed: %v", err)
+		}
+		db.Close()
+		if _, err := InitDB(dbPath); err == nil {
+			t.Fatal("expected error for a newer schema version")
 		}
 	})
 
@@ -136,14 +151,6 @@ func TestInitDB(t *testing.T) {
 			t.Fatalf("expected error for readonly DB, got nil")
 		}
 	})
-}
-
-func TestFingerprintIsOrderIndependent(t *testing.T) {
-	fp1 := GenerateFingerprint(map[string]string{"alertname": "HighCPU", "pod": "api-1", "namespace": "default"})
-	fp2 := GenerateFingerprint(map[string]string{"namespace": "default", "alertname": "HighCPU", "pod": "api-1"})
-	if fp1 != fp2 {
-		t.Fatalf("fingerprint should be order-independent: %s != %s", fp1, fp2)
-	}
 }
 
 func TestAlertState(t *testing.T) {

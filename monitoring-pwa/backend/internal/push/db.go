@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"sort"
-	"strings"
 	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
@@ -15,29 +13,6 @@ import (
 // DB は SQLite データベースへの接続を管理する構造体である。
 type DB struct {
 	conn *sql.DB
-}
-
-// GenerateFingerprint はアラートラベルから一意に識別するキーを生成する。
-func GenerateFingerprint(labels map[string]string) string {
-	alertname := labels["alertname"]
-	if alertname == "" {
-		alertname = "Alert"
-	}
-	keys := make([]string, 0, len(labels))
-	for k := range labels {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var sb strings.Builder
-	sb.WriteString(alertname)
-	for _, k := range keys {
-		if k == "alertname" {
-			continue
-		}
-		sb.WriteString(fmt.Sprintf(";%s=%s", k, labels[k]))
-	}
-	return sb.String()
 }
 
 // InitDB は指定されたパスの SQLite データベースを初期化し、DB 構造体を返す。
@@ -81,25 +56,37 @@ func (db *DB) Close() error {
 // schemaVersion は DB の作りの版である。上がった時は、古い作りのデータを捨てて作り直す (後方互換は持たない)。
 //
 //	2: アラート・通知の中身を messages に一本化し、notifications テーブルを廃止した。
-const schemaVersion = 2
+//	3: ts を実際の時刻 (µs) で振り、アラートの鍵を Alertmanager の fingerprint にした。
+//	   版の記録を SQLite 専用の PRAGMA user_version から schema_migrations テーブルに移した。
+const schemaVersion = 3
 
 // migrate は必要なテーブルを作る。Web Push の購読 (subscriptions) だけは版が上がっても残す。
+// 版は schema_migrations テーブルに記録する (どの DB でも使える形にしておき、将来 Postgres へ移せるようにする)。
 func (db *DB) migrate() error {
 	if _, err := db.conn.Exec(`CREATE TABLE IF NOT EXISTS subscriptions (
 		endpoint TEXT PRIMARY KEY,
 		p256dh TEXT NOT NULL,
 		auth TEXT NOT NULL,
-		created_at DATETIME NOT NULL
+		created_at TIMESTAMP NOT NULL
 	);`); err != nil {
 		return err
 	}
 	if err := db.ensureTableColumns("subscriptions", []string{"user_id"}); err != nil {
 		return err
 	}
+	if _, err := db.conn.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		version INTEGER PRIMARY KEY,
+		applied_at TIMESTAMP NOT NULL
+	);`); err != nil {
+		return err
+	}
 
 	var version int
-	if err := db.conn.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+	if err := db.conn.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
 		return err
+	}
+	if version > schemaVersion {
+		return fmt.Errorf("database schema version %d is newer than this server (%d)", version, schemaVersion)
 	}
 	if version < schemaVersion {
 		slog.Warn("schema version changed; dropping old chat and alert data", "from", version, "to", schemaVersion)
@@ -117,8 +104,10 @@ func (db *DB) migrate() error {
 		return err
 	}
 
-	if version != schemaVersion {
-		if _, err := db.conn.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion)); err != nil {
+	if version < schemaVersion {
+		if _, err := db.conn.Exec(
+			`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`, schemaVersion, time.Now(),
+		); err != nil {
 			return err
 		}
 	}

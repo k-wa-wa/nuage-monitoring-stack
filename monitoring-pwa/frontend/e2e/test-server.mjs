@@ -30,7 +30,6 @@ function makeMessages(startIdx, endIdx, channelId = 'C01GENERAL') {
 			text = '```sh\nkubectl get pods -n monitoring\n```'
 		}
 		list.push({
-			id: i,
 			channel_id: channelId,
 			ts,
 			user_id: i % 3 === 0 ? 'U01TEST' : undefined,
@@ -54,7 +53,6 @@ function makeThreadReplies(parentTs, channelId = 'C01GENERAL') {
 	for (let i = 1; i <= 25; i++) {
 		const tsNum = 1700001000 + i
 		replies.push({
-			id: 1000 + i,
 			channel_id: channelId,
 			ts: `${tsNum}.000100`,
 			thread_ts: parentTs,
@@ -77,7 +75,6 @@ const alertDetails = JSON.stringify({
 
 const alertMessages = [
 	{
-		id: 501,
 		channel_id: 'C01ALERTS',
 		ts: '1700002000.000100',
 		bot_id: 'B01ALERT',
@@ -92,7 +89,6 @@ const alertMessages = [
 		updated_at: new Date(1700002000 * 1000).toISOString()
 	},
 	{
-		id: 502,
 		channel_id: 'C01ALERTS',
 		ts: '1700002100.000100',
 		bot_id: 'B01ALERT',
@@ -110,7 +106,6 @@ const alertMessages = [
 
 // 通知タブ (/api/activity) に出す通知 (#argocd)
 const argoNotice = {
-	id: 601,
 	channel_id: 'C01ARGO',
 	ts: '1700002500.000100',
 	bot_id: 'B00SYSTEM',
@@ -250,7 +245,6 @@ const server = http.createServer(async (req, res) => {
 				const parsed = JSON.parse(raw || '{}')
 				const nowTs = `${Math.floor(Date.now() / 1000)}.000500`
 				const created = {
-					id: 9999,
 					channel_id: channelId,
 					ts: nowTs,
 					thread_ts: parsed.thread_ts || undefined,

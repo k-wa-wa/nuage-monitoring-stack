@@ -68,7 +68,7 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 	}
 	failed := 0
 	for _, alert := range wh.Alerts {
-		if err := h.svc.HandleAlert(alert); err != nil {
+		if err := h.svc.HandleAlert(c.Request().Context(), alert); err != nil {
 			failed++
 			slog.Error("failed to handle alert", "alertname", alert.Labels["alertname"], "status", alert.Status, "error", err)
 		}

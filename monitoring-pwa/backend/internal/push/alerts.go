@@ -9,6 +9,7 @@ import (
 // AlertState はアラート (fingerprint) ごとの「今発生中の回のスレッド」を覚える。
 // アラートの中身 (状態・詳細・リンク) はスレッドの親メッセージ (messages) を正とし、ここには写さない。
 type AlertState struct {
+	// Fingerprint は Alertmanager が振るアラートの識別子 (Webhook と API の両方に入っている)
 	Fingerprint string
 	Alertname   string
 	// OpenThreadTS は発生中の回のスレッド (#alertmanager の親メッセージの ts)。解決したら空になる。
@@ -21,7 +22,7 @@ func (db *DB) migrateAlertSchema() error {
 		fingerprint TEXT PRIMARY KEY,
 		alertname TEXT NOT NULL,
 		open_thread_ts TEXT NOT NULL DEFAULT '',
-		updated_at DATETIME NOT NULL
+		updated_at TIMESTAMP NOT NULL
 	);`)
 	return err
 }

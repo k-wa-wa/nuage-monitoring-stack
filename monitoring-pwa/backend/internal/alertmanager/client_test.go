@@ -6,8 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 )
 
 func TestListAlerts(t *testing.T) {
@@ -111,12 +109,9 @@ func TestListAlerts(t *testing.T) {
 	if a.Annotations["summary"] != "Disk Space Low" || a.GeneratorURL != "http://grafana/explore" {
 		t.Errorf("annotations / generatorURL not carried: %+v", a)
 	}
-	expectedFP := push.GenerateFingerprint(map[string]string{
-		"severity":  "critical",
-		"alertname": "DiskSpaceLow",
-	})
-	if a.Fingerprint != expectedFP {
-		t.Errorf("expected fingerprint %q (matching push.GenerateFingerprint), got %q", expectedFP, a.Fingerprint)
+	// Alertmanager が振る fingerprint をそのまま使う (Webhook の fingerprint と同じ値)
+	if a.Fingerprint != "fp-disk-low" {
+		t.Errorf("expected alertmanager's fingerprint fp-disk-low, got %q", a.Fingerprint)
 	}
 	if !alerts[3].Suppressed {
 		t.Errorf("expected suppressed state to be reported for %s", alerts[3].Alertname)

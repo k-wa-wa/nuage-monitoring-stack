@@ -85,28 +85,35 @@ func TestChatDBOperations(t *testing.T) {
 		}
 	})
 
-	t.Run("ts は DB の id から作られ、一意で時刻順に増えること", func(t *testing.T) {
+	t.Run("ts は実際の時刻 (µs) で振られ、同じ µs に重なっても書き直して一意になること", func(t *testing.T) {
 		db, err := InitDB(filepath.Join(t.TempDir(), "ts.db"))
 		if err != nil {
 			t.Fatalf("InitDB failed: %v", err)
 		}
 		defer db.Close()
 
-		seen := map[string]bool{}
-		prev := ""
-		for i := 0; i < 50; i++ {
+		fixed := time.Date(2026, 11, 26, 12, 0, 0, 123456000, time.UTC)
+		nowFunc = func() time.Time { return fixed }
+		t.Cleanup(func() { nowFunc = time.Now })
+
+		var tss []string
+		for i := 0; i < 5; i++ {
 			m, err := db.CreateMessage(CreateMessageParams{ChannelID: ChannelGeneral, Username: "a", Text: "x"})
 			if err != nil {
 				t.Fatalf("CreateMessage failed: %v", err)
 			}
-			if seen[m.TS] {
-				t.Fatalf("duplicate ts %s", m.TS)
+			tss = append(tss, m.TS)
+		}
+		want := []string{"1795694400.123456", "1795694400.123457", "1795694400.123458", "1795694400.123459", "1795694400.123460"}
+		for i := range want {
+			if tss[i] != want[i] {
+				t.Fatalf("ts = %v, want %v", tss, want)
 			}
-			seen[m.TS] = true
-			if m.TS <= prev {
-				t.Fatalf("ts should increase: %s <= %s", m.TS, prev)
-			}
-			prev = m.TS
+		}
+		// 別のチャンネルなら同じ ts を使える (Slack と同じく ts はチャンネルの中で一意)
+		m, err := db.CreateMessage(CreateMessageParams{ChannelID: ChannelKeel, Username: "a", Text: "x"})
+		if err != nil || m.TS != "1795694400.123456" {
+			t.Fatalf("expected the same ts in another channel, got %+v (err=%v)", m, err)
 		}
 	})
 

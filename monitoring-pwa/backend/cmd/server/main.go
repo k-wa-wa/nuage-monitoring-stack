@@ -53,7 +53,7 @@ func main() {
 	hub := realtime.NewHub()
 	amClient := alertmanager.NewClient(cfg.AlertmanagerURL)
 	sender := push.NewSender(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, db)
-	svc := notify.New(db, hub, sender)
+	svc := notify.New(db, hub, sender, notify.NewLocalLocker())
 
 	e := NewRouter(cfg, db, hub, sender, svc)
 

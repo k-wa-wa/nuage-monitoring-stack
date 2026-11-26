@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
 )
 
 // Client は Alertmanager API と通信するクライアントである。
@@ -46,7 +44,7 @@ type alertmanagerAlert struct {
 
 // Alert は Alertmanager に今あるアラート 1 件である。
 type Alert struct {
-	// Fingerprint は Webhook と同じ作り方 (push.GenerateFingerprint) でラベルから作る
+	// Fingerprint は Alertmanager が振る識別子 (Webhook の fingerprint と同じ値)
 	Fingerprint  string
 	Alertname    string
 	Labels       map[string]string
@@ -87,12 +85,11 @@ func (c *Client) ListAlerts(ctx context.Context) ([]Alert, error) {
 		if name == "" {
 			name = "Alert"
 		}
-		fp := a.Fingerprint
-		if len(a.Labels) > 0 {
-			fp = push.GenerateFingerprint(a.Labels)
+		if a.Fingerprint == "" {
+			return nil, fmt.Errorf("alertmanager returned an alert without fingerprint: %v", a.Labels)
 		}
 		alerts = append(alerts, Alert{
-			Fingerprint:  fp,
+			Fingerprint:  a.Fingerprint,
 			Alertname:    name,
 			Labels:       a.Labels,
 			Annotations:  a.Annotations,

@@ -47,13 +47,16 @@ func newService(t *testing.T) (*Service, *push.DB, *recordingSender) {
 	}
 	t.Cleanup(func() { db.Close() })
 	sender := &recordingSender{}
-	return New(db, nil, sender), db, sender
+	return New(db, nil, sender, NewLocalLocker()), db, sender
 }
 
 var diskLabels = map[string]string{"alertname": "DiskFull", "severity": "critical", "instance": "node-1"}
 
+const diskFP = "a1b2c3d4e5f60718"
+
 func diskAlert(status string) IncomingAlert {
 	return IncomingAlert{
+		Fingerprint:  diskFP,
 		Status:       status,
 		Labels:       diskLabels,
 		Annotations:  map[string]string{"summary": "Disk 95%"},
@@ -74,7 +77,7 @@ func TestAlertLifecycle(t *testing.T) {
 	svc, db, sender := newService(t)
 
 	// 発生: スレッドができ、Push はそのスレッドへ飛ぶ
-	if err := svc.HandleAlert(diskAlert("firing")); err != nil {
+	if err := svc.HandleAlert(context.Background(), diskAlert("firing")); err != nil {
 		t.Fatalf("firing failed: %v", err)
 	}
 	rs := roots(t, db)
@@ -87,7 +90,7 @@ func TestAlertLifecycle(t *testing.T) {
 	}
 
 	// 再通知 (repeat_interval): 同じスレッドのまま、返信は増やさない
-	if err := svc.HandleAlert(diskAlert("firing")); err != nil {
+	if err := svc.HandleAlert(context.Background(), diskAlert("firing")); err != nil {
 		t.Fatalf("repeat firing failed: %v", err)
 	}
 	if rs := roots(t, db); len(rs) != 1 || rs[0].ReplyCount != 0 {
@@ -95,7 +98,7 @@ func TestAlertLifecycle(t *testing.T) {
 	}
 
 	// 解決: 返信が付き、親が解決済みになる。Push は送らない
-	if err := svc.HandleAlert(diskAlert("resolved")); err != nil {
+	if err := svc.HandleAlert(context.Background(), diskAlert("resolved")); err != nil {
 		t.Fatalf("resolved failed: %v", err)
 	}
 	parent, replies, err := db.GetThreadMessages(push.ChannelAlertmanager, thread)
@@ -110,7 +113,7 @@ func TestAlertLifecycle(t *testing.T) {
 	}
 
 	// 解決済みの後に届いた resolved は捨てる
-	if err := svc.HandleAlert(diskAlert("resolved")); err != nil {
+	if err := svc.HandleAlert(context.Background(), diskAlert("resolved")); err != nil {
 		t.Fatalf("late resolved failed: %v", err)
 	}
 	if _, replies, _ := db.GetThreadMessages(push.ChannelAlertmanager, thread); len(replies) != 1 {
@@ -118,7 +121,7 @@ func TestAlertLifecycle(t *testing.T) {
 	}
 
 	// 2 回目の発生は新しいスレッドになり、Push はその回のスレッドへ飛ぶ
-	if err := svc.HandleAlert(diskAlert("firing")); err != nil {
+	if err := svc.HandleAlert(context.Background(), diskAlert("firing")); err != nil {
 		t.Fatalf("second firing failed: %v", err)
 	}
 	rs = roots(t, db)
@@ -133,11 +136,11 @@ func TestAlertLifecycle(t *testing.T) {
 
 func TestReconcile(t *testing.T) {
 	ctx := context.Background()
-	fp := push.GenerateFingerprint(diskLabels)
+	fp := diskFP
 
 	t.Run("Alertmanager から消えた発生中のスレッドを解決済みにし、理由を返信に残す", func(t *testing.T) {
 		svc, db, _ := newService(t)
-		if err := svc.HandleAlert(diskAlert("firing")); err != nil {
+		if err := svc.HandleAlert(context.Background(), diskAlert("firing")); err != nil {
 			t.Fatalf("firing failed: %v", err)
 		}
 		if err := svc.Reconcile(ctx, fakeLister{}); err != nil {
@@ -182,7 +185,7 @@ func TestReconcile(t *testing.T) {
 
 	t.Run("サイレンス中でも Alertmanager にある発生中のスレッドは閉じない", func(t *testing.T) {
 		svc, db, _ := newService(t)
-		if err := svc.HandleAlert(diskAlert("firing")); err != nil {
+		if err := svc.HandleAlert(context.Background(), diskAlert("firing")); err != nil {
 			t.Fatalf("firing failed: %v", err)
 		}
 		lister := fakeLister{alerts: []alertmanager.Alert{{Fingerprint: fp, Alertname: "DiskFull", Labels: diskLabels, Suppressed: true}}}
@@ -196,7 +199,7 @@ func TestReconcile(t *testing.T) {
 
 	t.Run("Alertmanager から一覧を取れない時は何も変えない", func(t *testing.T) {
 		svc, db, _ := newService(t)
-		if err := svc.HandleAlert(diskAlert("firing")); err != nil {
+		if err := svc.HandleAlert(context.Background(), diskAlert("firing")); err != nil {
 			t.Fatalf("firing failed: %v", err)
 		}
 		if err := svc.Reconcile(ctx, fakeLister{err: errors.New("down")}); err == nil {
@@ -206,6 +209,18 @@ func TestReconcile(t *testing.T) {
 			t.Fatalf("nothing should change on lister error, got %+v", rs[0])
 		}
 	})
+}
+
+func TestHandleAlertRequiresFingerprint(t *testing.T) {
+	svc, db, _ := newService(t)
+	a := diskAlert("firing")
+	a.Fingerprint = ""
+	if err := svc.HandleAlert(context.Background(), a); err == nil {
+		t.Fatal("expected an error for an alert without fingerprint")
+	}
+	if rs := roots(t, db); len(rs) != 0 {
+		t.Fatalf("nothing should be posted, got %+v", rs)
+	}
 }
 
 func TestPostNotification(t *testing.T) {

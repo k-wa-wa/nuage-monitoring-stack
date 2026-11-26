@@ -49,7 +49,7 @@ func TestEndToEndAuthBoundary(t *testing.T) {
 		t.Fatalf("EnsureUserChannels failed: %v", err)
 	}
 
-	e := NewRouter(cfg, db, realtime.NewHub(), noopSender{}, notify.New(db, nil, noopSender{}))
+	e := NewRouter(cfg, db, realtime.NewHub(), noopSender{}, notify.New(db, nil, noopSender{}, notify.NewLocalLocker()))
 
 	// 1. /health と /webhook/* は認証不要
 	healthRec := httptest.NewRecorder()
@@ -164,7 +164,7 @@ func TestLoginRateLimitBehindTrustedProxy(t *testing.T) {
 		t.Fatalf("EnsureUserChannels failed: %v", err)
 	}
 
-	e := NewRouter(cfg, db, realtime.NewHub(), noopSender{}, notify.New(db, nil, noopSender{}))
+	e := NewRouter(cfg, db, realtime.NewHub(), noopSender{}, notify.New(db, nil, noopSender{}, notify.NewLocalLocker()))
 
 	// 1. HAProxy (10.20.1.x) -> Cilium Envoy (10.244.x.x) の実経路で、
 	// クライアントが偽装した XFF 左端は無視され、lb の IP (10.20.1.21) が返ること。
