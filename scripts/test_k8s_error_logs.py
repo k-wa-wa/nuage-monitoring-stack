@@ -75,7 +75,9 @@ def extract_keel_preview_exclusion_block(expr):
 
 
 def unquote_logsql_literal(literal):
-    """LogsQL の二重引用符付き文字列リテラルから実文字列を復元する。"""
+    """LogsQL の文字列リテラル（"..." または `...`）から実文字列を復元する。"""
+    if literal.startswith("`") and literal.endswith("`"):
+        return literal[1:-1]
     assert literal.startswith('"') and literal.endswith('"'), literal
     return literal[1:-1].replace('\\"', '"').replace("\\\\", "\\")
 
@@ -145,9 +147,9 @@ def eval_preview_not_found_offline(rules, row):
     if not matches_keel_preview_exclusion(row, full_text, terms):
         return False, None
 
-    ext_match = re.search(r'extract_regexp "([^"]+)"', pipe_rest)
+    ext_match = re.search(r'extract_regexp (`[^`]+`|"[^"]+")', pipe_rest)
     assert ext_match
-    ext_pattern = unquote_logsql_literal(f'"{ext_match.group(1)}"')
+    ext_pattern = unquote_logsql_literal(ext_match.group(1))
     m = re.search(ext_pattern, full_text)
     if not m:
         return True, ""
@@ -185,13 +187,35 @@ def build_boundary_cases():
         {
             "case": "keel_preview_manager_404",
             "expect_pod_error": False,
-            "expect_preview_404": True,
-            "expect_image": "k-wa-wa/pechka-api:pr-113",
+            "expect_preview_404": False,
             "row": {
                 "kubernetes.pod_namespace": "keel",
                 "kubernetes.pod_name": "keel-pod",
                 "kubernetes.container_name": "keel",
-                "_msg": 'time="2026-11-19T15:03:53Z" level=error msg="trigger.poll.manager: got error(-s) while watching images" error="encountered errors while adding images: Head \\"https://ghcr.io/v2/k-wa-wa/pechka-api/manifests/pr-113\\": http: non-successful response (status=404 body=\\"\\")"',
+                "_msg": 'time="2026-11-19T15:03:53Z" level=error msg="trigger.poll.manager: got error(-s) while watching images" error="encountered errors while adding images: Head \\"https://ghcr.io/v2/k-wa-wa/pechka-api/manifests/pr-113\\": http: non-successful response (status=404 body=\\"\\"), Head \\"https://ghcr.io/v2/k-wa-wa/pechka-frontend/manifests/pr-113\\": http: non-successful response (status=404 body=\\"\\")"',
+            },
+        },
+        # 1b. manager 行にプレビュー 404 と他のエラー（echo-bot:latest の 403 / 404）が混在する場合は即時検知対象
+        {
+            "case": "keel_preview_manager_mixed_403",
+            "expect_pod_error": True,
+            "expect_preview_404": False,
+            "row": {
+                "kubernetes.pod_namespace": "keel",
+                "kubernetes.pod_name": "keel-pod",
+                "kubernetes.container_name": "keel",
+                "_msg": 'time="2026-11-26T01:43:55Z" level=error msg="trigger.poll.manager: got error(-s) while watching images" error="encountered errors while adding images: Head \\"https://ghcr.io/v2/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-backend/manifests/pr-63\\": http: non-successful response (status=404 body=\\"\\"), Head \\"https://ghcr.io/v2/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-echo-bot/manifests/latest\\": http: non-successful response (status=403 body=\\"\\"), Head \\"https://ghcr.io/v2/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-frontend/manifests/pr-63\\": http: non-successful response (status=404 body=\\"\\")"',
+            },
+        },
+        {
+            "case": "keel_preview_manager_mixed_404",
+            "expect_pod_error": True,
+            "expect_preview_404": False,
+            "row": {
+                "kubernetes.pod_namespace": "keel",
+                "kubernetes.pod_name": "keel-pod",
+                "kubernetes.container_name": "keel",
+                "_msg": 'time="2026-11-26T01:44:55Z" level=error msg="trigger.poll.manager: got error(-s) while watching images" error="encountered errors while adding images: Head \\"https://ghcr.io/v2/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-backend/manifests/pr-63\\": http: non-successful response (status=404 body=\\"\\"), Head \\"https://ghcr.io/v2/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-echo-bot/manifests/latest\\": http: non-successful response (status=404 body=\\"\\")"',
             },
         },
         # 2. PR #63 実障害再現: echo-bot の :latest タグ設定ミスによる 404（image 属性に pr-63 Namespace を含んでもタグが latest）
@@ -226,6 +250,17 @@ def build_boundary_cases():
                 "kubernetes.pod_name": "keel-pod",
                 "kubernetes.container_name": "keel",
                 "_msg": 'time="2026-11-26T02:28:54Z" level=error msg="trigger.poll.RepositoryWatcher.addJob: failed to get image digest" error="Head \\"https://ghcr.io/v2/k-wa-wa/pechka-api/manifests/pr-113-hotfix\\": http: non-successful response (status=404 body=\\"\\")" image="k-wa-wa/pechka-api:pr-113-hotfix"',
+            },
+        },
+        {
+            "case": "keel_preview_dot_tag_404",
+            "expect_pod_error": True,
+            "expect_preview_404": False,
+            "row": {
+                "kubernetes.pod_namespace": "keel",
+                "kubernetes.pod_name": "keel-pod",
+                "kubernetes.container_name": "keel",
+                "_msg": 'time="2026-11-26T02:28:54Z" level=error msg="trigger.poll.RepositoryWatcher.addJob: failed to get image digest" error="Head \\"https://ghcr.io/v2/k-wa-wa/pechka-api/manifests/pr-113.1\\": http: non-successful response (status=404 body=\\"\\")" image="k-wa-wa/pechka-api:pr-113.1"',
             },
         },
         # 3. WatchTagJob の 404（pr-113 タグであっても即時検知対象）
@@ -384,10 +419,11 @@ class TestK8sErrorLogsRules(unittest.TestCase):
 
         pod_filter, _ = parse_filter_stages(pod_rule["expr"])
         prev_filter, _ = parse_filter_stages(prev_rule["expr"])
-        self.assertEqual(
-            extract_keel_preview_exclusion_block(pod_filter),
-            [line.strip() for line in prev_filter.splitlines() if line.strip()],
-        )
+        pod_excl = extract_keel_preview_exclusion_block(pod_filter)
+        prev_terms = [line.strip() for line in prev_filter.splitlines() if line.strip()]
+        self.assertEqual(pod_excl[:2], prev_terms[:2])
+        self.assertIn("RepositoryWatcher\\.(addJob|Watch)", prev_terms[2])
+        self.assertIn("RepositoryWatcher\\.(addJob|Watch)|manager", pod_excl[2])
 
     def test_offline_boundary_cases(self):
         for case in self.cases:

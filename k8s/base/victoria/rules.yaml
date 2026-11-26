@@ -301,15 +301,16 @@ spec:
           #    PR プレビュー環境の作成直後から CI によるイメージ push 完了までの間、Keel のイメージ監視処理
           #    (RepositoryWatcher.addJob / Watch・manager) が pr-<番号> タグに対して status=404 を出力するため、
           #    keel Namespace のプレビュータグ・監視処理に限定して即時アラートから除外する
-          #    (:latest 等の設定ミスによる 404 は即時検知し、pr-<番号> の 404 継続は下の KeelPreviewImageNotFound で検知する)。
+          #    (行内の失敗がすべて pr-<番号> の 404 である場合のみ除外し、:latest や pr-113.1 等の設定ミス、
+          #    他エラー混在の manager 行は即時検知し、pr-<番号> の 404 継続は下の KeelPreviewImageNotFound で検知する)。
           expr: |-
             _time:5m kubernetes.pod_namespace:~"^(pechka|bare-web-proxy|keel)$" ~"(?i)error"
               NOT ~"(?i)code = ResourceExhausted desc = EOF"
               NOT (
                 kubernetes.pod_namespace:="keel"
                 "status=404"
-                ~"/manifests/pr-[0-9]+([^0-9A-Za-z_-]|$)"
-                ~"msg=\"trigger\\.poll\\.(RepositoryWatcher\\.(addJob|Watch)|manager): "
+                ~`msg="trigger\.poll\.(RepositoryWatcher\.(addJob|Watch)|manager): `
+                ~`error="(?:encountered errors while adding images: )?(?:Head \\"https?://[^"\\]+/manifests/pr-[0-9]+\\": http: non-successful response \(status=404 body=\\"\\"\), )*Head \\"https?://[^"\\]+/manifests/pr-[0-9]+\\": http: non-successful response \(status=404 body=\\"\\"\)"(?: |$)`
               )
             | rename kubernetes.pod_namespace as namespace, kubernetes.pod_name as pod, kubernetes.container_name as container
             | stats by (namespace, pod, container) count() as errors
@@ -324,13 +325,13 @@ spec:
           # PR プレビュー用タグ (pr-<番号>) の初回 404 は上の KubernetesPodErrorLogs から除外するが、
           # CI の失敗やマニフェスト設定ミス等で 404 が継続する場合は検知する。
           # 通常の PR ビルド完了 (実測最大約 5 分) で誤検知しないよう for: 15m とし、
-          # image ごとに集計して別 PR の 404 が合算されないようにする。
+          # 1 イメージ 1 行で出力される RepositoryWatcher.(addJob|Watch) から image ごとに集計して別 PR の 404 が合算されないようにする。
           expr: |-
             _time:5m kubernetes.pod_namespace:="keel"
               "status=404"
-              ~"/manifests/pr-[0-9]+([^0-9A-Za-z_-]|$)"
-              ~"msg=\"trigger\\.poll\\.(RepositoryWatcher\\.(addJob|Watch)|manager): "
-            | extract_regexp "/v2/(?P<repo>.+?)/manifests/(?P<tag>pr-[0-9]+)(?:[^0-9A-Za-z_-]|$)"
+              ~`msg="trigger\.poll\.RepositoryWatcher\.(addJob|Watch): `
+              ~`error="Head \\"https?://[^"\\]+/manifests/pr-[0-9]+\\": http: non-successful response \(status=404 body=\\"\\"\)"(?: |$)`
+            | extract_regexp `/v2/(?P<repo>.+?)/manifests/(?P<tag>pr-[0-9]+)(?:[^0-9A-Za-z._-]|$)`
             | format "<repo>:<tag>" as image
             | rename kubernetes.pod_namespace as namespace, kubernetes.pod_name as pod, kubernetes.container_name as container
             | stats by (namespace, pod, container, image) count() as errors
