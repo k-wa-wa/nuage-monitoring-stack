@@ -166,6 +166,23 @@ func TestLoginRateLimitBehindTrustedProxy(t *testing.T) {
 
 	e := NewRouter(cfg, db, realtime.NewHub(), noopSender{}, alertmanager.NewClient("http://localhost:9093"))
 
+	// 1. HAProxy (10.20.1.x) -> Cilium Envoy (10.244.x.x) の実経路で、
+	// クライアントが偽装した XFF 左端は無視され、lb の IP (10.20.1.21) が返ること。
+	reqSpoof := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	reqSpoof.RemoteAddr = "10.244.2.7:45678"
+	reqSpoof.Header.Set("X-Forwarded-For", "1.2.3.4, 10.20.1.21")
+	if got := e.IPExtractor(reqSpoof); got != "10.20.1.21" {
+		t.Fatalf("expected lb IP 10.20.1.21 (ignoring spoofed left XFF), got %q", got)
+	}
+
+	// 非信頼 IP (198.51.100.5) からの直接接続では XFF 偽装が効かないこと
+	reqDirect := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	reqDirect.RemoteAddr = "198.51.100.5:1111"
+	reqDirect.Header.Set("X-Forwarded-For", "203.0.113.200")
+	if got := e.IPExtractor(reqDirect); got != "198.51.100.5" {
+		t.Fatalf("expected direct IP 198.51.100.5, got %q", got)
+	}
+
 	sendLogin := func(remoteAddr, xff, passphrase string) int {
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"passphrase":"`+passphrase+`"}`))
 		req.Header.Set("Content-Type", "application/json")
@@ -178,33 +195,15 @@ func TestLoginRateLimitBehindTrustedProxy(t *testing.T) {
 		return rec.Code
 	}
 
-	// 1. Cilium Ingress (10.244.x.x) 経由で攻撃者 (203.0.113.10) が 10 回失敗しても、
-	// クライアント偽装の XFF 左端は無視され、実クライアント IP 単位で制限されること。
-	for i := 0; i < 10; i++ {
-		code := sendLogin("10.244.1.15:45678", "198.51.100.99, 203.0.113.10", "wrong")
-		if code != http.StatusUnauthorized {
+	// 2. XFF 左端を変えながら複数回失敗しても、同一の lb IP (10.20.1.21) 枠で扱い、
+	// かつその直後に正規の合言葉を送った本人は締め出されず 200 でログインできること。
+	for i := 0; i < 3; i++ {
+		xff := "198.51.100." + string(rune('1'+i)) + ", 10.20.1.21"
+		if code := sendLogin("10.244.2.7:45678", xff, "wrong"); code != http.StatusUnauthorized {
 			t.Fatalf("attempt %d: expected 401, got %d", i, code)
 		}
 	}
-
-	// 同じ攻撃者 IP は XFF 左端を変えても 429 になること
-	if code := sendLogin("10.244.1.15:45679", "198.51.100.77, 203.0.113.10", "alice-secret"); code != http.StatusTooManyRequests {
-		t.Fatalf("expected 429 for rate-limited client IP, got %d", code)
-	}
-
-	// 同じ Ingress 経由でも別 IP (203.0.113.20) の本人はログインできること
-	if code := sendLogin("10.244.1.15:45680", "203.0.113.20", "alice-secret"); code != http.StatusOK {
-		t.Fatalf("expected 200 for another client IP behind ingress, got %d", code)
-	}
-
-	// 2. 非信頼 IP (198.51.100.5) からの直接接続では X-Forwarded-For 偽装が効かないこと
-	for i := 0; i < 10; i++ {
-		code := sendLogin("198.51.100.5:1111", "203.0.113.200", "wrong")
-		if code != http.StatusUnauthorized {
-			t.Fatalf("direct attempt %d: expected 401, got %d", i, code)
-		}
-	}
-	if code := sendLogin("198.51.100.5:1112", "203.0.113.201", "alice-secret"); code != http.StatusTooManyRequests {
-		t.Fatalf("expected 429 when untrusted peer spoofs XFF, got %d", code)
+	if code := sendLogin("10.244.2.7:45679", "10.20.1.21", "alice-secret"); code != http.StatusOK {
+		t.Fatalf("expected 200 for valid passphrase after failures via lb, got %d", code)
 	}
 }

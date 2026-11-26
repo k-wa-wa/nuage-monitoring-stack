@@ -140,18 +140,18 @@ func NewRouter(cfg config.Config, db *push.DB, hub *realtime.Hub, sender handler
 	return e
 }
 
-// buildTrustedIPExtractor はクラスタ内プロキシ (Cilium Pod CIDR・Node 網・Loopback) からの
+// buildTrustedIPExtractor はクラスタ内プロキシ (Cilium Pod CIDR と Loopback) からの
 // X-Forwarded-For のみを信頼して実クライアント IP を抽出する。
+// HAProxy (mode tcp, PROXY protocol なし) の 10.20.1.x は信頼対象に含めず、
+// XFF 左端の偽装を防ぐ。
 func buildTrustedIPExtractor() echo.IPExtractor {
 	opts := []echo.TrustOption{
 		echo.TrustLoopback(true),
 		echo.TrustLinkLocal(false),
 		echo.TrustPrivateNet(false),
 	}
-	for _, cidr := range []string{"10.244.0.0/16", "10.20.1.0/24"} {
-		if _, ipNet, err := net.ParseCIDR(cidr); err == nil {
-			opts = append(opts, echo.TrustIPRange(ipNet))
-		}
+	if _, ipNet, err := net.ParseCIDR("10.244.0.0/16"); err == nil {
+		opts = append(opts, echo.TrustIPRange(ipNet))
 	}
 	return echo.ExtractIPFromXFFHeader(opts...)
 }

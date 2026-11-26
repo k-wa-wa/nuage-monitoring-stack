@@ -417,7 +417,7 @@ func TestAlertmanagerRestartKeepsSingleThread(t *testing.T) {
 		t.Fatalf("firing 2 failed: %v", err)
 	}
 
-	// 親メッセージが 2 つに分裂せず 1 つのまま維持されること
+	// 再起動後の firing 再送では余分な返信を作らず、親メッセージが 1 つのまま維持されること
 	parents, _, err := db2.ListChannelMessagesAsc(push.ChannelAlertmanager, "", 20)
 	if err != nil {
 		t.Fatalf("ListChannelMessagesAsc failed: %v", err)
@@ -425,11 +425,11 @@ func TestAlertmanagerRestartKeepsSingleThread(t *testing.T) {
 	if len(parents) != 1 {
 		t.Fatalf("expected 1 parent thread after restart + re-fire, got %d", len(parents))
 	}
-	if parents[0].AlertStatus != "firing" || parents[0].ReplyCount != 1 {
-		t.Fatalf("expected firing parent with 1 reply, got %+v", parents[0])
+	if parents[0].AlertStatus != "firing" || parents[0].ReplyCount != 0 {
+		t.Fatalf("expected firing parent with 0 duplicate replies, got %+v", parents[0])
 	}
 
-	// resolved が来たら同じ親スレッドが resolved になること
+	// resolved が来たら同じ親スレッドに解決の返信が 1 件付き resolved になること
 	resolvedBody := `{
 		"status": "resolved",
 		"alerts": [{
@@ -445,8 +445,57 @@ func TestAlertmanagerRestartKeepsSingleThread(t *testing.T) {
 	}
 
 	parents, _, _ = db2.ListChannelMessagesAsc(push.ChannelAlertmanager, "", 20)
-	if len(parents) != 1 || parents[0].AlertStatus != "resolved" || parents[0].ReplyCount != 2 {
-		t.Fatalf("expected resolved single parent with 2 replies, got %+v", parents)
+	if len(parents) != 1 || parents[0].AlertStatus != "resolved" || parents[0].ReplyCount != 1 {
+		t.Fatalf("expected resolved single parent with 1 reply, got %+v", parents)
+	}
+
+	// firing -> 再起動 -> 直接 resolved の場合も解決の返信が付くこと
+	firingOther := `{
+		"status": "firing",
+		"alerts": [{
+			"status": "firing",
+			"labels": {"alertname": "DiskPressure", "instance": "n2", "severity": "warning"},
+			"annotations": {"summary": "Disk pressure on n2"}
+		}]
+	}`
+	req4 := httptest.NewRequest(http.MethodPost, "/webhook/alertmanager", strings.NewReader(firingOther))
+	req4.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	if err := wh2.AlertmanagerWebhook(e.NewContext(req4, httptest.NewRecorder())); err != nil {
+		t.Fatalf("firing other failed: %v", err)
+	}
+	_ = db2.Close()
+
+	db3, err := push.InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB 3 failed: %v", err)
+	}
+	defer db3.Close()
+
+	wh3 := NewWebhookHandler(&mockSender{}, db3)
+	resolvedOther := `{
+		"status": "resolved",
+		"alerts": [{
+			"status": "resolved",
+			"labels": {"alertname": "DiskPressure", "instance": "n2", "severity": "warning"},
+			"annotations": {"summary": "Disk pressure on n2"}
+		}]
+	}`
+	req5 := httptest.NewRequest(http.MethodPost, "/webhook/alertmanager", strings.NewReader(resolvedOther))
+	req5.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	if err := wh3.AlertmanagerWebhook(e.NewContext(req5, httptest.NewRecorder())); err != nil {
+		t.Fatalf("resolved other failed: %v", err)
+	}
+
+	allParents, _, err := db3.ListChannelMessagesAsc(push.ChannelAlertmanager, "", 20)
+	if err != nil {
+		t.Fatalf("ListChannelMessagesAsc 3 failed: %v", err)
+	}
+	if len(allParents) != 2 {
+		t.Fatalf("expected 2 alert threads, got %d", len(allParents))
+	}
+	diskThread := allParents[1]
+	if diskThread.AlertStatus != "resolved" || diskThread.ReplyCount != 1 {
+		t.Fatalf("expected DiskPressure resolved with 1 reply after restart, got %+v", diskThread)
 	}
 }
 
@@ -455,36 +504,75 @@ func TestLoginRateLimit(t *testing.T) {
 	h := NewAuthHandler([]byte(strings.Repeat("k", 32)), []config.UserConfig{
 		{ID: "U01ADMIN", DisplayName: "Admin", PassphraseHash: string(hash)},
 	})
-	e := echo.New()
+	now := time.Unix(1700000000, 0)
+	h.nowFunc = func() time.Time { return now }
 
-	for i := 0; i < loginRateMaxFailures; i++ {
-		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"passphrase":"wrong"}`))
+	var waits []time.Duration
+	h.sleepFunc = func(_ context.Context, d time.Duration) error {
+		waits = append(waits, d)
+		return nil
+	}
+
+	e := echo.New()
+	send := func(ip, pass string) (int, error) {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"passphrase":"`+pass+`"}`))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		req.RemoteAddr = "198.51.100.10:12345"
-		err := h.Login(e.NewContext(req, httptest.NewRecorder()))
-		httpErr, ok := err.(*echo.HTTPError)
-		if !ok || httpErr.Code != http.StatusUnauthorized {
-			t.Fatalf("attempt %d: expected 401, got %v", i, err)
+		req.RemoteAddr = ip + ":12345"
+		rec := httptest.NewRecorder()
+		err := h.Login(e.NewContext(req, rec))
+		if err != nil {
+			if httpErr, ok := err.(*echo.HTTPError); ok {
+				return httpErr.Code, err
+			}
+			return 0, err
+		}
+		return rec.Code, nil
+	}
+
+	// 1. 失敗回数が増えるにつれてバックオフ遅延が増加すること (2回までは 0ms)
+	for i := 0; i < 6; i++ {
+		code, err := send("198.51.100.10", "wrong")
+		if code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got code=%d err=%v", i, code, err)
 		}
 	}
-
-	// 上限到達後は 429
-	reqBlocked := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"passphrase":"valid-pass"}`))
-	reqBlocked.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	reqBlocked.RemoteAddr = "198.51.100.10:12345"
-	err := h.Login(e.NewContext(reqBlocked, httptest.NewRecorder()))
-	httpErr, ok := err.(*echo.HTTPError)
-	if !ok || httpErr.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected 429 after rate limit, got %v", err)
+	// 3回目失敗後の4回目(i=3)に500ms、5回目(i=4)に1s、6回目(i=5)に2s が設定されること
+	if len(waits) != 3 || waits[0] != 500*time.Millisecond || waits[1] != 1*time.Second || waits[2] != 2*time.Second {
+		t.Fatalf("unexpected backoff waits: %v", waits)
 	}
 
-	// 別 IP はログイン可能であること
-	reqOther := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"passphrase":"valid-pass"}`))
-	reqOther.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	reqOther.RemoteAddr = "198.51.100.20:12345"
-	recOther := httptest.NewRecorder()
-	if err := h.Login(e.NewContext(reqOther, recOther)); err != nil || recOther.Code != http.StatusOK {
-		t.Fatalf("expected 200 from another IP, got code=%d err=%v", recOther.Code, err)
+	// 2. 失敗が連続した後でも、正規の合言葉を送れば締め出されず 200 でログインできること
+	codeOK, errOK := send("198.51.100.10", "valid-pass")
+	if errOK != nil || codeOK != http.StatusOK {
+		t.Fatalf("expected 200 for valid passphrase after failures, got code=%d err=%v", codeOK, errOK)
+	}
+
+	// 3. 待機キューが上限 (loginMaxQueueWait) を超える集中攻撃のみ 429 で弾かれること
+	waits = nil
+	for i := 0; i < 6; i++ {
+		_, _ = send("198.51.100.11", "wrong")
+	}
+	// 4s 遅延状態のまま時間を進めず連続投入すると待機キュー上限超過で 429 になる
+	got429 := false
+	for i := 0; i < 6; i++ {
+		code, _ := send("198.51.100.11", "wrong")
+		if code == http.StatusTooManyRequests {
+			got429 = true
+			break
+		}
+	}
+	if !got429 {
+		t.Fatal("expected 429 when concurrent/burst queue wait exceeds limit")
+	}
+
+	// 別 IP は遅延なくログイン可能であること
+	waitsBefore := len(waits)
+	codeOther, errOther := send("198.51.100.20", "valid-pass")
+	if errOther != nil || codeOther != http.StatusOK {
+		t.Fatalf("expected 200 from another IP, got code=%d err=%v", codeOther, errOther)
+	}
+	if len(waits) != waitsBefore {
+		t.Fatalf("expected no wait for another IP, got %v", waits[waitsBefore:])
 	}
 }
 

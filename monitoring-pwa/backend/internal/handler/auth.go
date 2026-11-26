@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -12,17 +13,26 @@ import (
 )
 
 const (
-	loginRateWindow      = 1 * time.Minute
-	loginRateMaxFailures = 10
+	loginPenaltyWindow       = 1 * time.Minute
+	loginPenaltyFreeAttempts = 2
+	loginPenaltyBaseDelay    = 500 * time.Millisecond
+	loginPenaltyMaxDelay     = 4 * time.Second
+	loginMaxQueueWait        = 12 * time.Second
 )
+
+type ipPenaltyState struct {
+	failures    []time.Time
+	nextAllowed time.Time
+}
 
 // AuthHandler はログイン・ログアウト・現在のユーザー情報 API を処理する。
 type AuthHandler struct {
 	signingKey []byte
 	users      []config.UserConfig
 	mu         sync.Mutex
-	failures   map[string][]time.Time
+	states     map[string]*ipPenaltyState
 	nowFunc    func() time.Time
+	sleepFunc  func(ctx context.Context, d time.Duration) error
 }
 
 // NewAuthHandler は新しい AuthHandler を生成する。
@@ -30,8 +40,23 @@ func NewAuthHandler(signingKey []byte, users []config.UserConfig) *AuthHandler {
 	return &AuthHandler{
 		signingKey: signingKey,
 		users:      users,
-		failures:   make(map[string][]time.Time),
+		states:     make(map[string]*ipPenaltyState),
 		nowFunc:    time.Now,
+		sleepFunc:  waitWithContext,
+	}
+}
+
+func waitWithContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -49,62 +74,110 @@ func toAuthUserDTO(u *config.UserConfig) authUserDTO {
 	}
 }
 
-func (h *AuthHandler) isRateLimited(ip string, now time.Time) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+func backoffForFailures(count int) time.Duration {
+	if count <= loginPenaltyFreeAttempts {
+		return 0
+	}
+	shift := count - loginPenaltyFreeAttempts - 1
+	if shift > 3 {
+		shift = 3
+	}
+	d := loginPenaltyBaseDelay << shift
+	if d > loginPenaltyMaxDelay {
+		return loginPenaltyMaxDelay
+	}
+	return d
+}
 
-	cutoff := now.Add(-loginRateWindow)
-	entries := h.failures[ip]
+func pruneFailures(entries []time.Time, cutoff time.Time) []time.Time {
 	kept := entries[:0]
 	for _, ts := range entries {
 		if ts.After(cutoff) {
 			kept = append(kept, ts)
 		}
 	}
-	if len(kept) == 0 {
-		delete(h.failures, ip)
-		return false
+	return kept
+}
+
+func (h *AuthHandler) reserveAttempt(ip string, now time.Time) (time.Duration, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	state, ok := h.states[ip]
+	if !ok {
+		return 0, false
 	}
-	h.failures[ip] = kept
-	return len(kept) >= loginRateMaxFailures
+
+	cutoff := now.Add(-loginPenaltyWindow)
+	state.failures = pruneFailures(state.failures, cutoff)
+	if len(state.failures) == 0 && !state.nextAllowed.After(now) {
+		delete(h.states, ip)
+		return 0, false
+	}
+
+	scheduled := now
+	if state.nextAllowed.After(now) {
+		scheduled = state.nextAllowed
+	}
+	wait := scheduled.Sub(now)
+	if wait > loginMaxQueueWait {
+		return 0, true
+	}
+
+	delay := backoffForFailures(len(state.failures))
+	if delay > 0 {
+		state.nextAllowed = scheduled.Add(delay)
+	}
+	return wait, false
 }
 
 func (h *AuthHandler) recordFailure(ip string, now time.Time) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	cutoff := now.Add(-loginRateWindow)
-	// 古い IP エントリの掃除
-	if len(h.failures) > 512 {
-		for k, list := range h.failures {
-			if len(list) == 0 || !list[len(list)-1].After(cutoff) {
-				delete(h.failures, k)
+	cutoff := now.Add(-loginPenaltyWindow)
+	if len(h.states) > 512 {
+		for k, s := range h.states {
+			s.failures = pruneFailures(s.failures, cutoff)
+			if len(s.failures) == 0 && !s.nextAllowed.After(now) {
+				delete(h.states, k)
 			}
 		}
 	}
 
-	entries := h.failures[ip]
-	kept := entries[:0]
-	for _, ts := range entries {
-		if ts.After(cutoff) {
-			kept = append(kept, ts)
+	state, ok := h.states[ip]
+	if !ok {
+		state = &ipPenaltyState{}
+		h.states[ip] = state
+	}
+	state.failures = append(pruneFailures(state.failures, cutoff), now)
+	if delay := backoffForFailures(len(state.failures)); delay > 0 {
+		next := now.Add(delay)
+		if next.After(state.nextAllowed) {
+			state.nextAllowed = next
 		}
 	}
-	h.failures[ip] = append(kept, now)
 }
 
 func (h *AuthHandler) clearFailures(ip string) {
 	h.mu.Lock()
-	delete(h.failures, ip)
+	delete(h.states, ip)
 	h.mu.Unlock()
 }
 
 // Login は合言葉を検証し、署名付きセッション Cookie を発行する。
+// 失敗回数に応じたバックオフ遅延で総当たりを抑制しつつ、同一プロキシ IP 配下の正規ユーザーの締め出しを防ぐ。
 func (h *AuthHandler) Login(c echo.Context) error {
 	ip := c.RealIP()
 	now := h.nowFunc()
-	if h.isRateLimited(ip, now) {
-		return echo.NewHTTPError(http.StatusTooManyRequests, "ログイン試行回数の上限に達したため、しばらく待ってから再試行してほしい")
+	wait, overloaded := h.reserveAttempt(ip, now)
+	if overloaded {
+		return echo.NewHTTPError(http.StatusTooManyRequests, "ログイン試行が集中しているため、しばらく待ってから再試行してほしい")
+	}
+	if wait > 0 {
+		if err := h.sleepFunc(c.Request().Context(), wait); err != nil {
+			return echo.NewHTTPError(http.StatusRequestTimeout, "request cancelled")
+		}
 	}
 
 	var req struct {
@@ -117,7 +190,7 @@ func (h *AuthHandler) Login(c echo.Context) error {
 
 	user, err := auth.VerifyPassphrase(h.users, req.Passphrase, req.User)
 	if err != nil {
-		h.recordFailure(ip, now)
+		h.recordFailure(ip, h.nowFunc())
 		return echo.NewHTTPError(http.StatusUnauthorized, "合言葉が正しくない")
 	}
 

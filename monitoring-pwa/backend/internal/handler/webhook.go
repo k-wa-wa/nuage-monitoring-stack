@@ -138,12 +138,12 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 		alertDetails, _ := json.Marshal(alert)
 
 		isNewCycle := true
-		var prevStatus string
+		var existingParent *push.Message
 		if existing, findErr := h.db.GetAlertByFingerprint(fingerprint); findErr == nil && existing != nil {
-			prevStatus = existing.Status
-			if alert.Status != "firing" || existing.Status == "firing" {
-				isNewCycle = false
-			} else if parent, pErr := h.db.GetLatestAlertParentMessage(existing.ID); pErr == nil && parent != nil && parent.AlertStatus == "firing" {
+			if parent, pErr := h.db.GetLatestAlertParentMessage(existing.ID); pErr == nil && parent != nil {
+				existingParent = parent
+			}
+			if alert.Status != "firing" || existing.Status == "firing" || (existingParent != nil && existingParent.AlertStatus == "firing") {
 				// 起動時の migrate() で alerts が resolved になっていても、
 				// messages 上の親スレッドが未解決のままなら同一スレッドへ繋げる。
 				isNewCycle = false
@@ -164,7 +164,9 @@ func (h *WebhookHandler) AlertmanagerWebhook(c echo.Context) error {
 		if err != nil {
 			slog.Error("failed to upsert alert", "fingerprint", fingerprint, "error", err)
 		} else if savedAlert != nil {
-			skipReply := !isNewCycle && prevStatus == alert.Status
+			// 再起動時は InitDB が alerts.status を resolved へ書き換えるため、
+			// 同状態再送かの判定は親メッセージの AlertStatus を基準にする。
+			skipReply := !isNewCycle && existingParent != nil && existingParent.AlertStatus == alert.Status
 			msg, parent, chatErr := h.db.SyncAlertChatMessage(savedAlert, isNewCycle, skipReply, name, summary, string(alertDetails), alert.GeneratorURL)
 			if chatErr != nil {
 				slog.Error("failed to post alert chat message", "fingerprint", fingerprint, "error", chatErr)

@@ -134,4 +134,23 @@ describe('SlackRichText (GFM + サニタイズ済み HTML)', () => {
 		expect(html).not.toContain('<script')
 		expect(html).not.toContain('onerror')
 	})
+
+	test('blocks に null や不正な要素が混ざっても例外で落ちず描画できる', () => {
+		const malformed = [
+			null,
+			'not-an-object',
+			{ type: 'context', elements: [null, { type: 'mrkdwn', text: 'ok-ctx' }] },
+			{ type: 'section', text: null, fields: [null, { type: 'plain_text', text: 'ok-field' }] }
+		] as unknown as Parameters<typeof SlackRichText>[0]['blocks']
+
+		const html = renderRichText('fallback text', malformed)
+		expect(html).toContain('ok-ctx')
+		expect(html).toContain('ok-field')
+
+		const onlyNullHtml = renderRichText(
+			'fallback text',
+			[null] as unknown as Parameters<typeof SlackRichText>[0]['blocks']
+		)
+		expect(onlyNullHtml).toContain('fallback text')
+	})
 })

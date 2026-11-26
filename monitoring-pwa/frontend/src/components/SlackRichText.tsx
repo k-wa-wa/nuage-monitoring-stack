@@ -96,15 +96,22 @@ function GfmContent({
 	)
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function renderTextObject(
-	obj: SlackTextObject,
+	obj: unknown,
 	botUserId?: string,
 	botName?: string,
 	channelsById?: Record<string, string>
 ) {
+	if (!isRecord(obj) || typeof obj.text !== 'string') {
+		return null
+	}
 	return (
 		<GfmContent
-			text={obj.text || ''}
+			text={obj.text}
 			plainOnly={obj.type === 'plain_text'}
 			botUserId={botUserId}
 			botName={botName}
@@ -122,7 +129,11 @@ export default function SlackRichText({
 	channelsById
 }: SlackRichTextProps) {
 	const supportedBlocks = Array.isArray(blocks)
-		? blocks.filter((b) => b.type === 'section' || b.type === 'context' || b.type === 'divider')
+		? blocks.filter(
+				(b): b is SlackBlock =>
+					isRecord(b) &&
+					(b.type === 'section' || b.type === 'context' || b.type === 'divider')
+			)
 		: []
 
 	if (supportedBlocks.length === 0) {
@@ -144,32 +155,50 @@ export default function SlackRichText({
 				}
 				if (block.type === 'context') {
 					const elements = Array.isArray(block.elements) ? block.elements : []
+					const renderedElements = elements
+						.map((el, elIdx) => {
+							const content = renderTextObject(el, botUserId, botName, channelsById)
+							if (!content) return null
+							return (
+								<span key={elIdx} className="slack-context-item">
+									{content}
+								</span>
+							)
+						})
+						.filter(Boolean)
 					return (
 						<div key={idx} className="slack-block-context">
-							{elements.map((el, elIdx) => (
-								<span key={elIdx} className="slack-context-item">
-									{renderTextObject(el, botUserId, botName, channelsById)}
-								</span>
-							))}
+							{renderedElements}
 						</div>
 					)
 				}
 				// section
+				const renderedSectionText = renderTextObject(
+					block.text as SlackTextObject | undefined,
+					botUserId,
+					botName,
+					channelsById
+				)
+				const renderedFields = Array.isArray(block.fields)
+					? block.fields
+							.map((field, fIdx) => {
+								const content = renderTextObject(field, botUserId, botName, channelsById)
+								if (!content) return null
+								return (
+									<div key={fIdx} className="slack-section-field">
+										{content}
+									</div>
+								)
+							})
+							.filter(Boolean)
+					: []
 				return (
 					<div key={idx} className="slack-block-section">
-						{block.text && (
-							<div className="slack-section-text">
-								{renderTextObject(block.text, botUserId, botName, channelsById)}
-							</div>
+						{renderedSectionText && (
+							<div className="slack-section-text">{renderedSectionText}</div>
 						)}
-						{Array.isArray(block.fields) && block.fields.length > 0 && (
-							<div className="slack-section-fields">
-								{block.fields.map((field, fIdx) => (
-									<div key={fIdx} className="slack-section-field">
-										{renderTextObject(field, botUserId, botName, channelsById)}
-									</div>
-								))}
-							</div>
+						{renderedFields.length > 0 && (
+							<div className="slack-section-fields">{renderedFields}</div>
 						)}
 					</div>
 				)

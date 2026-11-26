@@ -245,14 +245,20 @@ func TestSlackWebAPIMethods(t *testing.T) {
 			t.Fatalf("expected invalid_blocks for broken JSON form blocks, got %+v", badPostRes)
 		}
 
-		// JSON 配列でない値（オブジェクト / 数値）
-		badObjRes := callSlackMethod(t, e, "chat.postMessage", cfg.SlackBotToken, map[string]interface{}{
-			"channel": push.ChannelGeneral,
-			"text":    "obj",
-			"blocks":  map[string]string{"type": "section"},
-		})
-		if badObjRes["ok"] != false || badObjRes["error"] != "invalid_blocks" {
-			t.Fatalf("expected invalid_blocks for non-array blocks, got %+v", badObjRes)
+		// JSON 配列でない値（オブジェクト / 数値）や null 要素・type 欠落要素も拒否されること
+		badPayloads := []map[string]interface{}{
+			{"channel": push.ChannelGeneral, "text": "obj", "blocks": map[string]string{"type": "section"}},
+			{"channel": push.ChannelGeneral, "text": "null elem", "blocks": []interface{}{nil}},
+			{"channel": push.ChannelGeneral, "text": "no type", "blocks": []interface{}{map[string]interface{}{}}},
+			{"channel": push.ChannelGeneral, "text": "null ctx", "blocks": []interface{}{map[string]interface{}{"type": "context", "elements": []interface{}{nil}}}},
+			{"channel": push.ChannelGeneral, "text": "null field", "blocks": []interface{}{map[string]interface{}{"type": "section", "fields": []interface{}{nil}}}},
+			{"channel": push.ChannelGeneral, "text": "null text", "blocks": []interface{}{map[string]interface{}{"type": "section", "text": nil}}},
+		}
+		for idx, payload := range badPayloads {
+			badObjRes := callSlackMethod(t, e, "chat.postMessage", cfg.SlackBotToken, payload)
+			if badObjRes["ok"] != false || badObjRes["error"] != "invalid_blocks" {
+				t.Fatalf("case %d: expected invalid_blocks, got %+v", idx, badObjRes)
+			}
 		}
 
 		// chat.update でも同様に拒否されること
