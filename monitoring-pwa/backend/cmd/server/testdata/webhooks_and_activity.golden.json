@@ -1,0 +1,644 @@
+{
+  "activity_all": {
+    "body": {
+      "firing_count": 1,
+      "has_more": false,
+      "items": [
+        {
+          "channel_id": "C01ALERTMGR",
+          "channel_name": "alertmanager",
+          "message": {
+            "alert_status": "firing",
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C01ALERTMGR",
+            "created_at": "\u003cTIME\u003e",
+            "details": "{\"fingerprint\":\"fp-contract-2\",\"status\":\"firing\",\"labels\":{\"alertname\":\"HighMemory\",\"severity\":\"warning\"},\"annotations\":{\"summary\":\"Memory above 90%\"},\"generatorURL\":\"http://vmalert/graph\"}",
+            "fired_at": "\u003cTIME\u003e",
+            "level": "warning",
+            "source_kind": "alert",
+            "text": "🔥 **[firing] HighMemory**\nMemory above 90%",
+            "ts": "TS_05",
+            "updated_at": "\u003cTIME\u003e",
+            "url": "http://vmalert/graph",
+            "user_id": "U00SYSTEM",
+            "username": "Alertmanager"
+          }
+        },
+        {
+          "channel_id": "C03KEEL",
+          "channel_name": "keel",
+          "message": {
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C03KEEL",
+            "created_at": "\u003cTIME\u003e",
+            "details": "{\"name\":\"monitoring-pwa\",\"message\":\"updated to v1.2.3\",\"type\":\"update\"}",
+            "level": "info",
+            "source_kind": "notification",
+            "text": "**[Keel] monitoring-pwa 更新通知**\nupdated to v1.2.3",
+            "ts": "TS_04",
+            "updated_at": "\u003cTIME\u003e",
+            "user_id": "U00SYSTEM",
+            "username": "Keel"
+          }
+        },
+        {
+          "channel_id": "C02ARGOCD",
+          "channel_name": "argocd",
+          "message": {
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C02ARGOCD",
+            "created_at": "\u003cTIME\u003e",
+            "level": "success",
+            "source_kind": "notification",
+            "text": "**[ArgoCD] nuage-app synced**\nDeployment completed",
+            "ts": "TS_03",
+            "updated_at": "\u003cTIME\u003e",
+            "url": "https://argocd.example/apps/nuage",
+            "user_id": "U00SYSTEM",
+            "username": "Argo CD"
+          }
+        },
+        {
+          "channel_id": "C01ALERTMGR",
+          "channel_name": "alertmanager",
+          "message": {
+            "alert_status": "resolved",
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C01ALERTMGR",
+            "created_at": "\u003cTIME\u003e",
+            "details": "{\"fingerprint\":\"fp-contract-1\",\"status\":\"firing\",\"labels\":{\"alertname\":\"PodCrashLooping\",\"namespace\":\"monitoring\",\"severity\":\"critical\"},\"annotations\":{\"summary\":\"Pod is crash looping\"},\"generatorURL\":\"http://vm-grafana.nuage-monitoring-stack.svc/explore\"}",
+            "fired_at": "\u003cTIME\u003e",
+            "latest_reply": "TS_02",
+            "level": "success",
+            "reply_count": 1,
+            "resolved_at": "\u003cTIME\u003e",
+            "source_kind": "alert",
+            "text": "🔥 **[firing] PodCrashLooping**\nPod is crash looping",
+            "ts": "TS_01",
+            "updated_at": "\u003cTIME\u003e",
+            "url": "http://vm-grafana.nuage-monitoring-stack.svc/explore",
+            "user_id": "U00SYSTEM",
+            "username": "Alertmanager"
+          }
+        }
+      ]
+    },
+    "status": 200
+  },
+  "activity_bogus": {
+    "body": {
+      "message": "invalid filter"
+    },
+    "status": 400
+  },
+  "activity_default": {
+    "body": {
+      "firing_count": 1,
+      "has_more": false,
+      "items": [
+        {
+          "channel_id": "C01ALERTMGR",
+          "channel_name": "alertmanager",
+          "message": {
+            "alert_status": "firing",
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C01ALERTMGR",
+            "created_at": "\u003cTIME\u003e",
+            "details": "{\"fingerprint\":\"fp-contract-2\",\"status\":\"firing\",\"labels\":{\"alertname\":\"HighMemory\",\"severity\":\"warning\"},\"annotations\":{\"summary\":\"Memory above 90%\"},\"generatorURL\":\"http://vmalert/graph\"}",
+            "fired_at": "\u003cTIME\u003e",
+            "level": "warning",
+            "source_kind": "alert",
+            "text": "🔥 **[firing] HighMemory**\nMemory above 90%",
+            "ts": "TS_05",
+            "updated_at": "\u003cTIME\u003e",
+            "url": "http://vmalert/graph",
+            "user_id": "U00SYSTEM",
+            "username": "Alertmanager"
+          }
+        },
+        {
+          "channel_id": "C03KEEL",
+          "channel_name": "keel",
+          "message": {
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C03KEEL",
+            "created_at": "\u003cTIME\u003e",
+            "details": "{\"name\":\"monitoring-pwa\",\"message\":\"updated to v1.2.3\",\"type\":\"update\"}",
+            "level": "info",
+            "source_kind": "notification",
+            "text": "**[Keel] monitoring-pwa 更新通知**\nupdated to v1.2.3",
+            "ts": "TS_04",
+            "updated_at": "\u003cTIME\u003e",
+            "user_id": "U00SYSTEM",
+            "username": "Keel"
+          }
+        },
+        {
+          "channel_id": "C02ARGOCD",
+          "channel_name": "argocd",
+          "message": {
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C02ARGOCD",
+            "created_at": "\u003cTIME\u003e",
+            "level": "success",
+            "source_kind": "notification",
+            "text": "**[ArgoCD] nuage-app synced**\nDeployment completed",
+            "ts": "TS_03",
+            "updated_at": "\u003cTIME\u003e",
+            "url": "https://argocd.example/apps/nuage",
+            "user_id": "U00SYSTEM",
+            "username": "Argo CD"
+          }
+        },
+        {
+          "channel_id": "C01ALERTMGR",
+          "channel_name": "alertmanager",
+          "message": {
+            "alert_status": "resolved",
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C01ALERTMGR",
+            "created_at": "\u003cTIME\u003e",
+            "details": "{\"fingerprint\":\"fp-contract-1\",\"status\":\"firing\",\"labels\":{\"alertname\":\"PodCrashLooping\",\"namespace\":\"monitoring\",\"severity\":\"critical\"},\"annotations\":{\"summary\":\"Pod is crash looping\"},\"generatorURL\":\"http://vm-grafana.nuage-monitoring-stack.svc/explore\"}",
+            "fired_at": "\u003cTIME\u003e",
+            "latest_reply": "TS_02",
+            "level": "success",
+            "reply_count": 1,
+            "resolved_at": "\u003cTIME\u003e",
+            "source_kind": "alert",
+            "text": "🔥 **[firing] PodCrashLooping**\nPod is crash looping",
+            "ts": "TS_01",
+            "updated_at": "\u003cTIME\u003e",
+            "url": "http://vm-grafana.nuage-monitoring-stack.svc/explore",
+            "user_id": "U00SYSTEM",
+            "username": "Alertmanager"
+          }
+        }
+      ]
+    },
+    "status": 200
+  },
+  "activity_firing": {
+    "body": {
+      "firing_count": 1,
+      "has_more": false,
+      "items": [
+        {
+          "channel_id": "C01ALERTMGR",
+          "channel_name": "alertmanager",
+          "message": {
+            "alert_status": "firing",
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C01ALERTMGR",
+            "created_at": "\u003cTIME\u003e",
+            "details": "{\"fingerprint\":\"fp-contract-2\",\"status\":\"firing\",\"labels\":{\"alertname\":\"HighMemory\",\"severity\":\"warning\"},\"annotations\":{\"summary\":\"Memory above 90%\"},\"generatorURL\":\"http://vmalert/graph\"}",
+            "fired_at": "\u003cTIME\u003e",
+            "level": "warning",
+            "source_kind": "alert",
+            "text": "🔥 **[firing] HighMemory**\nMemory above 90%",
+            "ts": "TS_05",
+            "updated_at": "\u003cTIME\u003e",
+            "url": "http://vmalert/graph",
+            "user_id": "U00SYSTEM",
+            "username": "Alertmanager"
+          }
+        }
+      ]
+    },
+    "status": 200
+  },
+  "activity_notice": {
+    "body": {
+      "firing_count": 1,
+      "has_more": false,
+      "items": [
+        {
+          "channel_id": "C03KEEL",
+          "channel_name": "keel",
+          "message": {
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C03KEEL",
+            "created_at": "\u003cTIME\u003e",
+            "details": "{\"name\":\"monitoring-pwa\",\"message\":\"updated to v1.2.3\",\"type\":\"update\"}",
+            "level": "info",
+            "source_kind": "notification",
+            "text": "**[Keel] monitoring-pwa 更新通知**\nupdated to v1.2.3",
+            "ts": "TS_04",
+            "updated_at": "\u003cTIME\u003e",
+            "user_id": "U00SYSTEM",
+            "username": "Keel"
+          }
+        },
+        {
+          "channel_id": "C02ARGOCD",
+          "channel_name": "argocd",
+          "message": {
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C02ARGOCD",
+            "created_at": "\u003cTIME\u003e",
+            "level": "success",
+            "source_kind": "notification",
+            "text": "**[ArgoCD] nuage-app synced**\nDeployment completed",
+            "ts": "TS_03",
+            "updated_at": "\u003cTIME\u003e",
+            "url": "https://argocd.example/apps/nuage",
+            "user_id": "U00SYSTEM",
+            "username": "Argo CD"
+          }
+        }
+      ]
+    },
+    "status": 200
+  },
+  "activity_resolved": {
+    "body": {
+      "firing_count": 1,
+      "has_more": false,
+      "items": [
+        {
+          "channel_id": "C01ALERTMGR",
+          "channel_name": "alertmanager",
+          "message": {
+            "alert_status": "resolved",
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C01ALERTMGR",
+            "created_at": "\u003cTIME\u003e",
+            "details": "{\"fingerprint\":\"fp-contract-1\",\"status\":\"firing\",\"labels\":{\"alertname\":\"PodCrashLooping\",\"namespace\":\"monitoring\",\"severity\":\"critical\"},\"annotations\":{\"summary\":\"Pod is crash looping\"},\"generatorURL\":\"http://vm-grafana.nuage-monitoring-stack.svc/explore\"}",
+            "fired_at": "\u003cTIME\u003e",
+            "latest_reply": "TS_02",
+            "level": "success",
+            "reply_count": 1,
+            "resolved_at": "\u003cTIME\u003e",
+            "source_kind": "alert",
+            "text": "🔥 **[firing] PodCrashLooping**\nPod is crash looping",
+            "ts": "TS_01",
+            "updated_at": "\u003cTIME\u003e",
+            "url": "http://vm-grafana.nuage-monitoring-stack.svc/explore",
+            "user_id": "U00SYSTEM",
+            "username": "Alertmanager"
+          }
+        }
+      ]
+    },
+    "status": 200
+  },
+  "alertmanager_messages": {
+    "body": {
+      "channel": {
+        "created_at": "\u003cTIME\u003e",
+        "id": "C01ALERTMGR",
+        "is_channel": true,
+        "is_im": false,
+        "name": "alertmanager",
+        "purpose": "Prometheus / Alertmanager の発報と解決スレッド",
+        "topic": "Alertmanager アラート",
+        "unread_count": 0
+      },
+      "has_more": false,
+      "messages": [
+        {
+          "alert_status": "resolved",
+          "bot_id": "B00SYSTEM",
+          "channel_id": "C01ALERTMGR",
+          "created_at": "\u003cTIME\u003e",
+          "details": "{\"fingerprint\":\"fp-contract-1\",\"status\":\"firing\",\"labels\":{\"alertname\":\"PodCrashLooping\",\"namespace\":\"monitoring\",\"severity\":\"critical\"},\"annotations\":{\"summary\":\"Pod is crash looping\"},\"generatorURL\":\"http://vm-grafana.nuage-monitoring-stack.svc/explore\"}",
+          "fired_at": "\u003cTIME\u003e",
+          "latest_reply": "TS_02",
+          "level": "success",
+          "reply_count": 1,
+          "resolved_at": "\u003cTIME\u003e",
+          "source_kind": "alert",
+          "text": "🔥 **[firing] PodCrashLooping**\nPod is crash looping",
+          "ts": "TS_01",
+          "updated_at": "\u003cTIME\u003e",
+          "url": "http://vm-grafana.nuage-monitoring-stack.svc/explore",
+          "user_id": "U00SYSTEM",
+          "username": "Alertmanager"
+        },
+        {
+          "alert_status": "firing",
+          "bot_id": "B00SYSTEM",
+          "channel_id": "C01ALERTMGR",
+          "created_at": "\u003cTIME\u003e",
+          "details": "{\"fingerprint\":\"fp-contract-2\",\"status\":\"firing\",\"labels\":{\"alertname\":\"HighMemory\",\"severity\":\"warning\"},\"annotations\":{\"summary\":\"Memory above 90%\"},\"generatorURL\":\"http://vmalert/graph\"}",
+          "fired_at": "\u003cTIME\u003e",
+          "level": "warning",
+          "source_kind": "alert",
+          "text": "🔥 **[firing] HighMemory**\nMemory above 90%",
+          "ts": "TS_05",
+          "updated_at": "\u003cTIME\u003e",
+          "url": "http://vmalert/graph",
+          "user_id": "U00SYSTEM",
+          "username": "Alertmanager"
+        }
+      ]
+    },
+    "status": 200
+  },
+  "argocd_messages": {
+    "body": {
+      "channel": {
+        "created_at": "\u003cTIME\u003e",
+        "id": "C02ARGOCD",
+        "is_channel": true,
+        "is_im": false,
+        "name": "argocd",
+        "purpose": "Argo CD アプリケーション同期イベント",
+        "topic": "Argo CD 同期通知",
+        "unread_count": 0
+      },
+      "has_more": false,
+      "messages": [
+        {
+          "bot_id": "B00SYSTEM",
+          "channel_id": "C02ARGOCD",
+          "created_at": "\u003cTIME\u003e",
+          "level": "success",
+          "source_kind": "notification",
+          "text": "**[ArgoCD] nuage-app synced**\nDeployment completed",
+          "ts": "TS_03",
+          "updated_at": "\u003cTIME\u003e",
+          "url": "https://argocd.example/apps/nuage",
+          "user_id": "U00SYSTEM",
+          "username": "Argo CD"
+        }
+      ]
+    },
+    "status": 200
+  },
+  "keel_messages": {
+    "body": {
+      "channel": {
+        "created_at": "\u003cTIME\u003e",
+        "id": "C03KEEL",
+        "is_channel": true,
+        "is_im": false,
+        "name": "keel",
+        "purpose": "Keel コンテナイメージ自動更新イベント",
+        "topic": "Keel 更新通知",
+        "unread_count": 0
+      },
+      "has_more": false,
+      "messages": [
+        {
+          "bot_id": "B00SYSTEM",
+          "channel_id": "C03KEEL",
+          "created_at": "\u003cTIME\u003e",
+          "details": "{\"name\":\"monitoring-pwa\",\"message\":\"updated to v1.2.3\",\"type\":\"update\"}",
+          "level": "info",
+          "source_kind": "notification",
+          "text": "**[Keel] monitoring-pwa 更新通知**\nupdated to v1.2.3",
+          "ts": "TS_04",
+          "updated_at": "\u003cTIME\u003e",
+          "user_id": "U00SYSTEM",
+          "username": "Keel"
+        }
+      ]
+    },
+    "status": 200
+  },
+  "sse_initial": {
+    "data": {
+      "payload": {
+        "online": false
+      },
+      "type": "bot_status"
+    },
+    "event": "bot_status"
+  },
+  "webhook_alert2_firing_push": [
+    {
+      "payload": {
+        "body": "Memory above 90%",
+        "level": "warning",
+        "tag": "alert-TS_05",
+        "target_url": "http://vmalert/graph",
+        "title": "[firing] HighMemory",
+        "url": "/channels/C01ALERTMGR/threads/TS_05"
+      }
+    }
+  ],
+  "webhook_alert2_firing_resp": {
+    "status": 200
+  },
+  "webhook_alert2_firing_sse": {
+    "data": {
+      "channel_id": "C01ALERTMGR",
+      "payload": {
+        "alert_status": "firing",
+        "bot_id": "B00SYSTEM",
+        "channel_id": "C01ALERTMGR",
+        "created_at": "\u003cTIME\u003e",
+        "details": "{\"fingerprint\":\"fp-contract-2\",\"status\":\"firing\",\"labels\":{\"alertname\":\"HighMemory\",\"severity\":\"warning\"},\"annotations\":{\"summary\":\"Memory above 90%\"},\"generatorURL\":\"http://vmalert/graph\"}",
+        "fired_at": "\u003cTIME\u003e",
+        "level": "warning",
+        "source_kind": "alert",
+        "text": "🔥 **[firing] HighMemory**\nMemory above 90%",
+        "ts": "TS_05",
+        "updated_at": "\u003cTIME\u003e",
+        "url": "http://vmalert/graph",
+        "user_id": "U00SYSTEM",
+        "username": "Alertmanager"
+      },
+      "type": "message_created"
+    },
+    "event": "message_created"
+  },
+  "webhook_alert_firing_push": [
+    {
+      "payload": {
+        "body": "Pod is crash looping",
+        "level": "error",
+        "tag": "alert-TS_01",
+        "target_url": "http://vm-grafana.nuage-monitoring-stack.svc/explore",
+        "title": "[firing] PodCrashLooping",
+        "url": "/channels/C01ALERTMGR/threads/TS_01"
+      }
+    }
+  ],
+  "webhook_alert_firing_resp": {
+    "status": 200
+  },
+  "webhook_alert_firing_sse": {
+    "data": {
+      "channel_id": "C01ALERTMGR",
+      "payload": {
+        "alert_status": "firing",
+        "bot_id": "B00SYSTEM",
+        "channel_id": "C01ALERTMGR",
+        "created_at": "\u003cTIME\u003e",
+        "details": "{\"fingerprint\":\"fp-contract-1\",\"status\":\"firing\",\"labels\":{\"alertname\":\"PodCrashLooping\",\"namespace\":\"monitoring\",\"severity\":\"critical\"},\"annotations\":{\"summary\":\"Pod is crash looping\"},\"generatorURL\":\"http://vm-grafana.nuage-monitoring-stack.svc/explore\"}",
+        "fired_at": "\u003cTIME\u003e",
+        "level": "error",
+        "source_kind": "alert",
+        "text": "🔥 **[firing] PodCrashLooping**\nPod is crash looping",
+        "ts": "TS_01",
+        "updated_at": "\u003cTIME\u003e",
+        "url": "http://vm-grafana.nuage-monitoring-stack.svc/explore",
+        "user_id": "U00SYSTEM",
+        "username": "Alertmanager"
+      },
+      "type": "message_created"
+    },
+    "event": "message_created"
+  },
+  "webhook_alert_repeat_push": [
+    {
+      "payload": {
+        "body": "Pod is crash looping",
+        "level": "error",
+        "tag": "alert-TS_01",
+        "target_url": "http://vm-grafana.nuage-monitoring-stack.svc/explore",
+        "title": "[firing] PodCrashLooping",
+        "url": "/channels/C01ALERTMGR/threads/TS_01"
+      }
+    }
+  ],
+  "webhook_alert_repeat_resp": {
+    "status": 200
+  },
+  "webhook_alert_repeat_sse": {
+    "data": {
+      "channel_id": "C01ALERTMGR",
+      "payload": {
+        "alert_status": "firing",
+        "bot_id": "B00SYSTEM",
+        "channel_id": "C01ALERTMGR",
+        "created_at": "\u003cTIME\u003e",
+        "details": "{\"fingerprint\":\"fp-contract-1\",\"status\":\"firing\",\"labels\":{\"alertname\":\"PodCrashLooping\",\"namespace\":\"monitoring\",\"severity\":\"critical\"},\"annotations\":{\"summary\":\"Pod is crash looping\"},\"generatorURL\":\"http://vm-grafana.nuage-monitoring-stack.svc/explore\"}",
+        "fired_at": "\u003cTIME\u003e",
+        "level": "error",
+        "source_kind": "alert",
+        "text": "🔥 **[firing] PodCrashLooping**\nPod is crash looping",
+        "ts": "TS_01",
+        "updated_at": "\u003cTIME\u003e",
+        "url": "http://vm-grafana.nuage-monitoring-stack.svc/explore",
+        "user_id": "U00SYSTEM",
+        "username": "Alertmanager"
+      },
+      "type": "message_updated"
+    },
+    "event": "message_updated"
+  },
+  "webhook_alert_resolved_push": null,
+  "webhook_alert_resolved_resp": {
+    "status": 200
+  },
+  "webhook_alert_resolved_sse_reply": {
+    "data": {
+      "channel_id": "C01ALERTMGR",
+      "payload": {
+        "alert_status": "resolved",
+        "bot_id": "B00SYSTEM",
+        "channel_id": "C01ALERTMGR",
+        "created_at": "\u003cTIME\u003e",
+        "level": "success",
+        "resolved_at": "\u003cTIME\u003e",
+        "source_kind": "alert",
+        "text": "✅ **[resolved] PodCrashLooping**\nアラートが解決した。",
+        "thread_ts": "TS_01",
+        "ts": "TS_02",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U00SYSTEM",
+        "username": "Alertmanager"
+      },
+      "type": "message_created"
+    },
+    "event": "message_created"
+  },
+  "webhook_alert_resolved_sse_root": {
+    "data": {
+      "channel_id": "C01ALERTMGR",
+      "payload": {
+        "alert_status": "resolved",
+        "bot_id": "B00SYSTEM",
+        "channel_id": "C01ALERTMGR",
+        "created_at": "\u003cTIME\u003e",
+        "details": "{\"fingerprint\":\"fp-contract-1\",\"status\":\"firing\",\"labels\":{\"alertname\":\"PodCrashLooping\",\"namespace\":\"monitoring\",\"severity\":\"critical\"},\"annotations\":{\"summary\":\"Pod is crash looping\"},\"generatorURL\":\"http://vm-grafana.nuage-monitoring-stack.svc/explore\"}",
+        "fired_at": "\u003cTIME\u003e",
+        "latest_reply": "TS_02",
+        "level": "success",
+        "reply_count": 1,
+        "resolved_at": "\u003cTIME\u003e",
+        "source_kind": "alert",
+        "text": "🔥 **[firing] PodCrashLooping**\nPod is crash looping",
+        "ts": "TS_01",
+        "updated_at": "\u003cTIME\u003e",
+        "url": "http://vm-grafana.nuage-monitoring-stack.svc/explore",
+        "user_id": "U00SYSTEM",
+        "username": "Alertmanager"
+      },
+      "type": "message_updated"
+    },
+    "event": "message_updated"
+  },
+  "webhook_generic_push": [
+    {
+      "payload": {
+        "body": "Deployment completed",
+        "direct_open": true,
+        "level": "success",
+        "tag": "msg-C02ARGOCD-TS_03",
+        "target_url": "https://argocd.example/apps/nuage",
+        "title": "[ArgoCD] nuage-app synced",
+        "url": "/channels/C02ARGOCD/threads/TS_03"
+      }
+    }
+  ],
+  "webhook_generic_resp": {
+    "status": 200
+  },
+  "webhook_generic_sse": {
+    "data": {
+      "channel_id": "C02ARGOCD",
+      "payload": {
+        "bot_id": "B00SYSTEM",
+        "channel_id": "C02ARGOCD",
+        "created_at": "\u003cTIME\u003e",
+        "level": "success",
+        "source_kind": "notification",
+        "text": "**[ArgoCD] nuage-app synced**\nDeployment completed",
+        "ts": "TS_03",
+        "updated_at": "\u003cTIME\u003e",
+        "url": "https://argocd.example/apps/nuage",
+        "user_id": "U00SYSTEM",
+        "username": "Argo CD"
+      },
+      "type": "message_created"
+    },
+    "event": "message_created"
+  },
+  "webhook_keel_push": [
+    {
+      "payload": {
+        "body": "updated to v1.2.3",
+        "level": "info",
+        "tag": "msg-C03KEEL-TS_04",
+        "title": "[Keel] monitoring-pwa 更新通知",
+        "url": "/channels/C03KEEL/threads/TS_04"
+      }
+    }
+  ],
+  "webhook_keel_resp": {
+    "status": 200
+  },
+  "webhook_keel_sse": {
+    "data": {
+      "channel_id": "C03KEEL",
+      "payload": {
+        "bot_id": "B00SYSTEM",
+        "channel_id": "C03KEEL",
+        "created_at": "\u003cTIME\u003e",
+        "details": "{\"name\":\"monitoring-pwa\",\"message\":\"updated to v1.2.3\",\"type\":\"update\"}",
+        "level": "info",
+        "source_kind": "notification",
+        "text": "**[Keel] monitoring-pwa 更新通知**\nupdated to v1.2.3",
+        "ts": "TS_04",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U00SYSTEM",
+        "username": "Keel"
+      },
+      "type": "message_created"
+    },
+    "event": "message_created"
+  }
+}
