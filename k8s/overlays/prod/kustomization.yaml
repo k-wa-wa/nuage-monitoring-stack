@@ -14,3 +14,19 @@ resources:
   - ../../trivy-operator
   - ../../repo-scan
   - ../../ssvc
+
+patches:
+  - target:
+      kind: Deployment
+      name: monitoring-pwa-backend
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: SPIFFE_JWT_AUDIENCE
+          value: "monitoring-pwa"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: BOT_USERS_JSON
+          value: '[{"sub":"spiffe://nuage/host/atelier/bot","user_id":"U01BOT","bot_id":"B01BOT","name":"nuage-bot","is_default":true}]'

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,10 +31,12 @@ type SocketEnvelope struct {
 
 type socketConn struct {
 	id   uint64
+	bot  domain.BotIdentity
 	sess usecase.SocketSession
 }
 
 type ticketEntry struct {
+	bot       domain.BotIdentity
 	expiresAt time.Time
 }
 
@@ -42,11 +45,11 @@ type Hub struct {
 	mu          sync.RWMutex
 	browserSubs map[uint64]browserSub
 	socketConns map[uint64]*socketConn
+	botRR       map[string]uint64
 	tickets     map[string]ticketEntry
 	pendingAcks map[string]chan struct{}
 	ackedIDs    map[string]time.Time
 	nextID      atomic.Uint64
-	rrIndex     atomic.Uint64
 }
 
 // NewHub は新しい Hub を初期化する。
@@ -54,6 +57,7 @@ func NewHub() *Hub {
 	return &Hub{
 		browserSubs: make(map[uint64]browserSub),
 		socketConns: make(map[uint64]*socketConn),
+		botRR:       make(map[string]uint64),
 		tickets:     make(map[string]ticketEntry),
 		pendingAcks: make(map[string]chan struct{}),
 		ackedIDs:    make(map[string]time.Time),
@@ -99,6 +103,8 @@ func (h *Hub) PublishBrowser(targetUserID string, ev domain.BrowserEvent) {
 }
 
 // PublishMessageCreated は新規メッセージを SSE と Socket Mode へ配信する。
+// message イベントは接続中の各 bot ごとに 1 本ずつ配信し、
+// app_mention イベントは人間投稿かつチャンネル投稿時にメンションされた bot へだけ配信する。
 func (h *Hub) PublishMessageCreated(ch domain.Channel, msg domain.Message) bool {
 	msgCopy := msg
 	h.PublishBrowser(ch.DMUserID, domain.BrowserEvent{
@@ -107,10 +113,13 @@ func (h *Hub) PublishMessageCreated(ch domain.Channel, msg domain.Message) bool 
 		Message:   &msgCopy,
 	})
 
-	_, delivered := h.SendEventCallback(buildSocketEvent("message", ch, msg))
-	if msg.BotID == "" && ch.IsChannel && domain.MentionsBot(msg.Text) {
-		_, mentionDelivered := h.SendEventCallback(buildSocketEvent("app_mention", ch, msg))
-		delivered = delivered || mentionDelivered
+	delivered := h.sendEventToBots(buildSocketEvent("message", ch, msg), nil)
+	if msg.BotID == "" && ch.IsChannel {
+		if mentioned := domain.ExtractMentionedUserIDs(msg.Text); len(mentioned) > 0 {
+			if h.sendEventToBots(buildSocketEvent("app_mention", ch, msg), mentioned) {
+				delivered = true
+			}
+		}
 	}
 	return delivered
 }
@@ -144,8 +153,8 @@ func buildSocketEvent(eventType string, ch domain.Channel, msg domain.Message) m
 	return ev
 }
 
-// IssueTicket は Socket Mode WebSocket 接続用のワンタイムチケットを発行する。
-func (h *Hub) IssueTicket() string {
+// IssueTicket は指定 bot に紐づく Socket Mode WebSocket 接続用のワンタイムチケットを発行する。
+func (h *Hub) IssueTicket(bot domain.BotIdentity) string {
 	buf := make([]byte, 16)
 	_, _ = rand.Read(buf)
 	ticket := hex.EncodeToString(buf)
@@ -157,15 +166,15 @@ func (h *Hub) IssueTicket() string {
 			delete(h.tickets, k)
 		}
 	}
-	h.tickets[ticket] = ticketEntry{expiresAt: now.Add(60 * time.Second)}
+	h.tickets[ticket] = ticketEntry{bot: bot, expiresAt: now.Add(60 * time.Second)}
 	h.mu.Unlock()
 	return ticket
 }
 
-// ConsumeTicket はワンタイムチケットを検証して消費する。
-func (h *Hub) ConsumeTicket(ticket string) bool {
+// ConsumeTicket はワンタイムチケットを検証して消費し、紐づく bot の識別情報を返す。
+func (h *Hub) ConsumeTicket(ticket string) (domain.BotIdentity, bool) {
 	if ticket == "" {
-		return false
+		return domain.BotIdentity{}, false
 	}
 	now := time.Now()
 	h.mu.Lock()
@@ -173,10 +182,13 @@ func (h *Hub) ConsumeTicket(ticket string) bool {
 
 	entry, ok := h.tickets[ticket]
 	if !ok {
-		return false
+		return domain.BotIdentity{}, false
 	}
 	delete(h.tickets, ticket)
-	return entry.expiresAt.After(now)
+	if !entry.expiresAt.After(now) {
+		return domain.BotIdentity{}, false
+	}
+	return entry.bot, true
 }
 
 // IsBotOnline は Socket Mode で 1 本以上の bot 接続がアクティブかを返す。
@@ -193,15 +205,15 @@ func (h *Hub) SocketConnectionCount() int {
 	return len(h.socketConns)
 }
 
-// RegisterSocket は Socket Mode 接続を登録し、hello を送信してクリーンアップ関数を返す。
-func (h *Hub) RegisterSocket(sess usecase.SocketSession) (uint64, func(), error) {
+// RegisterSocket は bot に紐づく Socket Mode 接続を登録し、hello を送信してクリーンアップ関数を返す。
+func (h *Hub) RegisterSocket(bot domain.BotIdentity, sess usecase.SocketSession) (uint64, func(), error) {
 	id := h.nextID.Add(1)
-	sc := &socketConn{id: id, sess: sess}
+	sc := &socketConn{id: id, bot: bot, sess: sess}
 
 	h.mu.Lock()
 	wasOnline := len(h.socketConns) > 0
 	h.socketConns[id] = sc
-	numConns := len(h.socketConns)
+	numConns := h.countBotConnsLocked(bot.UserID)
 	h.mu.Unlock()
 
 	hello := map[string]interface{}{
@@ -249,19 +261,63 @@ func (h *Hub) RegisterSocket(sess usecase.SocketSession) (uint64, func(), error)
 	return id, cleanup, nil
 }
 
-// SendEventCallback は Slack events_api のイベントエンベロープを接続中の Socket Mode bot へ送信し、envelope_id を返す。
-func (h *Hub) SendEventCallback(event map[string]interface{}) (string, bool) {
-	h.mu.RLock()
-	conns := make([]*socketConn, 0, len(h.socketConns))
+func (h *Hub) countBotConnsLocked(botUserID string) int {
+	n := 0
 	for _, sc := range h.socketConns {
-		conns = append(conns, sc)
+		if sc.bot.UserID == botUserID {
+			n++
+		}
 	}
-	h.mu.RUnlock()
+	return n
+}
 
-	if len(conns) == 0 {
-		return "", false
+// sendEventToBots は bot ごとに接続を束ねてイベントを各 bot 1 本ずつ送信する。
+// targetUserIDs が nil の場合は接続中の全 bot へ、非 nil の場合は該当 UserID の bot へだけ送信する。
+func (h *Hub) sendEventToBots(event map[string]interface{}, targetUserIDs []string) bool {
+	var targetSet map[string]bool
+	if targetUserIDs != nil {
+		targetSet = make(map[string]bool, len(targetUserIDs))
+		for _, uid := range targetUserIDs {
+			targetSet[uid] = true
+		}
 	}
 
+	h.mu.Lock()
+	byBot := make(map[string][]*socketConn)
+	for _, sc := range h.socketConns {
+		if targetSet != nil && !targetSet[sc.bot.UserID] {
+			continue
+		}
+		byBot[sc.bot.UserID] = append(byBot[sc.bot.UserID], sc)
+	}
+	botIDs := make([]string, 0, len(byBot))
+	startOffsets := make(map[string]int, len(byBot))
+	for uid, conns := range byBot {
+		botIDs = append(botIDs, uid)
+		idx := h.botRR[uid]
+		startOffsets[uid] = int(idx % uint64(len(conns)))
+		h.botRR[uid] = idx + 1
+	}
+	h.mu.Unlock()
+
+	if len(byBot) == 0 {
+		return false
+	}
+
+	sort.Strings(botIDs)
+
+	deliveredAny := false
+	for _, uid := range botIDs {
+		conns := byBot[uid]
+		sort.Slice(conns, func(i, j int) bool { return conns[i].id < conns[j].id })
+		if h.sendToOneConnInGroup(conns, startOffsets[uid], event) {
+			deliveredAny = true
+		}
+	}
+	return deliveredAny
+}
+
+func (h *Hub) sendToOneConnInGroup(conns []*socketConn, start int, event map[string]interface{}) bool {
 	envID := randomID("env")
 	eventID := randomID("Ev")
 	envelope := SocketEnvelope{
@@ -284,20 +340,19 @@ func (h *Hub) SendEventCallback(event map[string]interface{}) (string, bool) {
 	h.pendingAcks[envID] = ackCh
 	h.mu.Unlock()
 
-	start := int(h.rrIndex.Add(1)) % len(conns)
 	for i := 0; i < len(conns); i++ {
 		sc := conns[(start+i)%len(conns)]
 		if err := sc.sess.SendJSON(envelope); err == nil {
-			return envID, true
+			return true
 		} else {
-			slog.Warn("failed to send socket mode envelope", "conn_id", sc.id, "error", err)
+			slog.Warn("failed to send socket mode envelope", "conn_id", sc.id, "bot_user_id", sc.bot.UserID, "error", err)
 		}
 	}
 
 	h.mu.Lock()
 	delete(h.pendingAcks, envID)
 	h.mu.Unlock()
-	return "", false
+	return false
 }
 
 // HandleAck は bot から返された envelope_id の ack を処理する。

@@ -15,6 +15,7 @@ var (
 	ErrThreadVerify      = errors.New("failed to verify thread parent")
 	ErrCountFiringAlerts = errors.New("failed to count firing alerts")
 	ErrForbidden         = errors.New("forbidden")
+	ErrCantUpdateMessage = errors.New("cant update message")
 	ErrInvalidInput      = errors.New("invalid input")
 	ErrInvalidPassphrase = errors.New("invalid passphrase")
 	ErrInvalidSession    = errors.New("invalid or expired session")
@@ -97,9 +98,14 @@ type SocketSession interface {
 
 // SocketHub は Socket Mode のチケット・接続・ack を管理するポートである。
 type SocketHub interface {
-	IssueTicket() string
-	ConsumeTicket(ticket string) bool
-	RegisterSocket(sess SocketSession) (uint64, func(), error)
+	IssueTicket(bot domain.BotIdentity) string
+	ConsumeTicket(ticket string) (domain.BotIdentity, bool)
+	RegisterSocket(bot domain.BotIdentity, sess SocketSession) (uint64, func(), error)
 	HandleAck(raw []byte) (string, bool)
 	IsBotOnline() bool
+}
+
+// BotTokenVerifier は bot からの認証トークン (JWT-SVID) を検証し、呼び出し元の SPIFFE ID (sub) を返すポートである。
+type BotTokenVerifier interface {
+	Verify(ctx context.Context, token string) (sub string, err error)
 }

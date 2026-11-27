@@ -33,13 +33,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	botRand := make([]byte, 16)
-	appRand := make([]byte, 16)
-	_, _ = rand.Read(botRand)
-	_, _ = rand.Read(appRand)
-
 	fmt.Printf("COOKIE_SIGNING_KEY=%s\n", hex.EncodeToString(keyBytes))
 	fmt.Printf("USERS_JSON=[{\"id\":%q,\"display_name\":%q,\"passphrase_hash\":%q}]\n", *userID, *displayName, string(hash))
-	fmt.Printf("SLACK_BOT_TOKEN=xoxb-%s\n", hex.EncodeToString(botRand))
-	fmt.Printf("SLACK_APP_TOKEN=xapp-1-%s\n", hex.EncodeToString(appRand))
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/domain"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/alertmanager"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/realtime"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/spiffe"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/sqlite"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/webpush"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/usecase"
@@ -37,6 +38,7 @@ func main() {
 	}
 
 	users := toDomainUsers(cfg.Users)
+	bots := toDomainBots(cfg.BotUsers)
 
 	// SQLite データベースの初期化
 	db, err := sqlite.InitDB(cfg.DBPath)
@@ -54,7 +56,8 @@ func main() {
 	hub := realtime.NewHub()
 	amClient := alertmanager.NewClient(cfg.AlertmanagerURL)
 	sender := webpush.NewSender(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, db)
-	e, alertUC := buildApp(cfg, users, db, hub, sender)
+	verifier := spiffe.NewVerifier(cfg.SPIFFEJWKSURL, cfg.SPIFFEJWTAudience)
+	e, alertUC := buildApp(cfg, users, bots, verifier, db, hub, sender)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -87,17 +90,19 @@ func main() {
 func buildApp(
 	cfg config.Config,
 	users []domain.User,
+	bots []domain.BotIdentity,
+	verifier usecase.BotTokenVerifier,
 	db *sqlite.DB,
 	hub *realtime.Hub,
 	sender usecase.PushSender,
 ) (*echo.Echo, *usecase.AlertUsecase) {
 	authUC := usecase.NewAuthUsecase([]byte(cfg.CookieSigningKey), users)
-	chatUC := usecase.NewChatUsecase(db, db, hub, hub, sender)
+	chatUC := usecase.NewChatUsecase(db, db, hub, hub, sender, bots...)
 	activityUC := usecase.NewActivityUsecase(db)
 	alertUC := usecase.NewAlertUsecase(db, db, hub, sender, realtime.NewLocalLocker())
 	notifyUC := usecase.NewNotificationUsecase(db, hub, sender)
 	subUC := usecase.NewSubscriptionUsecase(cfg.VAPIDPublicKey, db, sender)
-	socketUC := usecase.NewSocketUsecase(hub, cfg.SlackBotToken, cfg.SlackAppToken)
+	socketUC := usecase.NewSocketUsecase(hub, verifier, bots)
 	slackH := slackapi.NewHandler(cfg.Port, chatUC, authUC, socketUC)
 
 	e := httpadapter.NewRouter(httpadapter.Dependencies{
@@ -123,4 +128,18 @@ func toDomainUsers(cfgUsers []config.UserConfig) []domain.User {
 		})
 	}
 	return users
+}
+
+func toDomainBots(cfgBots []config.BotUserConfig) []domain.BotIdentity {
+	bots := make([]domain.BotIdentity, 0, len(cfgBots))
+	for _, b := range cfgBots {
+		bots = append(bots, domain.BotIdentity{
+			Sub:       b.Sub,
+			UserID:    b.UserID,
+			BotID:     b.BotID,
+			Name:      b.Name,
+			IsDefault: b.IsDefault,
+		})
+	}
+	return bots
 }

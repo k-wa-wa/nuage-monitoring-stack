@@ -42,19 +42,10 @@ func NewHandler(
 }
 
 // DispatchMethod は `/slack/api/:method` のディスパッチャである。
+// SPIFFE JWT-SVID 認証では Authorization: Bearer ヘッダのみを受け付ける。
 func (h *Handler) DispatchMethod(c echo.Context) error {
 	method := c.Param("method")
 	token := extractBearerToken(c)
-	if token == "" {
-		// form の token パラメータも一応確認
-		params := parseSlackParams(c)
-		token = paramString(params, "token")
-		if method == "apps.connections.open" {
-			return h.handleAppsConnectionsOpen(c, token)
-		}
-		return h.dispatchBotMethod(c, method, token, params)
-	}
-
 	if method == "apps.connections.open" {
 		return h.handleAppsConnectionsOpen(c, token)
 	}
@@ -63,7 +54,7 @@ func (h *Handler) DispatchMethod(c echo.Context) error {
 }
 
 func (h *Handler) handleAppsConnectionsOpen(c echo.Context, token string) error {
-	ticket, err := h.socketUC.OpenConnectionTicket(token)
+	ticket, err := h.socketUC.OpenConnectionTicket(c.Request().Context(), token)
 	if err != nil {
 		return slackErr(c, "invalid_auth")
 	}
@@ -81,13 +72,14 @@ func (h *Handler) handleAppsConnectionsOpen(c echo.Context, token string) error 
 }
 
 func (h *Handler) dispatchBotMethod(c echo.Context, method, token string, params map[string]interface{}) error {
-	if !h.socketUC.VerifyBotToken(token) {
+	bot, err := h.socketUC.VerifyBotToken(c.Request().Context(), token)
+	if err != nil {
 		return slackErr(c, "invalid_auth")
 	}
 
 	switch method {
 	case "auth.test":
-		return h.authTest(c)
+		return h.authTest(c, bot)
 	case "conversations.list":
 		return h.conversationsList(c, params)
 	case "conversations.info":
@@ -97,9 +89,9 @@ func (h *Handler) dispatchBotMethod(c echo.Context, method, token string, params
 	case "conversations.replies":
 		return h.conversationsReplies(c, params)
 	case "chat.postMessage":
-		return h.chatPostMessage(c, params)
+		return h.chatPostMessage(c, bot, params)
 	case "chat.update":
-		return h.chatUpdate(c, params)
+		return h.chatUpdate(c, bot, params)
 	case "users.info":
 		return h.usersInfo(c, params)
 	default:
@@ -107,7 +99,7 @@ func (h *Handler) dispatchBotMethod(c echo.Context, method, token string, params
 	}
 }
 
-func (h *Handler) authTest(c echo.Context) error {
+func (h *Handler) authTest(c echo.Context, bot domain.BotIdentity) error {
 	scheme := "http"
 	if c.Request().TLS != nil || strings.EqualFold(c.Request().Header.Get("X-Forwarded-Proto"), "https") {
 		scheme = "https"
@@ -116,10 +108,10 @@ func (h *Handler) authTest(c echo.Context) error {
 	return slackOK(c, map[string]interface{}{
 		"url":                   baseURL,
 		"team":                  "Nuage",
-		"user":                  domain.SlackBotName,
+		"user":                  bot.Name,
 		"team_id":               domain.TeamID,
-		"user_id":               domain.SlackBotUserID,
-		"bot_id":                domain.SlackBotID,
+		"user_id":               bot.UserID,
+		"bot_id":                bot.BotID,
 		"is_enterprise_install": false,
 	})
 }
@@ -255,7 +247,7 @@ func (h *Handler) conversationsReplies(c echo.Context, params map[string]interfa
 	})
 }
 
-func (h *Handler) chatPostMessage(c echo.Context, params map[string]interface{}) error {
+func (h *Handler) chatPostMessage(c echo.Context, bot domain.BotIdentity, params map[string]interface{}) error {
 	chID := paramString(params, "channel")
 	if chID == "" {
 		return slackErr(c, "channel_not_found")
@@ -275,7 +267,7 @@ func (h *Handler) chatPostMessage(c echo.Context, params map[string]interface{})
 	threadTS := paramString(params, "thread_ts")
 	username := paramString(params, "username")
 
-	msg, err := h.chatUC.PostBotMessage(c.Request().Context(), chID, threadTS, username, text, blocksJSON)
+	msg, err := h.chatUC.PostBotMessage(c.Request().Context(), bot, chID, threadTS, username, text, blocksJSON)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrChannelNotFound):
@@ -295,7 +287,7 @@ func (h *Handler) chatPostMessage(c echo.Context, params map[string]interface{})
 	})
 }
 
-func (h *Handler) chatUpdate(c echo.Context, params map[string]interface{}) error {
+func (h *Handler) chatUpdate(c echo.Context, bot domain.BotIdentity, params map[string]interface{}) error {
 	chID := paramString(params, "channel")
 	ts := paramString(params, "ts")
 	if chID == "" || ts == "" {
@@ -314,15 +306,18 @@ func (h *Handler) chatUpdate(c echo.Context, params map[string]interface{}) erro
 		return slackErr(c, errCode)
 	}
 
-	updated, err := h.chatUC.UpdateBotMessage(c.Request().Context(), chID, ts, text, blocksJSON)
+	updated, err := h.chatUC.UpdateBotMessage(c.Request().Context(), bot, chID, ts, text, blocksJSON)
 	if err != nil {
-		if errors.Is(err, usecase.ErrChannelNotFound) {
+		switch {
+		case errors.Is(err, usecase.ErrChannelNotFound):
 			return slackErr(c, "channel_not_found")
-		}
-		if errors.Is(err, usecase.ErrNotFound) {
+		case errors.Is(err, usecase.ErrNotFound):
 			return slackErr(c, "message_not_found")
+		case errors.Is(err, usecase.ErrCantUpdateMessage):
+			return slackErr(c, "cant_update_message")
+		default:
+			return slackErr(c, "internal_error")
 		}
-		return slackErr(c, "internal_error")
 	}
 
 	return slackOK(c, map[string]interface{}{
@@ -339,23 +334,15 @@ func (h *Handler) usersInfo(c echo.Context, params map[string]interface{}) error
 		return slackErr(c, "user_not_found")
 	}
 
-	if userID == domain.SlackBotUserID || userID == domain.SystemBotUserID {
-		name := domain.SlackBotName
-		if userID == domain.SystemBotUserID {
-			name = domain.SystemBotName
-		}
+	if userID == domain.SystemBotUserID {
 		return slackOK(c, map[string]interface{}{
-			"user": map[string]interface{}{
-				"id":        userID,
-				"team_id":   domain.TeamID,
-				"name":      name,
-				"real_name": name,
-				"is_bot":    true,
-				"profile": map[string]interface{}{
-					"display_name": name,
-					"real_name":    name,
-				},
-			},
+			"user": formatBotUserInfo(domain.SystemBotUserID, domain.SystemBotName),
+		})
+	}
+
+	if bot, ok := h.socketUC.FindBotByUserID(userID); ok {
+		return slackOK(c, map[string]interface{}{
+			"user": formatBotUserInfo(bot.UserID, bot.Name),
 		})
 	}
 
@@ -376,4 +363,18 @@ func (h *Handler) usersInfo(c echo.Context, params map[string]interface{}) error
 	}
 
 	return slackErr(c, "user_not_found")
+}
+
+func formatBotUserInfo(userID, name string) map[string]interface{} {
+	return map[string]interface{}{
+		"id":        userID,
+		"team_id":   domain.TeamID,
+		"name":      name,
+		"real_name": name,
+		"is_bot":    true,
+		"profile": map[string]interface{}{
+			"display_name": name,
+			"real_name":    name,
+		},
+	}
 }

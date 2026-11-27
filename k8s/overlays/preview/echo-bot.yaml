@@ -1,4 +1,9 @@
 # preview 環境専用の Bolt 製オウム返し bot (prod には配置しない)。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: echo-bot
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,12 +24,60 @@ spec:
       labels:
         app: monitoring-pwa-echo-bot
     spec:
+      serviceAccountName: echo-bot
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: render-spiffe-helper-config
+          image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-echo-bot:latest
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          command:
+            - sh
+            - -c
+            - |
+              cat <<EOF > /etc/spiffe-helper/helper.conf
+              agent_address = "/spiffe-workload-api/spire-agent.sock"
+              daemon_mode = true
+              cert_dir = "/var/run/spiffe-jwt"
+              jwt_svid_file_mode = 0600
+              jwt_svids = [
+                {
+                  jwt_audience = "monitoring-pwa.${POD_NAMESPACE}"
+                  jwt_svid_file_name = "monitoring-pwa.jwt"
+                }
+              ]
+              health_checks {
+                listener_enabled = true
+                bind_port = 8081
+                liveness_path = "/live"
+                readiness_path = "/ready"
+              }
+              EOF
+          volumeMounts:
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
       containers:
         - name: echo-bot
           image: ghcr.io/k-wa-wa/nuage-monitoring-stack-monitoring-pwa-echo-bot:latest
@@ -42,16 +95,14 @@ spec:
               value: "http://monitoring-pwa-backend/slack/api/"
             - name: HEALTH_PORT
               value: "8080"
-            - name: SLACK_BOT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: pwa-notifier-secret
-                  key: SLACK_BOT_TOKEN
-            - name: SLACK_APP_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: pwa-notifier-secret
-                  key: SLACK_APP_TOKEN
+            - name: SLACK_BOT_TOKEN_FILE
+              value: "/var/run/spiffe-jwt/monitoring-pwa.jwt"
+            - name: SLACK_APP_TOKEN_FILE
+              value: "/var/run/spiffe-jwt/monitoring-pwa.jwt"
+          volumeMounts:
+            - name: spiffe-jwt
+              mountPath: /var/run/spiffe-jwt
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /health
@@ -71,3 +122,55 @@ spec:
             limits:
               cpu: 200m
               memory: 128Mi
+        - name: spiffe-helper
+          image: ghcr.io/spiffe/spiffe-helper:0.12.4
+          args:
+            - -config
+            - /etc/spiffe-helper/helper.conf
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: 8081
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+            - name: spiffe-jwt
+              mountPath: /var/run/spiffe-jwt
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: spiffe-helper-config
+          emptyDir:
+            medium: Memory
+        - name: spiffe-jwt
+          emptyDir:
+            medium: Memory
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
