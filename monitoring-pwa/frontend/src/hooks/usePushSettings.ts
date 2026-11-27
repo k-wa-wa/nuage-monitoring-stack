@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getCurrentSubscription, sendTestNotify, subscribePush, unsubscribePush } from '../api/push'
+import { API_BASE } from '../api/client'
+import {
+	getCurrentSubscription,
+	sendTestNotify,
+	subscribePush,
+	syncExistingPushSubscription,
+	unsubscribePush
+} from '../api/push'
 import { isPushSupported } from '../utils/pushSupport'
 
 /** Web Push 購読の確認・切り替え・テスト送信を管理する。 */
@@ -18,15 +25,18 @@ export function usePushSettings(onToast: (message: string, tone?: 'success' | 'w
 	useEffect(() => {
 		if (!pushSupported) return
 		let cancelled = false
-		getCurrentSubscription(log)
+		getCurrentSubscription()
 			.then((sub) => {
-				if (!cancelled) setSubscribed(Boolean(sub))
+				if (cancelled) return
+				setSubscribed(Boolean(sub))
+				setChecking(false)
+				// 購読状態を確定させてから裏でサーバー同期を行う (同期遅延で Toggle をブロックしない)
+				if (sub) void syncExistingPushSubscription(API_BASE, sub, log)
 			})
 			.catch((err: unknown) => {
-				if (!cancelled) log(`購読の確認に失敗した: ${err instanceof Error ? err.message : String(err)}`)
-			})
-			.finally(() => {
-				if (!cancelled) setChecking(false)
+				if (cancelled) return
+				log(`購読の確認に失敗した: ${err instanceof Error ? err.message : String(err)}`)
+				setChecking(false)
 			})
 		return () => {
 			cancelled = true

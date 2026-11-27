@@ -392,12 +392,14 @@ test.describe('Nuage Notify (@nuage/ui) スマホ E2E', () => {
 		await expect(page.getByText('KubeJobFailed').filter({ visible: true })).toBeVisible()
 	})
 
-	test('設定のプッシュ通知スイッチは確認完了後に確認中状態が解除される', async ({ page }) => {
+	test('設定のプッシュ通知スイッチは SW 未登録でもタイムアウト後に確認中状態が解除される', async ({ page }) => {
 		await login(page)
 		await page.locator('.nui-tabbar-item[data-tab="settings"]').click()
-		await settle(page)
 		const pushToggle = page.getByRole('switch', { name: 'プッシュ通知を受け取る' }).filter({ visible: true })
 		await expect(pushToggle).toBeVisible()
+		await expect(pushToggle).toHaveAttribute('aria-busy', 'true')
+		await settle(page)
 		await expect(pushToggle).not.toHaveAttribute('aria-busy', 'true', { timeout: 5000 })
+		await expect(pushToggle).toHaveAttribute('data-checked', 'false')
 	})
 })

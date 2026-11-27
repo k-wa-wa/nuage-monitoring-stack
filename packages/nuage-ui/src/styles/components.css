@@ -747,6 +747,12 @@ html[data-keyboard-open='true'] .nui-page-footer {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .nui-skeleton {
+    animation: none;
+  }
+}
+
 .nui-empty {
   margin: var(--space-6) var(--space-4);
   padding: var(--space-5) var(--space-4);

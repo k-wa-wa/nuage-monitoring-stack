@@ -28,29 +28,33 @@ export async function syncExistingPushSubscription(
 	}
 }
 
-const SW_READY_TIMEOUT_MS = 1500
+export const SW_READY_TIMEOUT_MS = 1500
 
-async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
+export async function getServiceWorkerRegistration(
+	timeoutMs: number = SW_READY_TIMEOUT_MS
+): Promise<ServiceWorkerRegistration | null> {
 	const existing = await navigator.serviceWorker.getRegistration()
 	if (existing) return existing
 	// SW ブロック環境等で register が動かない場合、ready は永遠に解決しないため上限を設ける
-	return Promise.race([
-		navigator.serviceWorker.ready,
-		new Promise<null>((resolve) => window.setTimeout(() => resolve(null), SW_READY_TIMEOUT_MS))
-	])
+	let timer: number | undefined
+	try {
+		return await Promise.race([
+			navigator.serviceWorker.ready,
+			new Promise<null>((resolve) => {
+				timer = window.setTimeout(() => resolve(null), timeoutMs)
+			})
+		])
+	} finally {
+		if (timer !== undefined) window.clearTimeout(timer)
+	}
 }
 
-// getCurrentSubscription は今の Push 購読を返し、あればログインユーザーに紐づけ直す。
-export async function getCurrentSubscription(
-	onLog: (msg: string) => void,
-	apiBase: string = API_BASE
-): Promise<PushSubscription | null> {
+// getCurrentSubscription は今の Push 購読のみを返す (バックエンド同期は別途バックグラウンドで行う)。
+export async function getCurrentSubscription(timeoutMs: number = SW_READY_TIMEOUT_MS): Promise<PushSubscription | null> {
 	if (!isPushSupported()) return null
-	const reg = await getServiceWorkerRegistration()
+	const reg = await getServiceWorkerRegistration(timeoutMs)
 	if (!reg) return null
-	const sub = await reg.pushManager.getSubscription()
-	if (sub) await syncExistingPushSubscription(apiBase, sub, onLog)
-	return sub
+	return reg.pushManager.getSubscription()
 }
 
 // subscribePush は通知の許可を求め、購読してサーバーへ登録する。

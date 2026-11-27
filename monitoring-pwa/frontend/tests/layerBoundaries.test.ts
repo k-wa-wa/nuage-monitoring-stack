@@ -22,6 +22,7 @@ const ALLOWED_INTERNAL: Record<Layer, Set<Layer>> = {
 	state: new Set(['state', 'api', 'utils', 'types']),
 	routes: new Set(['routes', 'types']),
 	hooks: new Set(['hooks', 'api', 'state', 'utils', 'types']),
+	// 仕様では純粋 UI 用 hooks のみ許可だが、oxlint の先読み制約と現状未使用を踏まえ、安全側で一律禁止としている
 	components: new Set(['components', 'utils', 'types']),
 	pages: new Set(['pages', 'components', 'state', 'hooks', 'routes', 'utils', 'types']),
 	entry: new Set(['entry', 'components', 'state', 'hooks', 'routes', 'utils', 'types', 'pages'])

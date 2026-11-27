@@ -83,13 +83,39 @@ function MobileLayout({ firingCount }: { firingCount: number }) {
 	return <TabbedStacks tabs={tabs} />
 }
 
-/** PC・タブレット: 左にチャンネル一覧、真ん中に開いた画面、右にスレッド */
-function WideLayout({ firingCount }: { firingCount: number }) {
-	const { pathname } = useLocation()
+/** PC・タブレットの左サイドバー。検索状態と一覧ストアの購読をここに閉じ込め、main / aside の不要な再描画を防ぐ */
+function WideSidebar({ activePath, firingCount }: { activePath: string; firingCount: number }) {
 	const bot = useChatState((s) => s.bot)
 	const channels = useChatState((s) => s.channels)
 	const bootstrapLoaded = useChatState((s) => s.bootstrapLoaded)
 	const search = useChannelSearch()
+	return (
+		<Page
+			title={<span className="app-title-tap">Nuage Notify</span>}
+			subtitle={`${bot.name}: ${bot.online ? 'オンライン' : 'オフライン'}`}
+		>
+			<ChannelNav
+				channels={channels}
+				bot={bot}
+				channelsLoading={!bootstrapLoaded}
+				query={search.query}
+				onQueryChange={search.setQuery}
+				searchResults={search.results}
+				searching={search.searching}
+				searchError={search.error}
+				channelLinkFor={(id) => channelPath('/tabs/home', id)}
+				threadLinkFor={(cid, ts) => threadPath('/tabs/home', cid, ts)}
+				activePath={activePath}
+				withAppLinks
+				firingCount={firingCount}
+			/>
+		</Page>
+	)
+}
+
+/** PC・タブレット: 左にチャンネル一覧、真ん中に開いた画面、右にスレッド */
+function WideLayout({ firingCount }: { firingCount: number }) {
+	const { pathname } = useLocation()
 	const main = useRoutes([
 		{ path: '/tabs/home', element: <EmptyState>左の一覧からチャンネルを選んでほしい。</EmptyState> },
 		{ path: '/tabs/home/channels/:channelId', element: <ChannelPage /> },
@@ -100,28 +126,7 @@ function WideLayout({ firingCount }: { firingCount: number }) {
 	const aside = useRoutes([{ path: '/tabs/:tab/channels/:channelId/threads/:ts', element: <ThreadPage /> }])
 	return (
 		<SplitView
-			sidebar={
-				<Page
-					title={<span className="app-title-tap">Nuage Notify</span>}
-					subtitle={`${bot.name}: ${bot.online ? 'オンライン' : 'オフライン'}`}
-				>
-					<ChannelNav
-						channels={channels}
-						bot={bot}
-						channelsLoading={!bootstrapLoaded}
-						query={search.query}
-						onQueryChange={search.setQuery}
-						searchResults={search.results}
-						searching={search.searching}
-						searchError={search.error}
-						channelLinkFor={(id) => channelPath('/tabs/home', id)}
-						threadLinkFor={(cid, ts) => threadPath('/tabs/home', cid, ts)}
-						activePath={pathname}
-						withAppLinks
-						firingCount={firingCount}
-					/>
-				</Page>
-			}
+			sidebar={<WideSidebar activePath={pathname} firingCount={firingCount} />}
 			main={main}
 			aside={aside}
 		/>

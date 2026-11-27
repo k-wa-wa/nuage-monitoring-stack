@@ -260,7 +260,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				const created = data.message
 				if (!created.thread_ts) {
 					setChannelData((prev) =>
-						prev[channelId]
+						prev[channelId]?.loaded
 							? {
 									...prev,
 									[channelId]: {
@@ -367,7 +367,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
 			if (!created.thread_ts) {
 				setChannelData((prev) =>
-					prev[created.channel_id]
+					prev[created.channel_id]?.loaded
 						? {
 								...prev,
 								[created.channel_id]: {

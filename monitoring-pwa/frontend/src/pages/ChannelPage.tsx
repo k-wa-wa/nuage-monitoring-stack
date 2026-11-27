@@ -85,7 +85,7 @@ export default function ChannelPage() {
 						</div>
 					)}
 				</div>
-				{!data?.loaded && messages.length === 0 ? (
+				{!data?.loaded ? (
 					data?.error ? (
 						<EmptyState>
 							<p>{data.error}</p>
