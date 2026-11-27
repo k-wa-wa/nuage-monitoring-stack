@@ -79,5 +79,22 @@ func formatSlackMessage(m domain.Message) map[string]interface{} {
 			obj["blocks"] = blocks
 		}
 	}
+	if m.URL != "" {
+		obj["url"] = m.URL
+	}
+	if m.Details != "" {
+		obj["details"] = m.Details
+	}
+	if m.SourceKind != "" {
+		obj["source_kind"] = m.SourceKind
+	}
+	if m.AlertStatus != "" {
+		obj["alert_status"] = m.AlertStatus
+	}
+	// 通常ボット投稿 (PostBotMessage) は SourceKind が空のまま Level="info" を持つため、
+	// 既存チャット契約との互換性を保つ目的でアラート・通知メッセージに限って level を出力する。
+	if m.SourceKind != "" && m.Level != "" {
+		obj["level"] = m.Level
+	}
 	return obj
 }

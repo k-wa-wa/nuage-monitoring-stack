@@ -65,13 +65,20 @@ func setupSlackTestEnv(t *testing.T) (*usecase.AuthUsecase, *realtime.Hub, *mock
 	sender := &mockSender{}
 	authUC := usecase.NewAuthUsecase([]byte(strings.Repeat("k", 32)), users)
 	chatUC := usecase.NewChatUsecase(db, db, hub, hub, sender)
+	alertUC := usecase.NewAlertUsecase(db, db, hub, sender, realtime.NewLocalLocker())
+	notifyUC := usecase.NewNotificationUsecase(db, hub, sender)
+	subUC := usecase.NewSubscriptionUsecase("", db, sender)
 	socketUC := usecase.NewSocketUsecase(hub, testBotToken, testAppToken)
 	slackH := slackapi.NewHandler("8080", chatUC, authUC, socketUC)
 	chatH := httpadapter.NewChatHandler(chatUC)
+	webhookH := httpadapter.NewWebhookHandler(alertUC, notifyUC, subUC)
 
 	e := echo.New()
 	e.POST("/slack/api/:method", slackH.DispatchMethod)
 	e.GET("/slack/socket", slackH.SocketModeWS)
+	e.POST("/webhook/alertmanager", webhookH.AlertmanagerWebhook)
+	e.POST("/webhook/generic", webhookH.GenericWebhook)
+	e.POST("/webhook/keel", webhookH.KeelWebhook)
 
 	api := e.Group("/api")
 	api.Use(httpadapter.RequireSessionMiddleware(authUC))
@@ -405,4 +412,240 @@ func TestSocketModeLifecycleAndEvents(t *testing.T) {
 	if disc["type"] != "disconnect" || disc["reason"] != "test_refresh" {
 		t.Fatalf("unexpected disconnect message: %+v", disc)
 	}
+}
+
+func postWebhookJSON(t *testing.T, e *echo.Echo, path string, body interface{}) {
+	t.Helper()
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal webhook body failed: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(string(b)))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("webhook %s returned %d: %s", path, rec.Code, rec.Body.String())
+	}
+}
+
+func TestSlackAlertAndNotificationMetadata(t *testing.T) {
+	_, _, _, e := setupSlackTestEnv(t)
+
+	srv := httptest.NewServer(e)
+	defer srv.Close()
+
+	// Socket Mode を接続してリアルタイム配信イベントのメタデータも検証する
+	openReq, _ := http.NewRequest(http.MethodPost, srv.URL+"/slack/api/apps.connections.open", nil)
+	openReq.Header.Set("Authorization", "Bearer "+testAppToken)
+	openResp, err := http.DefaultClient.Do(openReq)
+	if err != nil {
+		t.Fatalf("apps.connections.open failed: %v", err)
+	}
+	defer openResp.Body.Close()
+
+	var openRes struct {
+		OK  bool   `json:"ok"`
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(openResp.Body).Decode(&openRes); err != nil || !openRes.OK {
+		t.Fatalf("unexpected apps.connections.open response: %+v, err=%v", openRes, err)
+	}
+
+	ws, _, err := websocket.DefaultDialer.Dial(openRes.URL, nil)
+	if err != nil {
+		t.Fatalf("websocket dial failed: %v", err)
+	}
+	defer ws.Close()
+
+	var hello map[string]interface{}
+	if err := ws.ReadJSON(&hello); err != nil {
+		t.Fatalf("failed to read hello: %v", err)
+	}
+
+	readSocketEvent := func() map[string]interface{} {
+		t.Helper()
+		_ = ws.SetReadDeadline(time.Now().Add(3 * time.Second))
+		var env realtime.SocketEnvelope
+		if err := ws.ReadJSON(&env); err != nil {
+			t.Fatalf("failed to read socket envelope: %v", err)
+		}
+		if err := ws.WriteJSON(map[string]string{"envelope_id": env.EnvelopeID}); err != nil {
+			t.Fatalf("failed to send ack: %v", err)
+		}
+		return env.Payload["event"].(map[string]interface{})
+	}
+
+	t.Run("Alertmanager アラートの発報・解決とスレッド返信", func(t *testing.T) {
+		alertPayload := func(status string) map[string]interface{} {
+			return map[string]interface{}{
+				"status": status,
+				"alerts": []map[string]interface{}{
+					{
+						"fingerprint": "fp-slack-1",
+						"status":      status,
+						"labels": map[string]string{
+							"alertname": "NodeDown",
+							"severity":  "critical",
+						},
+						"annotations": map[string]string{
+							"summary": "Node is unreachable",
+						},
+						"generatorURL": "http://vm-grafana.local/explore?alert=NodeDown",
+					},
+				},
+			}
+		}
+
+		// 1. firing 投入 -> Socket Mode イベントに全メタデータが含まれる
+		postWebhookJSON(t, e, "/webhook/alertmanager", alertPayload("firing"))
+		firingEv := readSocketEvent()
+		if firingEv["url"] != "http://vm-grafana.local/explore?alert=NodeDown" ||
+			firingEv["source_kind"] != "alert" ||
+			firingEv["alert_status"] != "firing" ||
+			firingEv["level"] != "error" ||
+			firingEv["details"] == "" {
+			t.Fatalf("missing alert metadata in socket event: %+v", firingEv)
+		}
+		var detailsObj map[string]interface{}
+		if err := json.Unmarshal([]byte(firingEv["details"].(string)), &detailsObj); err != nil {
+			t.Fatalf("expected valid JSON details in socket event: %v", err)
+		}
+		if detailsObj["fingerprint"] != "fp-slack-1" {
+			t.Fatalf("unexpected fingerprint in socket event details: %+v", detailsObj)
+		}
+
+		// 2. conversations.history で firing アラートのメタデータが返る
+		histRes := callSlackMethod(t, e, "conversations.history", testBotToken, map[string]interface{}{
+			"channel": domain.ChannelAlertmanager,
+		})
+		histMsgs := histRes["messages"].([]interface{})
+		if len(histMsgs) != 1 {
+			t.Fatalf("expected 1 alert message in history, got %d", len(histMsgs))
+		}
+		root := histMsgs[0].(map[string]interface{})
+		rootTS := root["ts"].(string)
+		if root["url"] != "http://vm-grafana.local/explore?alert=NodeDown" ||
+			root["source_kind"] != "alert" ||
+			root["alert_status"] != "firing" ||
+			root["level"] != "error" ||
+			root["details"] == "" {
+			t.Fatalf("missing alert metadata in conversations.history: %+v", root)
+		}
+
+		// 3. resolved 投入 -> Socket Mode に解決イベントが届く
+		postWebhookJSON(t, e, "/webhook/alertmanager", alertPayload("resolved"))
+		resolvedEv := readSocketEvent()
+		if resolvedEv["source_kind"] != "alert" ||
+			resolvedEv["alert_status"] != "resolved" ||
+			resolvedEv["level"] != "success" ||
+			resolvedEv["thread_ts"] != rootTS {
+			t.Fatalf("unexpected resolved socket event: %+v", resolvedEv)
+		}
+		for _, omitted := range []string{"url", "details"} {
+			if _, ok := resolvedEv[omitted]; ok {
+				t.Fatalf("resolved reply must omit empty %q: %+v", omitted, resolvedEv)
+			}
+		}
+
+		// 4. スレッドへ通常の bot 返信を追加（通常投稿はメタデータが出ないことも確認）
+		botReply := callSlackMethod(t, e, "chat.postMessage", testBotToken, map[string]interface{}{
+			"channel":   domain.ChannelAlertmanager,
+			"thread_ts": rootTS,
+			"text":      "調査を開始しました",
+		})
+		if botReply["ok"] != true {
+			t.Fatalf("chat.postMessage reply failed: %+v", botReply)
+		}
+		_ = readSocketEvent()
+
+		// 5. conversations.replies で親アラート（url/details 維持 + resolved/success）と解決返信が返る
+		repRes := callSlackMethod(t, e, "conversations.replies", testBotToken, map[string]interface{}{
+			"channel": domain.ChannelAlertmanager,
+			"ts":      rootTS,
+		})
+		repMsgs := repRes["messages"].([]interface{})
+		if len(repMsgs) != 3 {
+			t.Fatalf("expected 3 messages (root + resolved + bot reply) in replies, got %d", len(repMsgs))
+		}
+
+		repRoot := repMsgs[0].(map[string]interface{})
+		if repRoot["url"] != "http://vm-grafana.local/explore?alert=NodeDown" ||
+			repRoot["source_kind"] != "alert" ||
+			repRoot["alert_status"] != "resolved" ||
+			repRoot["level"] != "success" ||
+			repRoot["details"] == "" {
+			t.Fatalf("unexpected parent metadata in conversations.replies: %+v", repRoot)
+		}
+
+		repResolved := repMsgs[1].(map[string]interface{})
+		if repResolved["source_kind"] != "alert" ||
+			repResolved["alert_status"] != "resolved" ||
+			repResolved["level"] != "success" {
+			t.Fatalf("unexpected resolved reply metadata in conversations.replies: %+v", repResolved)
+		}
+
+		repBot := repMsgs[2].(map[string]interface{})
+		for _, omitted := range []string{"url", "details", "source_kind", "alert_status", "level"} {
+			if _, ok := repBot[omitted]; ok {
+				t.Fatalf("normal bot reply must omit %q: %+v", omitted, repBot)
+			}
+		}
+	})
+
+	t.Run("Webhook 通知のメタデータ", func(t *testing.T) {
+		postWebhookJSON(t, e, "/webhook/generic", map[string]interface{}{
+			"title":   "[ArgoCD] nuage-app synced",
+			"body":    "Deployment completed",
+			"url":     "https://argocd.example/apps/nuage",
+			"level":   "success",
+			"details": `{"revision":"abc123"}`,
+		})
+
+		notifEv := readSocketEvent()
+		if notifEv["url"] != "https://argocd.example/apps/nuage" ||
+			notifEv["details"] != `{"revision":"abc123"}` ||
+			notifEv["source_kind"] != "notification" ||
+			notifEv["level"] != "success" {
+			t.Fatalf("missing notification metadata in socket event: %+v", notifEv)
+		}
+		if _, ok := notifEv["alert_status"]; ok {
+			t.Fatalf("notification event must omit empty alert_status: %+v", notifEv)
+		}
+
+		histRes := callSlackMethod(t, e, "conversations.history", testBotToken, map[string]interface{}{
+			"channel": domain.ChannelArgoCD,
+		})
+		histMsgs := histRes["messages"].([]interface{})
+		if len(histMsgs) != 1 {
+			t.Fatalf("expected 1 message in argocd history, got %d", len(histMsgs))
+		}
+		msg := histMsgs[0].(map[string]interface{})
+		msgTS := msg["ts"].(string)
+		if msg["url"] != "https://argocd.example/apps/nuage" ||
+			msg["details"] != `{"revision":"abc123"}` ||
+			msg["source_kind"] != "notification" ||
+			msg["level"] != "success" {
+			t.Fatalf("missing notification metadata in conversations.history: %+v", msg)
+		}
+		if _, ok := msg["alert_status"]; ok {
+			t.Fatalf("notification history item must omit empty alert_status: %+v", msg)
+		}
+
+		repRes := callSlackMethod(t, e, "conversations.replies", testBotToken, map[string]interface{}{
+			"channel": domain.ChannelArgoCD,
+			"ts":      msgTS,
+		})
+		repMsgs := repRes["messages"].([]interface{})
+		if len(repMsgs) != 1 {
+			t.Fatalf("expected 1 message in argocd replies, got %d", len(repMsgs))
+		}
+		repMsg := repMsgs[0].(map[string]interface{})
+		if repMsg["url"] != "https://argocd.example/apps/nuage" ||
+			repMsg["details"] != `{"revision":"abc123"}` ||
+			repMsg["source_kind"] != "notification" ||
+			repMsg["level"] != "success" {
+			t.Fatalf("missing notification metadata in conversations.replies: %+v", repMsg)
+		}
+	})
 }

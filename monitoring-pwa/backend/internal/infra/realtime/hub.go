@@ -141,6 +141,23 @@ func buildSocketEvent(eventType string, ch domain.Channel, msg domain.Message) m
 	if msg.ThreadTS != "" {
 		ev["thread_ts"] = msg.ThreadTS
 	}
+	if msg.URL != "" {
+		ev["url"] = msg.URL
+	}
+	if msg.Details != "" {
+		ev["details"] = msg.Details
+	}
+	if msg.SourceKind != "" {
+		ev["source_kind"] = msg.SourceKind
+	}
+	if msg.AlertStatus != "" {
+		ev["alert_status"] = msg.AlertStatus
+	}
+	// formatSlackMessage と同じく、通常ボット投稿の Level="info" で既存 Socket Mode 契約を変えないよう
+	// アラート・通知メッセージ (SourceKind != "") のみ level を出力する。
+	if msg.SourceKind != "" && msg.Level != "" {
+		ev["level"] = msg.Level
+	}
 	return ev
 }
 
