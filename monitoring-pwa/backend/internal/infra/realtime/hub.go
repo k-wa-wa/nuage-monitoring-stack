@@ -15,6 +15,11 @@ import (
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/usecase"
 )
 
+const (
+	defaultSendWaitTimeout = 500 * time.Millisecond
+	pendingAckTTL          = 60 * time.Second
+)
+
 type browserSub struct {
 	id     uint64
 	userID string
@@ -40,28 +45,63 @@ type ticketEntry struct {
 	expiresAt time.Time
 }
 
+type pendingAck struct {
+	connID    uint64
+	ch        chan struct{}
+	createdAt time.Time
+}
+
 // Hub はブラウザ向け SSE と Slack Socket Mode WebSocket 接続を管理する。
 type Hub struct {
-	mu          sync.RWMutex
-	browserSubs map[uint64]browserSub
-	socketConns map[uint64]*socketConn
-	botRR       map[string]uint64
-	tickets     map[string]ticketEntry
-	pendingAcks map[string]chan struct{}
-	ackedIDs    map[string]time.Time
-	nextID      atomic.Uint64
+	mu              sync.RWMutex
+	browserSubs     map[uint64]browserSub
+	socketConns     map[uint64]*socketConn
+	botRR           map[string]uint64
+	tickets         map[string]ticketEntry
+	pendingAcks     map[string]pendingAck
+	ackedIDs        map[string]time.Time
+	nextID          atomic.Uint64
+	sendWaitTimeout time.Duration
+	nowFunc         func() time.Time
+}
+
+// HubOption は Hub の動作オプションである。
+type HubOption func(*Hub)
+
+// WithSendWaitTimeout は bot ごとの並列送信完了を待つ上限時間を設定する。
+func WithSendWaitTimeout(d time.Duration) HubOption {
+	return func(h *Hub) {
+		if d > 0 {
+			h.sendWaitTimeout = d
+		}
+	}
+}
+
+// WithHubNowFunc はテスト等向けに現在時刻関数を差し替える。
+func WithHubNowFunc(fn func() time.Time) HubOption {
+	return func(h *Hub) {
+		if fn != nil {
+			h.nowFunc = fn
+		}
+	}
 }
 
 // NewHub は新しい Hub を初期化する。
-func NewHub() *Hub {
-	return &Hub{
-		browserSubs: make(map[uint64]browserSub),
-		socketConns: make(map[uint64]*socketConn),
-		botRR:       make(map[string]uint64),
-		tickets:     make(map[string]ticketEntry),
-		pendingAcks: make(map[string]chan struct{}),
-		ackedIDs:    make(map[string]time.Time),
+func NewHub(opts ...HubOption) *Hub {
+	h := &Hub{
+		browserSubs:     make(map[uint64]browserSub),
+		socketConns:     make(map[uint64]*socketConn),
+		botRR:           make(map[string]uint64),
+		tickets:         make(map[string]ticketEntry),
+		pendingAcks:     make(map[string]pendingAck),
+		ackedIDs:        make(map[string]time.Time),
+		sendWaitTimeout: defaultSendWaitTimeout,
+		nowFunc:         time.Now,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // SubscribeBrowser はログイン済みユーザーの SSE 購読を登録する。
@@ -103,7 +143,7 @@ func (h *Hub) PublishBrowser(targetUserID string, ev domain.BrowserEvent) {
 }
 
 // PublishMessageCreated は新規メッセージを SSE と Socket Mode へ配信する。
-// message イベントは接続中の各 bot ごとに 1 本ずつ配信し、
+// message イベントは接続中の各 bot ごとに 1 本ずつ並列配信し、
 // app_mention イベントは人間投稿かつチャンネル投稿時にメンションされた bot へだけ配信する。
 func (h *Hub) PublishMessageCreated(ch domain.Channel, msg domain.Message) bool {
 	msgCopy := msg
@@ -159,7 +199,7 @@ func (h *Hub) IssueTicket(bot domain.BotIdentity) string {
 	_, _ = rand.Read(buf)
 	ticket := hex.EncodeToString(buf)
 
-	now := time.Now()
+	now := h.nowFunc()
 	h.mu.Lock()
 	for k, v := range h.tickets {
 		if v.expiresAt.Before(now) {
@@ -176,7 +216,7 @@ func (h *Hub) ConsumeTicket(ticket string) (domain.BotIdentity, bool) {
 	if ticket == "" {
 		return domain.BotIdentity{}, false
 	}
-	now := time.Now()
+	now := h.nowFunc()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -205,6 +245,13 @@ func (h *Hub) SocketConnectionCount() int {
 	return len(h.socketConns)
 }
 
+// PendingAckCount は現在応答待ちの pendingAcks 件数を返す（テスト・監視用）。
+func (h *Hub) PendingAckCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.pendingAcks)
+}
+
 // RegisterSocket は bot に紐づく Socket Mode 接続を登録し、hello を送信してクリーンアップ関数を返す。
 func (h *Hub) RegisterSocket(bot domain.BotIdentity, sess usecase.SocketSession) (uint64, func(), error) {
 	id := h.nextID.Add(1)
@@ -221,7 +268,7 @@ func (h *Hub) RegisterSocket(bot domain.BotIdentity, sess usecase.SocketSession)
 		"num_connections": numConns,
 		"debug_info": map[string]interface{}{
 			"host":                        "nuage-monitoring-pwa",
-			"started_connecting":          time.Now().UTC().Format(time.RFC3339),
+			"started_connecting":          h.nowFunc().UTC().Format(time.RFC3339),
 			"build_number":                1,
 			"approximate_connection_time": 1800,
 		},
@@ -247,6 +294,12 @@ func (h *Hub) RegisterSocket(bot domain.BotIdentity, sess usecase.SocketSession)
 	cleanup := func() {
 		h.mu.Lock()
 		delete(h.socketConns, id)
+		for envID, pa := range h.pendingAcks {
+			if pa.connID == id {
+				delete(h.pendingAcks, envID)
+				close(pa.ch)
+			}
+		}
 		nowOnline := len(h.socketConns) > 0
 		h.mu.Unlock()
 
@@ -271,7 +324,17 @@ func (h *Hub) countBotConnsLocked(botUserID string) int {
 	return n
 }
 
-// sendEventToBots は bot ごとに接続を束ねてイベントを各 bot 1 本ずつ送信する。
+func (h *Hub) prunePendingAcksLocked(now time.Time) {
+	cutoff := now.Add(-pendingAckTTL)
+	for envID, pa := range h.pendingAcks {
+		if pa.createdAt.Before(cutoff) {
+			delete(h.pendingAcks, envID)
+			close(pa.ch)
+		}
+	}
+}
+
+// sendEventToBots は bot ごとに接続を束ねてイベントを並列に各 bot 1 本ずつ送信する。
 // targetUserIDs が nil の場合は接続中の全 bot へ、非 nil の場合は該当 UserID の bot へだけ送信する。
 func (h *Hub) sendEventToBots(event map[string]interface{}, targetUserIDs []string) bool {
 	var targetSet map[string]bool
@@ -282,7 +345,9 @@ func (h *Hub) sendEventToBots(event map[string]interface{}, targetUserIDs []stri
 		}
 	}
 
+	now := h.nowFunc()
 	h.mu.Lock()
+	h.prunePendingAcksLocked(now)
 	byBot := make(map[string][]*socketConn)
 	for _, sc := range h.socketConns {
 		if targetSet != nil && !targetSet[sc.bot.UserID] {
@@ -306,12 +371,30 @@ func (h *Hub) sendEventToBots(event map[string]interface{}, targetUserIDs []stri
 
 	sort.Strings(botIDs)
 
-	deliveredAny := false
+	results := make(chan bool, len(botIDs))
 	for _, uid := range botIDs {
 		conns := byBot[uid]
 		sort.Slice(conns, func(i, j int) bool { return conns[i].id < conns[j].id })
-		if h.sendToOneConnInGroup(conns, startOffsets[uid], event) {
-			deliveredAny = true
+		start := startOffsets[uid]
+		go func(group []*socketConn, offset int) {
+			results <- h.sendToOneConnInGroup(group, offset, event)
+		}(conns, start)
+	}
+
+	timer := time.NewTimer(h.sendWaitTimeout)
+	defer timer.Stop()
+
+	deliveredAny := false
+	completed := 0
+	for completed < len(botIDs) {
+		select {
+		case ok := <-results:
+			completed++
+			if ok {
+				deliveredAny = true
+			}
+		case <-timer.C:
+			return deliveredAny
 		}
 	}
 	return deliveredAny
@@ -330,28 +413,35 @@ func (h *Hub) sendToOneConnInGroup(conns []*socketConn, start int, event map[str
 			"api_app_id": domain.AppID,
 			"type":       "event_callback",
 			"event_id":   eventID,
-			"event_time": time.Now().Unix(),
+			"event_time": h.nowFunc().Unix(),
 			"event":      event,
 		},
 	}
 
-	ackCh := make(chan struct{})
-	h.mu.Lock()
-	h.pendingAcks[envID] = ackCh
-	h.mu.Unlock()
-
 	for i := 0; i < len(conns); i++ {
 		sc := conns[(start+i)%len(conns)]
+		ackCh := make(chan struct{})
+		h.mu.Lock()
+		h.pendingAcks[envID] = pendingAck{
+			connID:    sc.id,
+			ch:        ackCh,
+			createdAt: h.nowFunc(),
+		}
+		h.mu.Unlock()
+
 		if err := sc.sess.SendJSON(envelope); err == nil {
 			return true
 		} else {
+			h.mu.Lock()
+			if pa, ok := h.pendingAcks[envID]; ok {
+				delete(h.pendingAcks, envID)
+				close(pa.ch)
+			}
+			h.mu.Unlock()
 			slog.Warn("failed to send socket mode envelope", "conn_id", sc.id, "bot_user_id", sc.bot.UserID, "error", err)
 		}
 	}
 
-	h.mu.Lock()
-	delete(h.pendingAcks, envID)
-	h.mu.Unlock()
 	return false
 }
 
@@ -364,15 +454,17 @@ func (h *Hub) HandleAck(raw []byte) (string, bool) {
 		return "", false
 	}
 
+	now := h.nowFunc()
 	h.mu.Lock()
-	if ch, ok := h.pendingAcks[ack.EnvelopeID]; ok {
+	if pa, ok := h.pendingAcks[ack.EnvelopeID]; ok {
 		delete(h.pendingAcks, ack.EnvelopeID)
-		close(ch)
+		close(pa.ch)
 	}
-	h.ackedIDs[ack.EnvelopeID] = time.Now()
+	h.prunePendingAcksLocked(now)
+	h.ackedIDs[ack.EnvelopeID] = now
 	// 古い ack 記録を掃除
 	if len(h.ackedIDs) > 1000 {
-		cutoff := time.Now().Add(-5 * time.Minute)
+		cutoff := now.Add(-5 * time.Minute)
 		for k, ts := range h.ackedIDs {
 			if ts.Before(cutoff) {
 				delete(h.ackedIDs, k)

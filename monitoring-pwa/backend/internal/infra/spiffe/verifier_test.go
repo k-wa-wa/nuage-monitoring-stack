@@ -22,20 +22,44 @@ import (
 )
 
 type jwksStubServer struct {
-	mu    sync.Mutex
-	keys  []map[string]interface{}
-	calls atomic.Int32
-	srv   *httptest.Server
+	mu      sync.Mutex
+	keys    []map[string]interface{}
+	status  int
+	delay   time.Duration
+	calls   atomic.Int32
+	srv     *httptest.Server
+	started chan struct{}
 }
 
 func newJWKSStubServer(t *testing.T) *jwksStubServer {
 	t.Helper()
-	s := &jwksStubServer{}
+	s := &jwksStubServer{status: http.StatusOK}
 	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.calls.Add(1)
 		s.mu.Lock()
+		delay := s.delay
+		status := s.status
 		keys := append([]map[string]interface{}{}, s.keys...)
+		started := s.started
 		s.mu.Unlock()
+
+		if started != nil {
+			select {
+			case started <- struct{}{}:
+			default:
+			}
+		}
+		if delay > 0 {
+			select {
+			case <-time.After(delay):
+			case <-r.Context().Done():
+				return
+			}
+		}
+		if status != http.StatusOK {
+			w.WriteHeader(status)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"keys": keys})
 	}))
@@ -46,7 +70,14 @@ func newJWKSStubServer(t *testing.T) *jwksStubServer {
 func (s *jwksStubServer) setKeys(keys ...map[string]interface{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.status = http.StatusOK
 	s.keys = keys
+}
+
+func (s *jwksStubServer) setStatus(status int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.status = status
 }
 
 func ecJWK(kid, alg string, pub *ecdsa.PublicKey) map[string]interface{} {
@@ -121,6 +152,7 @@ func TestVerifier_VerifyAndKeyRotation(t *testing.T) {
 		jwksSrv.srv.URL,
 		"monitoring-pwa",
 		spiffe.WithCooldown(5*time.Second),
+		spiffe.WithCacheTTL(1*time.Minute),
 		spiffe.WithNowFunc(nowFn),
 	)
 
@@ -180,9 +212,33 @@ func TestVerifier_VerifyAndKeyRotation(t *testing.T) {
 		}
 	})
 
-	t.Run("期限切れ・未来のnbf・aud不一致・不正sub・alg違反を拒否すること", func(t *testing.T) {
+	t.Run("キャッシュTTL経過後は既知kidであってもJWKSを再取得し、撤回済み鍵を拒否すること", func(t *testing.T) {
+		// 直前に kid-ec-2 が取得されているが、配布元から kid-ec-2 を撤回し別鍵のみにする
+		jwksSrv.setKeys(ecJWK("kid-ec-1", "ES256", &ecKey1.PublicKey))
+
+		// TTL (1m) 未満ならキャッシュが使われる
+		tokRevoked := signJWT(t, "kid-ec-2", jwt.SigningMethodES256, ecKey2, jwt.RegisteredClaims{
+			Subject:   "spiffe://nuage/host/atelier/bot",
+			Audience:  jwt.ClaimStrings{"monitoring-pwa"},
+			ExpiresAt: jwt.NewNumericDate(curTime.Add(5 * time.Minute)),
+		})
+		if _, err := verifier.Verify(ctx, tokRevoked); err != nil {
+			t.Fatalf("expected cached key before TTL expiry, got %v", err)
+		}
+
+		// TTL 経過後は既知 kid-ec-2 でも再取得が走り、撤回済みのため拒否される
+		curTime = curTime.Add(61 * time.Second)
+		if _, err := verifier.Verify(ctx, tokRevoked); err == nil {
+			t.Fatal("expected revoked kid to be rejected after cache TTL expiry")
+		}
+		if jwksSrv.calls.Load() != 3 {
+			t.Fatalf("expected 3 JWKS fetches after TTL expiry, got %d", jwksSrv.calls.Load())
+		}
+	})
+
+	t.Run("許可alg・既知kid・正当クレームでも署名鍵違い、期限切れ、aud不一致、空白付きsub等を拒否すること", func(t *testing.T) {
 		// 30 秒クロックスキュー以内なら許容
-		tokWithinLeeway := signJWT(t, "kid-ec-2", jwt.SigningMethodES256, ecKey2, jwt.RegisteredClaims{
+		tokWithinLeeway := signJWT(t, "kid-ec-1", jwt.SigningMethodES256, ecKey1, jwt.RegisteredClaims{
 			Subject:   "spiffe://nuage/host/atelier/bot",
 			Audience:  jwt.ClaimStrings{"monitoring-pwa"},
 			ExpiresAt: jwt.NewNumericDate(curTime.Add(-20 * time.Second)),
@@ -196,8 +252,16 @@ func TestVerifier_VerifyAndKeyRotation(t *testing.T) {
 			tok  string
 		}{
 			{
+				name: "既知kid・同一alg・正当クレームで署名鍵違い",
+				tok: signJWT(t, "kid-ec-1", jwt.SigningMethodES256, ecKey2, jwt.RegisteredClaims{
+					Subject:   "spiffe://nuage/host/atelier/bot",
+					Audience:  jwt.ClaimStrings{"monitoring-pwa"},
+					ExpiresAt: jwt.NewNumericDate(curTime.Add(5 * time.Minute)),
+				}),
+			},
+			{
 				name: "期限切れ(31秒前)",
-				tok: signJWT(t, "kid-ec-2", jwt.SigningMethodES256, ecKey2, jwt.RegisteredClaims{
+				tok: signJWT(t, "kid-ec-1", jwt.SigningMethodES256, ecKey1, jwt.RegisteredClaims{
 					Subject:   "spiffe://nuage/host/atelier/bot",
 					Audience:  jwt.ClaimStrings{"monitoring-pwa"},
 					ExpiresAt: jwt.NewNumericDate(curTime.Add(-31 * time.Second)),
@@ -205,14 +269,14 @@ func TestVerifier_VerifyAndKeyRotation(t *testing.T) {
 			},
 			{
 				name: "exp欠落",
-				tok: signJWT(t, "kid-ec-2", jwt.SigningMethodES256, ecKey2, jwt.RegisteredClaims{
+				tok: signJWT(t, "kid-ec-1", jwt.SigningMethodES256, ecKey1, jwt.RegisteredClaims{
 					Subject:  "spiffe://nuage/host/atelier/bot",
 					Audience: jwt.ClaimStrings{"monitoring-pwa"},
 				}),
 			},
 			{
 				name: "nbfが未来すぎ(31秒先)",
-				tok: signJWT(t, "kid-ec-2", jwt.SigningMethodES256, ecKey2, jwt.RegisteredClaims{
+				tok: signJWT(t, "kid-ec-1", jwt.SigningMethodES256, ecKey1, jwt.RegisteredClaims{
 					Subject:   "spiffe://nuage/host/atelier/bot",
 					Audience:  jwt.ClaimStrings{"monitoring-pwa"},
 					NotBefore: jwt.NewNumericDate(curTime.Add(31 * time.Second)),
@@ -221,7 +285,7 @@ func TestVerifier_VerifyAndKeyRotation(t *testing.T) {
 			},
 			{
 				name: "他環境のaud不一致",
-				tok: signJWT(t, "kid-ec-2", jwt.SigningMethodES256, ecKey2, jwt.RegisteredClaims{
+				tok: signJWT(t, "kid-ec-1", jwt.SigningMethodES256, ecKey1, jwt.RegisteredClaims{
 					Subject:   "spiffe://nuage/ns/nuage-monitoring-stack-pr-42/sa/echo-bot",
 					Audience:  jwt.ClaimStrings{"monitoring-pwa.nuage-monitoring-stack-pr-42"},
 					ExpiresAt: jwt.NewNumericDate(curTime.Add(5 * time.Minute)),
@@ -229,15 +293,23 @@ func TestVerifier_VerifyAndKeyRotation(t *testing.T) {
 			},
 			{
 				name: "subがspiffe://でない",
-				tok: signJWT(t, "kid-ec-2", jwt.SigningMethodES256, ecKey2, jwt.RegisteredClaims{
+				tok: signJWT(t, "kid-ec-1", jwt.SigningMethodES256, ecKey1, jwt.RegisteredClaims{
 					Subject:   "https://example.com/bot",
 					Audience:  jwt.ClaimStrings{"monitoring-pwa"},
 					ExpiresAt: jwt.NewNumericDate(curTime.Add(5 * time.Minute)),
 				}),
 			},
 			{
+				name: "subに前後空白がある",
+				tok: signJWT(t, "kid-ec-1", jwt.SigningMethodES256, ecKey1, jwt.RegisteredClaims{
+					Subject:   " spiffe://nuage/host/atelier/bot ",
+					Audience:  jwt.ClaimStrings{"monitoring-pwa"},
+					ExpiresAt: jwt.NewNumericDate(curTime.Add(5 * time.Minute)),
+				}),
+			},
+			{
 				name: "kid欠落",
-				tok: signJWT(t, "", jwt.SigningMethodES256, ecKey2, jwt.RegisteredClaims{
+				tok: signJWT(t, "", jwt.SigningMethodES256, ecKey1, jwt.RegisteredClaims{
 					Subject:   "spiffe://nuage/host/atelier/bot",
 					Audience:  jwt.ClaimStrings{"monitoring-pwa"},
 					ExpiresAt: jwt.NewNumericDate(curTime.Add(5 * time.Minute)),
@@ -245,7 +317,7 @@ func TestVerifier_VerifyAndKeyRotation(t *testing.T) {
 			},
 			{
 				name: "HS256(対称鍵alg拒否)",
-				tok: signJWT(t, "kid-ec-2", jwt.SigningMethodHS256, []byte("secret"), jwt.RegisteredClaims{
+				tok: signJWT(t, "kid-ec-1", jwt.SigningMethodHS256, []byte("secret"), jwt.RegisteredClaims{
 					Subject:   "spiffe://nuage/host/atelier/bot",
 					Audience:  jwt.ClaimStrings{"monitoring-pwa"},
 					ExpiresAt: jwt.NewNumericDate(curTime.Add(5 * time.Minute)),
@@ -261,4 +333,101 @@ func TestVerifier_VerifyAndKeyRotation(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestVerifier_InitialFailureCooldownAndNonBlockingCacheHit(t *testing.T) {
+	baseTime := time.Date(2026, 11, 28, 1, 0, 0, 0, time.UTC)
+	var mu sync.Mutex
+	curTime := baseTime
+	nowFn := func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return curTime
+	}
+	advance := func(d time.Duration) {
+		mu.Lock()
+		curTime = curTime.Add(d)
+		mu.Unlock()
+	}
+
+	ecKey1, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	ecKey2, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+
+	jwksSrv := newJWKSStubServer(t)
+	jwksSrv.setStatus(http.StatusInternalServerError)
+
+	verifier := spiffe.NewVerifier(
+		jwksSrv.srv.URL,
+		"monitoring-pwa",
+		spiffe.WithCooldown(5*time.Second),
+		spiffe.WithCacheTTL(5*time.Minute),
+		spiffe.WithNowFunc(nowFn),
+	)
+
+	tok1 := signJWT(t, "kid-1", jwt.SigningMethodES256, ecKey1, jwt.RegisteredClaims{
+		Subject:   "spiffe://nuage/host/atelier/bot",
+		Audience:  jwt.ClaimStrings{"monitoring-pwa"},
+		ExpiresAt: jwt.NewNumericDate(baseTime.Add(10 * time.Minute)),
+	})
+
+	// 1. 初回取得失敗にもクールダウンが適用されること
+	if _, err := verifier.Verify(context.Background(), tok1); err == nil {
+		t.Fatal("expected initial JWKS failure")
+	}
+	if jwksSrv.calls.Load() != 1 {
+		t.Fatalf("expected 1 call, got %d", jwksSrv.calls.Load())
+	}
+
+	advance(2 * time.Second)
+	if _, err := verifier.Verify(context.Background(), tok1); err == nil {
+		t.Fatal("expected cooldown error after initial failure")
+	}
+	if jwksSrv.calls.Load() != 1 {
+		t.Fatalf("expected cooldown to suppress immediate retry after initial failure, got %d calls", jwksSrv.calls.Load())
+	}
+
+	// クールダウン経過後は復旧してキャッシュに載る
+	advance(4 * time.Second)
+	jwksSrv.setKeys(ecJWK("kid-1", "ES256", &ecKey1.PublicKey))
+	if _, err := verifier.Verify(context.Background(), tok1); err != nil {
+		t.Fatalf("expected recovery after cooldown, got %v", err)
+	}
+
+	// 2. 未知 kid で JWKS 取得が遅れていても、既知 kid のキャッシュヒットはブロックされないこと
+	advance(10 * time.Second)
+	jwksSrv.mu.Lock()
+	jwksSrv.delay = 2 * time.Second
+	jwksSrv.started = make(chan struct{}, 1)
+	jwksSrv.mu.Unlock()
+
+	tokUnknown := signJWT(t, "kid-2", jwt.SigningMethodES256, ecKey2, jwt.RegisteredClaims{
+		Subject:   "spiffe://nuage/host/atelier/bot",
+		Audience:  jwt.ClaimStrings{"monitoring-pwa"},
+		ExpiresAt: jwt.NewNumericDate(baseTime.Add(10 * time.Minute)),
+	})
+
+	slowDone := make(chan error, 1)
+	go func() {
+		_, err := verifier.Verify(context.Background(), tokUnknown)
+		slowDone <- err
+	}()
+
+	<-jwksSrv.started
+
+	fastDone := make(chan error, 1)
+	go func() {
+		_, err := verifier.Verify(context.Background(), tok1)
+		fastDone <- err
+	}()
+
+	select {
+	case err := <-fastDone:
+		if err != nil {
+			t.Fatalf("cached Verify failed during slow JWKS fetch: %v", err)
+		}
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("cached Verify was blocked by slow JWKS fetch")
+	}
+
+	<-slowDone
 }

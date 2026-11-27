@@ -6,11 +6,12 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_bolt.authorization import AuthorizeResult
+from slack_bolt.middleware import Middleware
 from slack_sdk import WebClient
 from slack_sdk.socket_mode.websocket_client import SocketModeClient
 
@@ -20,26 +21,52 @@ logging.basicConfig(
 )
 logger = logging.getLogger("echo-bot")
 
-MENTION_RE = re.compile(r"<@[A-Z0-9]+>\s*")
+MENTION_RE = re.compile(r"<@[A-Z0-9]+(?:\|[^>]*)?>\s*")
+DEFAULT_TOKEN_RETRY_DELAYS: tuple[float, ...] = (0.05, 0.1, 0.2, 0.4)
 
 
-def load_token(file_path: Optional[str], fallback: str, label: str) -> str:
-    """トークンを読み込む。file_path が設定されていれば毎回ファイルから読み、fallback より優先する。"""
+def load_token(
+    file_path: Optional[str],
+    fallback: str,
+    label: str,
+    *,
+    retry_delays: Sequence[float] = DEFAULT_TOKEN_RETRY_DELAYS,
+) -> str:
+    """トークンを読み込む。file_path が設定されていれば毎回ファイルから読み、fallback より優先する。
+
+    起動直後やファイル更新の瞬間で一時的に不在・空・読取失敗となった場合は短く待って読み直す。
+    """
     path = (file_path or "").strip()
     if path:
-        token = Path(path).read_text(encoding="utf-8").strip()
-        if not token:
-            raise ValueError(f"{label} token file {path!r} is empty")
-        return token
+        last_err: Optional[Exception] = None
+        for attempt in range(len(retry_delays) + 1):
+            try:
+                token = Path(path).read_text(encoding="utf-8").strip()
+                if token:
+                    return token
+                last_err = ValueError(f"{label} token file {path!r} is empty")
+            except OSError as exc:
+                last_err = exc
+            if attempt < len(retry_delays):
+                time.sleep(retry_delays[attempt])
+        if last_err is not None:
+            raise last_err
+        raise ValueError(f"{label} token file {path!r} is empty")
     token = (fallback or "").strip()
     if not token:
         raise ValueError(f"{label} token is not configured")
     return token
 
 
-def make_token_loader(file_path: Optional[str], fallback: str, label: str) -> Callable[[], str]:
+def make_token_loader(
+    file_path: Optional[str],
+    fallback: str,
+    label: str,
+    *,
+    retry_delays: Sequence[float] = DEFAULT_TOKEN_RETRY_DELAYS,
+) -> Callable[[], str]:
     """呼び出しのたびに最新トークンを返すローダー関数を生成する。"""
-    return lambda: load_token(file_path, fallback, label)
+    return lambda: load_token(file_path, fallback, label, retry_delays=retry_delays)
 
 
 class TokenFileWebClient(WebClient):
@@ -124,12 +151,40 @@ def format_echo_text(raw_text: str, bot_user_id: Optional[str] = None) -> str:
     """メンション表記を取り除いたオウム返し用テキストを整形する。"""
     text = (raw_text or "").strip()
     if bot_user_id:
-        text = text.replace(f"<@{bot_user_id}>", "").strip()
+        pattern = re.compile(rf"<@{re.escape(bot_user_id)}(?:\|[^>]*)?>\s*")
+        text = pattern.sub("", text).strip()
     else:
         text = MENTION_RE.sub("", text).strip()
     if not text:
         return "(空のメッセージ)"
     return text
+
+
+def _contains_user_mention(raw_text: str, user_id: str) -> bool:
+    return bool(re.search(rf"<@{re.escape(user_id)}(?:\|[^>]*)?>", raw_text))
+
+
+class _ReloadingClientMiddleware(Middleware):
+    """Bolt がリクエスト毎に生成する素の WebClient を TokenFileWebClient に差し替える。"""
+
+    def __init__(self, bot_token_loader: Callable[[], str]):
+        self._bot_token_loader = bot_token_loader
+
+    def process(self, *, req, resp, next):
+        base = req.context.client
+        req.context["client"] = TokenFileWebClient(
+            bot_token_loader=self._bot_token_loader,
+            base_url=base.base_url,
+            timeout=base.timeout,
+            ssl=base.ssl,
+            proxy=base.proxy,
+            headers=base.headers,
+            team_id=req.context.team_id,
+            logger=base.logger,
+            retry_handlers=base.retry_handlers.copy() if base.retry_handlers is not None else None,
+        )
+        req.context.pop("say", None)
+        return next()
 
 
 def create_app(
@@ -180,6 +235,7 @@ def create_app(
         token_verification_enabled=False,
         process_before_response=process_before_response,
     )
+    app.middleware(_ReloadingClientMiddleware(loader))
 
     def get_bot_user_id() -> Optional[str]:
         if state["bot_user_id"]:
@@ -213,8 +269,9 @@ def create_app(
         if channel_type != "im" and not thread_ts:
             return
 
-        # チャンネルスレッド内で bot へのメンションを含む発言は app_mention 側で処理済みのため重複返信しない
-        if channel_type != "im" and thread_ts and uid and f"<@{uid}>" in raw_text:
+        # チャンネルスレッド内で bot へのメンション (<@U...> および <@U...|label>) を含む発言は
+        # app_mention 側で処理済みのため重複返信しない
+        if channel_type != "im" and thread_ts and uid and _contains_user_mention(raw_text, uid):
             return
 
         text = format_echo_text(raw_text, uid)

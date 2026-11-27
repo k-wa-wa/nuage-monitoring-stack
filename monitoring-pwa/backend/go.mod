@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/labstack/echo/v4 v4.16.5
 	golang.org/x/crypto v0.57.0

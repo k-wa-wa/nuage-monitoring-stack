@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/domain"
@@ -46,10 +47,12 @@ func (u *SocketUsecase) VerifyBotToken(ctx context.Context, token string) (domai
 	}
 	sub, err := u.verifier.Verify(ctx, token)
 	if err != nil {
+		slog.Warn("bot token verification failed", "reason", err.Error())
 		return domain.BotIdentity{}, ErrInvalidAuth
 	}
 	bot, ok := u.botsBySub[sub]
 	if !ok {
+		slog.Warn("bot spiffe id is not in allowlist", "sub", sub)
 		return domain.BotIdentity{}, ErrInvalidAuth
 	}
 	return bot, nil

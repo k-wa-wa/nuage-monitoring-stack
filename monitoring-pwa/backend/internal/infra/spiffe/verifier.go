@@ -23,6 +23,7 @@ import (
 
 const (
 	defaultRefreshCooldown = 5 * time.Second
+	defaultCacheTTL        = 5 * time.Minute
 	defaultClockLeeway     = 30 * time.Second
 	defaultHTTPTimeout     = 5 * time.Second
 	maxJWKSBodyBytes       = 1 << 20
@@ -55,18 +56,26 @@ type jwkKey struct {
 	E   string `json:"e"`
 }
 
+type inflightFetch struct {
+	done chan struct{}
+	err  error
+}
+
 // Verifier は SPIRE OIDC Discovery Provider の JWKS を用いて JWT-SVID を検証する。
 type Verifier struct {
 	jwksURL  string
 	audience string
 	client   *http.Client
 	cooldown time.Duration
+	cacheTTL time.Duration
 	leeway   time.Duration
 	nowFunc  func() time.Time
 
-	mu        sync.Mutex
-	keys      map[string]jwkEntry
-	lastFetch time.Time
+	mu          sync.Mutex
+	keys        map[string]jwkEntry
+	lastSuccess time.Time
+	lastAttempt time.Time
+	inflight    *inflightFetch
 }
 
 // Option は Verifier の設定オプションである。
@@ -81,11 +90,20 @@ func WithHTTPClient(c *http.Client) Option {
 	}
 }
 
-// WithCooldown は未知 kid 受信時の JWKS 再取得クールダウン間隔を設定する。
+// WithCooldown は JWKS 再取得失敗・未知 kid 受信時の最短再取得間隔を設定する。
 func WithCooldown(d time.Duration) Option {
 	return func(v *Verifier) {
 		if d >= 0 {
 			v.cooldown = d
+		}
+	}
+}
+
+// WithCacheTTL はキャッシュ済み JWKS を信頼する有効期限を設定する。
+func WithCacheTTL(d time.Duration) Option {
+	return func(v *Verifier) {
+		if d > 0 {
+			v.cacheTTL = d
 		}
 	}
 }
@@ -106,6 +124,7 @@ func NewVerifier(jwksURL, audience string, opts ...Option) *Verifier {
 		audience: strings.TrimSpace(audience),
 		client:   &http.Client{Timeout: defaultHTTPTimeout},
 		cooldown: defaultRefreshCooldown,
+		cacheTTL: defaultCacheTTL,
 		leeway:   defaultClockLeeway,
 		nowFunc:  time.Now,
 		keys:     make(map[string]jwkEntry),
@@ -137,9 +156,8 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (string, error) 
 
 	parsed, err := jwt.ParseWithClaims(tokenStr, &claims, func(tok *jwt.Token) (interface{}, error) {
 		kid, _ := tok.Header["kid"].(string)
-		kid = strings.TrimSpace(kid)
-		if kid == "" {
-			return nil, errors.New("missing kid header")
+		if kid == "" || kid != strings.TrimSpace(kid) {
+			return nil, errors.New("missing or malformed kid header")
 		}
 		entry, err := v.getKey(ctx, kid)
 		if err != nil {
@@ -157,42 +175,96 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (string, error) 
 		return "", err
 	}
 
-	sub := strings.TrimSpace(claims.Subject)
-	if !strings.HasPrefix(sub, "spiffe://") || len(sub) <= len("spiffe://") {
+	sub := claims.Subject
+	if sub == "" || sub != strings.TrimSpace(sub) || !strings.HasPrefix(sub, "spiffe://") || len(sub) <= len("spiffe://") {
 		return "", fmt.Errorf("invalid spiffe sub claim: %q", claims.Subject)
 	}
 	return sub, nil
 }
 
 func (v *Verifier) getKey(ctx context.Context, kid string) (jwkEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return jwkEntry{}, err
+	}
+
 	v.mu.Lock()
-	defer v.mu.Unlock()
-
-	if entry, ok := v.keys[kid]; ok {
-		return entry, nil
-	}
-
 	now := v.nowFunc()
-	hadKeys := len(v.keys) > 0
-	if hadKeys && !v.lastFetch.IsZero() && now.Sub(v.lastFetch) < v.cooldown {
-		return jwkEntry{}, fmt.Errorf("unknown kid %q (jwks refresh cooldown active)", kid)
-	}
-
-	newKeys, err := v.fetchJWKS(ctx)
-	if err != nil {
-		if hadKeys {
-			v.lastFetch = now
+	if v.isCacheFreshLocked(now) {
+		if entry, ok := v.keys[kid]; ok {
+			v.mu.Unlock()
+			return entry, nil
 		}
-		return jwkEntry{}, fmt.Errorf("failed to fetch jwks: %w", err)
 	}
-	v.keys = newKeys
-	v.lastFetch = now
 
+	if call := v.inflight; call != nil {
+		v.mu.Unlock()
+		select {
+		case <-call.done:
+			if call.err != nil {
+				return jwkEntry{}, call.err
+			}
+			v.mu.Lock()
+			entry, ok := v.keys[kid]
+			v.mu.Unlock()
+			if !ok {
+				return jwkEntry{}, fmt.Errorf("unknown kid %q", kid)
+			}
+			return entry, nil
+		case <-ctx.Done():
+			return jwkEntry{}, ctx.Err()
+		}
+	}
+
+	if !v.lastAttempt.IsZero() && now.Sub(v.lastAttempt) < v.cooldown {
+		v.mu.Unlock()
+		return jwkEntry{}, fmt.Errorf("jwks refresh cooldown active for kid %q", kid)
+	}
+
+	call := &inflightFetch{done: make(chan struct{})}
+	v.inflight = call
+	v.mu.Unlock()
+
+	fetchCtx, cancel := context.WithTimeout(context.Background(), v.fetchTimeout())
+	newKeys, err := v.fetchJWKS(fetchCtx)
+	cancel()
+
+	v.mu.Lock()
+	doneAt := v.nowFunc()
+	v.lastAttempt = doneAt
+	if err == nil {
+		v.keys = newKeys
+		v.lastSuccess = doneAt
+	} else {
+		err = fmt.Errorf("failed to fetch jwks: %w", err)
+		if !v.isCacheFreshLocked(doneAt) {
+			v.keys = make(map[string]jwkEntry)
+		}
+	}
+	call.err = err
+	v.inflight = nil
+	close(call.done)
+
+	if err != nil {
+		v.mu.Unlock()
+		return jwkEntry{}, err
+	}
 	entry, ok := v.keys[kid]
+	v.mu.Unlock()
 	if !ok {
 		return jwkEntry{}, fmt.Errorf("unknown kid %q", kid)
 	}
 	return entry, nil
+}
+
+func (v *Verifier) isCacheFreshLocked(now time.Time) bool {
+	return len(v.keys) > 0 && !v.lastSuccess.IsZero() && now.Sub(v.lastSuccess) < v.cacheTTL
+}
+
+func (v *Verifier) fetchTimeout() time.Duration {
+	if v.client != nil && v.client.Timeout > 0 {
+		return v.client.Timeout
+	}
+	return defaultHTTPTimeout
 }
 
 func (v *Verifier) fetchJWKS(ctx context.Context) (map[string]jwkEntry, error) {
