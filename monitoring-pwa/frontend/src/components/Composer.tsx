@@ -61,6 +61,7 @@ export default function Composer({ placeholder, onSend, notice, error }: Compose
 					label="送信"
 					variant="filled"
 					className="composer-send"
+					loading={sending}
 					disabled={!canSend}
 					icon={<ArrowUp size={18} aria-hidden="true" />}
 					onClick={() => void submit()}

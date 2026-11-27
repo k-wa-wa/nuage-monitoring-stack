@@ -46,10 +46,20 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 	label: string
 	icon: ReactNode
 	variant?: 'ghost' | 'filled'
+	loading?: boolean
 }
 
 /** アイコンだけのボタンである。押した時の縮みはアイコン用の比率 (--scale-icon-active)。 */
-export function IconButton({ label, icon, variant = 'ghost', className, type = 'button', ...rest }: IconButtonProps) {
+export function IconButton({
+	label,
+	icon,
+	variant = 'ghost',
+	loading = false,
+	disabled,
+	className,
+	type = 'button',
+	...rest
+}: IconButtonProps) {
 	return (
 		<button
 			type={type}
@@ -57,9 +67,11 @@ export function IconButton({ label, icon, variant = 'ghost', className, type = '
 			title={label}
 			className={`nui-icon-button nui-pressable ${className ?? ''}`.trim()}
 			data-variant={variant}
+			disabled={disabled || loading}
+			aria-busy={loading || undefined}
 			{...rest}
 		>
-			{icon}
+			{loading ? <Spinner size={16} /> : icon}
 		</button>
 	)
 }

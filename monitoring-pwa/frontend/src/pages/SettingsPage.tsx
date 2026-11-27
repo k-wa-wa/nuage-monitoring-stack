@@ -1,13 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button, ListItem, ListSection, Modal, Page, Toggle, useToast } from '@nuage/ui'
-import { API_BASE, useChatActions, useChatState } from '../state/chatStore'
-import {
-	getCurrentSubscription,
-	isPushSupported,
-	sendTestNotify,
-	subscribePush,
-	unsubscribePush
-} from '../utils/pushSubscription'
+import { usePushSettings } from '../hooks/usePushSettings'
+import { useChatActions, useChatState } from '../state/chatStore'
 import { isViewportDebugEnabled, setViewportDebugEnabled } from '../utils/viewportDebug'
 
 const WEBHOOK_CURL_EXAMPLE = `curl -X POST https://monitoring.wpcapp.net/webhook/generic \\
@@ -19,52 +13,9 @@ export default function SettingsPage() {
 	const bot = useChatState((s) => s.bot)
 	const { logout } = useChatActions()
 	const toast = useToast()
-	const [subscribed, setSubscribed] = useState(false)
-	const [busy, setBusy] = useState(false)
-	const [logs, setLogs] = useState<string[]>([])
+	const { pushSupported, subscribed, checking, busy, sendingTest, logs, togglePush, sendTest } = usePushSettings(toast)
 	const [confirmLogout, setConfirmLogout] = useState(false)
-
-	const log = useCallback((msg: string) => {
-		setLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50))
-	}, [])
-
-	useEffect(() => {
-		getCurrentSubscription(API_BASE, log)
-			.then((sub) => setSubscribed(Boolean(sub)))
-			.catch((err: unknown) => log(`購読の確認に失敗した: ${err instanceof Error ? err.message : String(err)}`))
-	}, [log])
-
-	const togglePush = async (enable: boolean) => {
-		setBusy(true)
-		try {
-			if (enable) {
-				await subscribePush(API_BASE)
-				setSubscribed(true)
-				toast('通知を受け取るように登録した。', 'success')
-			} else {
-				await unsubscribePush(API_BASE)
-				setSubscribed(false)
-				toast('通知の登録を解除した。')
-			}
-		} catch (err: unknown) {
-			const message = err instanceof Error ? err.message : String(err)
-			log(`エラー: ${message}`)
-			toast(message, 'warn')
-		} finally {
-			setBusy(false)
-		}
-	}
-
-	const handleTest = async () => {
-		try {
-			await sendTestNotify(API_BASE)
-			toast('テスト通知の送信を頼んだ。', 'success')
-		} catch (err: unknown) {
-			const message = err instanceof Error ? err.message : String(err)
-			log(`エラー: ${message}`)
-			toast(message, 'warn')
-		}
-	}
+	const [loggingOut, setLoggingOut] = useState(false)
 
 	const handleCopy = async () => {
 		try {
@@ -75,17 +26,27 @@ export default function SettingsPage() {
 		}
 	}
 
+	const handleLogout = async () => {
+		if (loggingOut) return
+		setLoggingOut(true)
+		try {
+			await logout()
+		} finally {
+			setLoggingOut(false)
+		}
+	}
+
 	return (
 		<Page title="設定">
 			<ListSection title="アカウント">
-				<ListItem title="名前" end={<span className="settings-value">{user?.display_name}</span>} />
+				<ListItem title="名前" loading={!user} end={<span className="settings-value">{user?.display_name}</span>} />
 				<ListItem title={bot.name} end={<span className="settings-value">{bot.online ? 'オンライン' : 'オフライン'}</span>} />
 			</ListSection>
 
 			<ListSection
 				title="通知"
 				footer={
-					isPushSupported()
+					pushSupported
 						? undefined
 						: 'このブラウザは Web Push に対応していない。iPhone ではホーム画面に追加して開くと使える。'
 				}
@@ -96,12 +57,17 @@ export default function SettingsPage() {
 						<Toggle
 							label="プッシュ通知を受け取る"
 							checked={subscribed}
-							disabled={busy || !isPushSupported()}
+							loading={checking || busy}
+							disabled={!pushSupported}
 							onChange={(v) => void togglePush(v)}
 						/>
 					}
 				/>
-				<ListItem title={<span className="settings-link">テスト通知を送る</span>} onClick={() => void handleTest()} />
+				<ListItem
+					title={<span className="settings-link">テスト通知を送る</span>}
+					loading={sendingTest}
+					onClick={() => void sendTest()}
+				/>
 			</ListSection>
 
 			<ListSection title="Webhook で通知を送る">
@@ -136,12 +102,16 @@ export default function SettingsPage() {
 
 			<Modal
 				open={confirmLogout}
-				onClose={() => setConfirmLogout(false)}
+				onClose={() => {
+					if (!loggingOut) setConfirmLogout(false)
+				}}
 				title="ログアウトする？"
 				footer={
 					<>
-						<Button onClick={() => setConfirmLogout(false)}>キャンセル</Button>
-						<Button variant="danger" onClick={() => void logout()}>
+						<Button disabled={loggingOut} onClick={() => setConfirmLogout(false)}>
+							キャンセル
+						</Button>
+						<Button variant="danger" loading={loggingOut} onClick={() => void handleLogout()}>
 							ログアウト
 						</Button>
 					</>

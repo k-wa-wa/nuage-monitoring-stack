@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { syncExistingPushSubscription } from '../src/utils/pushSubscription'
+import { syncExistingPushSubscription } from '../src/api/push'
 
 describe('syncExistingPushSubscription', () => {
 	test('ログイン後の既存 Push 購読を /api/subscribe へ再送信する', async () => {

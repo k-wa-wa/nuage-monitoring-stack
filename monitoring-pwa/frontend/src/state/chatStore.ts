@@ -1,22 +1,23 @@
 import { createContext, useContext, useSyncExternalStore } from 'react'
 import type { AuthUser, BotInfo, Channel, ChatMessage } from '../types/chat'
 
-// ローカル開発時は別ポートで動くバックエンドを指す。
-export const API_BASE = import.meta.env.DEV ? 'http://localhost:8080' : ''
-
 export type AuthState = 'loading' | 'unauthenticated' | 'authenticated'
 
 export interface ChannelData {
 	messages: ChatMessage[]
 	hasMore: boolean
 	loaded: boolean
+	loading: boolean
 	loadingOlder: boolean
+	error: string | null
 }
 
 export interface ThreadData {
 	parent: ChatMessage | null
 	replies: ChatMessage[]
 	loaded: boolean
+	loading: boolean
+	error: string | null
 }
 
 export interface PostResult {
@@ -29,6 +30,7 @@ export interface ChatState {
 	user: AuthUser | null
 	bot: BotInfo
 	channels: Channel[]
+	bootstrapLoaded: boolean
 	channelData: Record<string, ChannelData>
 	threadData: Record<string, ThreadData>
 	// 通知 (アラート・Webhook) が増減するたびに増える。通知タブの再取得に使う。

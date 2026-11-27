@@ -5,8 +5,10 @@ import { Badge, Chip } from './Badge'
 import { Button, IconButton } from './Button'
 import { Card } from './Card'
 import { SearchField, TextArea, TextField } from './Fields'
+import { ListItem, ListSection } from './List'
 import { Segmented } from './Segmented'
-import { EmptyState, Spinner } from './Spinner'
+import { Skeleton } from './Skeleton'
+import { EmptyState, LoadingState, Spinner } from './Spinner'
 import { Toggle } from './Toggle'
 
 const meta: Meta = { title: 'Components/Controls' }
@@ -24,6 +26,7 @@ export const Buttons: StoryObj = {
 			<Button disabled>押せない</Button>
 			<IconButton label="設定" icon={<Settings size={18} />} />
 			<IconButton label="送信" variant="filled" icon={<Send size={16} />} />
+			<IconButton label="送信中" variant="filled" loading icon={<Send size={16} />} />
 		</div>
 	)
 }
@@ -85,6 +88,9 @@ export const SegmentedAndToggle: StoryObj = {
 				<label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
 					<Toggle label="プッシュ通知" checked={on} onChange={setOn} /> プッシュ通知
 				</label>
+				<label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+					<Toggle label="確認中" checked={false} loading onChange={setOn} /> 確認中
+				</label>
 			</div>
 		)
 	}
@@ -92,8 +98,17 @@ export const SegmentedAndToggle: StoryObj = {
 
 export const LoadingAndEmpty: StoryObj = {
 	render: () => (
-		<div>
+		<div style={{ display: 'grid', gap: 16, maxWidth: 420 }}>
 			<Spinner />
+			<LoadingState message="データを読み込んでいる…" />
+			<ListSection title="検索結果" loading>
+				<ListItem title="プッシュ通知" loading />
+				<ListItem loading />
+			</ListSection>
+			<div style={{ display: 'grid', gap: 8 }}>
+				<Skeleton width="70%" />
+				<Skeleton variant="rect" height={48} />
+			</div>
 			<EmptyState>
 				<Bell size={20} /> まだ通知はない。
 			</EmptyState>

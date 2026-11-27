@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from 'react'
-import type { BootstrapResponse, ChatMessage } from '../types/chat'
+import { fetchBootstrap, logoutSession } from '../api/auth'
 import {
-	API_BASE,
+	createChatEventSource,
+	fetchChannelMessages,
+	fetchThread,
+	markChannelRead,
+	postChatMessage,
+	type PostMessageResponse
+} from '../api/chat'
+import type { ChatMessage } from '../types/chat'
+import {
 	ChatContext,
 	ChatStore,
 	DEFAULT_BOT,
@@ -22,6 +30,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				user: null,
 				bot: DEFAULT_BOT,
 				channels: [],
+				bootstrapLoaded: false,
 				channelData: {},
 				threadData: {},
 				activityVersion: 0
@@ -32,6 +41,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 	const setUser = useMemo(() => store.setter('user'), [store])
 	const setBot = useMemo(() => store.setter('bot'), [store])
 	const setChannels = useMemo(() => store.setter('channels'), [store])
+	const setBootstrapLoaded = useMemo(() => store.setter('bootstrapLoaded'), [store])
 	const setChannelData = useMemo(() => store.setter('channelData'), [store])
 	const setThreadData = useMemo(() => store.setter('threadData'), [store])
 	const setActivityVersion = useMemo(() => store.setter('activityVersion'), [store])
@@ -50,38 +60,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 	const handleUnauthorized = useCallback(() => {
 		setAuthState('unauthenticated')
 		setUser(null)
-	}, [setAuthState, setUser])
-
-	const apiFetch = useCallback(
-		async (path: string, init?: RequestInit): Promise<Response | null> => {
-			const res = await fetch(`${API_BASE}${path}`, { credentials: 'include', ...init })
-			if (res.status === 401) {
-				handleUnauthorized()
-				return null
-			}
-			return res
-		},
-		[handleUnauthorized]
-	)
+		setBootstrapLoaded(false)
+	}, [setAuthState, setBootstrapLoaded, setUser])
 
 	const reloadBootstrap = useCallback(async () => {
 		try {
-			const res = await apiFetch('/api/bootstrap')
-			if (!res) return
-			if (!res.ok) {
-				setAuthState('unauthenticated')
-				return
-			}
-			const data: BootstrapResponse = await res.json()
+			const data = await fetchBootstrap(handleUnauthorized)
+			if (!data) return
 			setUser(data.user)
 			setChannels(data.channels || [])
 			setBot(data.bot)
+			setBootstrapLoaded(true)
 			setAuthState('authenticated')
 		} catch (err) {
 			console.error('Bootstrap failed:', err)
 			setAuthState((prev) => (prev === 'loading' ? 'unauthenticated' : prev))
 		}
-	}, [apiFetch, setAuthState, setUser, setBot, setChannels])
+	}, [handleUnauthorized, setAuthState, setBot, setBootstrapLoaded, setChannels, setUser])
 
 	useEffect(() => {
 		void reloadBootstrap()
@@ -93,26 +88,33 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				prev.map((ch) => (ch.id === channelId ? { ...ch, unread_count: 0 } : ch))
 			)
 			try {
-				await apiFetch(`/api/channels/${encodeURIComponent(channelId)}/read`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ ts: ts || '' })
-				})
+				await markChannelRead(channelId, ts, handleUnauthorized)
 			} catch {
 				// 既読の記録に失敗しても表示は続ける (次の bootstrap で未読数が戻る)
 			}
 		},
-		[apiFetch, setChannels]
+		[handleUnauthorized, setChannels]
 	)
 
 	const loadChannel = useCallback(
 		async (channelId: string) => {
+			setChannelData((prev) => {
+				const cur = prev[channelId]
+				return {
+					...prev,
+					[channelId]: {
+						messages: cur?.messages ?? [],
+						hasMore: cur?.hasMore ?? false,
+						loaded: cur?.loaded ?? false,
+						loading: true,
+						loadingOlder: cur?.loadingOlder ?? false,
+						error: null
+					}
+				}
+			})
 			try {
-				const res = await apiFetch(
-					`/api/channels/${encodeURIComponent(channelId)}/messages?limit=40`
-				)
-				if (!res || !res.ok) return
-				const data: { messages: ChatMessage[]; has_more: boolean } = await res.json()
+				const data = await fetchChannelMessages(channelId, { limit: 40 }, handleUnauthorized)
+				if (!data) return
 				const messages = data.messages || []
 				setChannelData((prev) => ({
 					...prev,
@@ -120,7 +122,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 						messages,
 						hasMore: Boolean(data.has_more),
 						loaded: true,
-						loadingOlder: false
+						loading: false,
+						loadingOlder: false,
+						error: null
 					}
 				}))
 				if (viewingRef.current.get(channelId)) {
@@ -128,9 +132,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				}
 			} catch (err) {
 				console.error('Failed to load messages:', err)
+				setChannelData((prev) => {
+					const cur = prev[channelId]
+					return {
+						...prev,
+						[channelId]: {
+							messages: cur?.messages ?? [],
+							hasMore: cur?.hasMore ?? false,
+							loaded: cur?.loaded ?? false,
+							loading: false,
+							loadingOlder: false,
+							error: 'メッセージを読み込めなかった。'
+						}
+					}
+				})
 			}
 		},
-		[apiFetch, markRead, setChannelData]
+		[handleUnauthorized, markRead, setChannelData]
 	)
 
 	const loadOlder = useCallback(
@@ -145,11 +163,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				[channelId]: { ...prev[channelId], loadingOlder: true }
 			}))
 			try {
-				const res = await apiFetch(
-					`/api/channels/${encodeURIComponent(channelId)}/messages?limit=40&before=${encodeURIComponent(oldestTs)}`
-				)
-				const data: { messages: ChatMessage[]; has_more: boolean } | null =
-					res && res.ok ? await res.json() : null
+				const data = await fetchChannelMessages(channelId, { limit: 40, before: oldestTs }, handleUnauthorized)
 				setChannelData((prev) => {
 					const cur = prev[channelId]
 					if (!cur) return prev
@@ -175,52 +189,78 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				)
 			}
 		},
-		[apiFetch, store, setChannelData]
+		[handleUnauthorized, store, setChannelData]
 	)
 
 	const loadThread = useCallback(
 		async (channelId: string, threadTs: string) => {
 			const key = threadKey(channelId, threadTs)
+			setThreadData((prev) => {
+				const cur = prev[key]
+				return {
+					...prev,
+					[key]: {
+						parent: cur?.parent ?? null,
+						replies: cur?.replies ?? [],
+						loaded: cur?.loaded ?? false,
+						loading: true,
+						error: null
+					}
+				}
+			})
 			try {
-				const res = await apiFetch(
-					`/api/channels/${encodeURIComponent(channelId)}/threads/${encodeURIComponent(threadTs)}`
-				)
-				if (!res || !res.ok) {
+				const data = await fetchThread(channelId, threadTs, handleUnauthorized)
+				if (!data) return
+				if (data.notFound) {
 					setThreadData((prev) => ({
 						...prev,
-						[key]: { parent: prev[key]?.parent ?? null, replies: prev[key]?.replies ?? [], loaded: true }
+						[key]: { parent: null, replies: [], loaded: true, loading: false, error: null }
 					}))
 					return
 				}
-				const data: { parent: ChatMessage; replies: ChatMessage[] } = await res.json()
 				loadedThreadsRef.current.add(key)
 				setThreadData((prev) => ({
 					...prev,
-					[key]: { parent: data.parent, replies: data.replies || [], loaded: true }
+					[key]: {
+						parent: data.parent,
+						replies: data.replies || [],
+						loaded: true,
+						loading: false,
+						error: null
+					}
 				}))
 			} catch (err) {
 				console.error('Failed to load thread:', err)
+				setThreadData((prev) => {
+					const cur = prev[key]
+					return {
+						...prev,
+						[key]: {
+							parent: cur?.parent ?? null,
+							replies: cur?.replies ?? [],
+							loaded: cur?.loaded ?? false,
+							loading: false,
+							error: 'スレッドを読み込めなかった。'
+						}
+					}
+				})
 			}
 		},
-		[apiFetch, setThreadData]
+		[handleUnauthorized, setThreadData]
 	)
 
 	const postMessage = useCallback(
 		async (channelId: string, text: string, threadTs?: string): Promise<PostResult> => {
 			try {
-				const res = await apiFetch(`/api/channels/${encodeURIComponent(channelId)}/messages`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ text, thread_ts: threadTs || '' })
-				})
+				const res = await postChatMessage(channelId, text, threadTs, handleUnauthorized)
 				if (!res) return { ok: false, error: 'ログインが切れた。もう一度ログインしてほしい。' }
 				if (!res.ok) return { ok: false, error: `送信に失敗した (HTTP ${res.status})。` }
-				const data: { message: ChatMessage; bot_online: boolean } = await res.json()
+				const data: PostMessageResponse = await res.json()
 				setBot((prev) => ({ ...prev, online: data.bot_online }))
 				const created = data.message
 				if (!created.thread_ts) {
 					setChannelData((prev) =>
-						prev[channelId]
+						prev[channelId]?.loaded
 							? {
 									...prev,
 									[channelId]: {
@@ -243,7 +283,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				return { ok: false, error: 'ネットワークエラーで送信できなかった。接続を確かめて再送してほしい。' }
 			}
 		},
-		[apiFetch, setBot, setChannelData, setThreadData]
+		[handleUnauthorized, setBot, setChannelData, setThreadData]
 	)
 
 	const enterChannel = useCallback(
@@ -262,14 +302,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
 	const logout = useCallback(async () => {
 		try {
-			await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' })
+			await logoutSession()
 		} finally {
 			setChannelData({})
 			setThreadData({})
+			setChannels([])
 			loadedThreadsRef.current.clear()
 			handleUnauthorized()
 		}
-	}, [handleUnauthorized, setChannelData, setThreadData])
+	}, [handleUnauthorized, setChannelData, setChannels, setThreadData])
 
 	// 再接続・復帰時に取りこぼしを埋めるため、表示中のものを読み直す
 	const resyncRef = useRef<() => void>(() => {})
@@ -287,11 +328,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 		}
 	})
 
-
 	// SSE でリアルタイム更新を受ける
 	useEffect(() => {
 		if (authState !== 'authenticated') return
-		const es = new EventSource(`${API_BASE}/api/events`, { withCredentials: true })
+		const es = createChatEventSource()
 		let openedOnce = false
 
 		es.addEventListener('open', () => {
@@ -327,7 +367,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
 			if (!created.thread_ts) {
 				setChannelData((prev) =>
-					prev[created.channel_id]
+					prev[created.channel_id]?.loaded
 						? {
 								...prev,
 								[created.channel_id]: {

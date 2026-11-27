@@ -1,3 +1,6 @@
+import { isPushSupported, urlBase64ToUint8Array } from '../utils/pushSupport'
+import { API_BASE } from './client'
+
 // syncExistingPushSubscription はログイン後に既存 Push 購読をバックエンドへ再送信し、
 // 現在のログインユーザーに紐づける。
 export async function syncExistingPushSubscription(
@@ -25,35 +28,37 @@ export async function syncExistingPushSubscription(
 	}
 }
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
-	const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
-	const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
-	const rawData = window.atob(base64)
-	const output = new Uint8Array(new ArrayBuffer(rawData.length))
-	for (let i = 0; i < rawData.length; ++i) {
-		output[i] = rawData.charCodeAt(i)
+export const SW_READY_TIMEOUT_MS = 1500
+
+export async function getServiceWorkerRegistration(
+	timeoutMs: number = SW_READY_TIMEOUT_MS
+): Promise<ServiceWorkerRegistration | null> {
+	const existing = await navigator.serviceWorker.getRegistration()
+	if (existing) return existing
+	// SW ブロック環境等で register が動かない場合、ready は永遠に解決しないため上限を設ける
+	let timer: number | undefined
+	try {
+		return await Promise.race([
+			navigator.serviceWorker.ready,
+			new Promise<null>((resolve) => {
+				timer = window.setTimeout(() => resolve(null), timeoutMs)
+			})
+		])
+	} finally {
+		if (timer !== undefined) window.clearTimeout(timer)
 	}
-	return output
 }
 
-export function isPushSupported(): boolean {
-	return 'serviceWorker' in navigator && 'PushManager' in window
-}
-
-// getCurrentSubscription は今の Push 購読を返し、あればログインユーザーに紐づけ直す。
-export async function getCurrentSubscription(
-	apiBase: string,
-	onLog: (msg: string) => void
-): Promise<PushSubscription | null> {
+// getCurrentSubscription は今の Push 購読のみを返す (バックエンド同期は別途バックグラウンドで行う)。
+export async function getCurrentSubscription(timeoutMs: number = SW_READY_TIMEOUT_MS): Promise<PushSubscription | null> {
 	if (!isPushSupported()) return null
-	const reg = await navigator.serviceWorker.ready
-	const sub = await reg.pushManager.getSubscription()
-	if (sub) await syncExistingPushSubscription(apiBase, sub, onLog)
-	return sub
+	const reg = await getServiceWorkerRegistration(timeoutMs)
+	if (!reg) return null
+	return reg.pushManager.getSubscription()
 }
 
 // subscribePush は通知の許可を求め、購読してサーバーへ登録する。
-export async function subscribePush(apiBase: string): Promise<void> {
+export async function subscribePush(apiBase: string = API_BASE): Promise<void> {
 	if (!isPushSupported()) {
 		throw new Error('このブラウザは Web Push に対応していない (iOS はホーム画面に追加して開く必要がある)。')
 	}
@@ -77,7 +82,7 @@ export async function subscribePush(apiBase: string): Promise<void> {
 }
 
 // unsubscribePush は購読を解除し、サーバーからも消す。
-export async function unsubscribePush(apiBase: string): Promise<void> {
+export async function unsubscribePush(apiBase: string = API_BASE): Promise<void> {
 	const reg = await navigator.serviceWorker.ready
 	const sub = await reg.pushManager.getSubscription()
 	if (!sub) return
@@ -91,7 +96,7 @@ export async function unsubscribePush(apiBase: string): Promise<void> {
 }
 
 // sendTestNotify はテスト通知の送信をサーバーへ頼む。
-export async function sendTestNotify(apiBase: string): Promise<void> {
+export async function sendTestNotify(apiBase: string = API_BASE): Promise<void> {
 	const res = await fetch(`${apiBase}/api/test-notify`, {
 		method: 'POST',
 		credentials: 'include',

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BackButton, EmptyState, Page, Spinner, useIsTopPage } from '@nuage/ui'
+import { BackButton, Button, EmptyState, LoadingState, Page, Spinner, useIsTopPage } from '@nuage/ui'
 import { useParams } from 'react-router-dom'
 import Composer from '../components/Composer'
 import MessageTimeline from '../components/MessageTimeline'
 import NewMessagesButton from '../components/NewMessagesButton'
 import { useChatScroll } from '../hooks/useChatScroll'
+import { threadPath, useTabBase } from '../routes/paths'
 import { channelTitle, useChatActions, useChatState } from '../state/chatStore'
-import { threadPath, useTabBase } from '../state/routes'
 import { useChannelsById } from '../state/selectors'
 
 const EMPTY: never[] = []
@@ -86,9 +86,16 @@ export default function ChannelPage() {
 					)}
 				</div>
 				{!data?.loaded ? (
-					<div className="center-spinner">
-						<Spinner />
-					</div>
+					data?.error ? (
+						<EmptyState>
+							<p>{data.error}</p>
+							<div className="empty-action">
+								<Button onClick={() => void loadChannel(channelId)}>再読み込み</Button>
+							</div>
+						</EmptyState>
+					) : (
+						<LoadingState />
+					)
 				) : messages.length === 0 ? (
 					<EmptyState>
 						{isDm

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BackButton, EmptyState, IconButton, Page, Spinner, useIsTopPage, useIsWide } from '@nuage/ui'
+import { BackButton, Button, EmptyState, IconButton, LoadingState, Page, useIsTopPage, useIsWide } from '@nuage/ui'
 import { X } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Composer from '../components/Composer'
@@ -8,11 +8,11 @@ import MessageTimeline from '../components/MessageTimeline'
 import NewMessagesButton from '../components/NewMessagesButton'
 import NotificationDetailPanel from '../components/NotificationDetailPanel'
 import { useChatScroll } from '../hooks/useChatScroll'
+import { channelPath, useTabBase } from '../routes/paths'
 import { channelTitle, threadKey, useChatActions, useChatState } from '../state/chatStore'
-import { channelPath, useTabBase } from '../state/routes'
 import { useChannelsById } from '../state/selectors'
-import { GRAFANA_BASE_URL } from '../utils/url'
 import { messageToUnified } from '../utils/notification'
+import { GRAFANA_BASE_URL } from '../utils/url'
 
 const EMPTY: never[] = []
 
@@ -77,9 +77,16 @@ export default function ThreadPage() {
 		>
 			<div className="chat-inner">
 				{!data?.loaded && !parent ? (
-					<div className="center-spinner">
-						<Spinner />
-					</div>
+					data?.error ? (
+						<EmptyState>
+							<p>{data.error}</p>
+							<div className="empty-action">
+								<Button onClick={() => void loadThread(channelId, ts)}>再読み込み</Button>
+							</div>
+						</EmptyState>
+					) : (
+						<LoadingState />
+					)
 				) : !parent ? (
 					<EmptyState>このスレッドは見つからなかった。</EmptyState>
 				) : (
