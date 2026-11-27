@@ -1,0 +1,175 @@
+{
+  "activity_before_whitespace": {
+    "body": {
+      "firing_count": 0,
+      "has_more": false,
+      "items": [
+        {
+          "channel_id": "C04GENERIC",
+          "channel_name": "generic",
+          "message": {
+            "bot_id": "B00SYSTEM",
+            "channel_id": "C04GENERIC",
+            "created_at": "\u003cTIME\u003e",
+            "level": "info",
+            "source_kind": "notification",
+            "text": "**deploy**\nok",
+            "ts": "TS_01",
+            "updated_at": "\u003cTIME\u003e",
+            "user_id": "U00SYSTEM",
+            "username": "Nuage Notify"
+          }
+        }
+      ]
+    },
+    "status": 200
+  },
+  "auth_login_invalid_json": {
+    "body": {
+      "message": "invalid request body"
+    },
+    "status": 400
+  },
+  "get_thread_403_dm": {
+    "body": {
+      "message": "access denied to another user's DM"
+    },
+    "status": 403
+  },
+  "get_thread_404_channel": {
+    "body": {
+      "message": "channel not found"
+    },
+    "status": 404
+  },
+  "get_thread_404_thread": {
+    "body": {
+      "message": "thread not found"
+    },
+    "status": 404
+  },
+  "list_messages_403_dm": {
+    "body": {
+      "message": "access denied to another user's DM"
+    },
+    "status": 403
+  },
+  "list_messages_404": {
+    "body": {
+      "message": "channel not found"
+    },
+    "status": 404
+  },
+  "mark_read_403_dm": {
+    "body": {
+      "message": "access denied to another user's DM"
+    },
+    "status": 403
+  },
+  "mark_read_404": {
+    "body": {
+      "message": "channel not found"
+    },
+    "status": 404
+  },
+  "post_message_400_empty_text": {
+    "body": {
+      "message": "text is required"
+    },
+    "status": 400
+  },
+  "post_message_400_invalid_json": {
+    "body": {
+      "message": "invalid message payload"
+    },
+    "status": 400
+  },
+  "post_message_403_before_bind": {
+    "body": {
+      "message": "access denied to another user's DM"
+    },
+    "status": 403
+  },
+  "post_message_404_before_bind": {
+    "body": {
+      "message": "channel not found"
+    },
+    "status": 404
+  },
+  "post_message_404_thread_parent": {
+    "body": {
+      "message": "thread parent not found"
+    },
+    "status": 404
+  },
+  "slack_conversations_history_not_found": {
+    "body": {
+      "error": "channel_not_found",
+      "ok": false
+    },
+    "status": 200
+  },
+  "slack_conversations_info_not_found": {
+    "body": {
+      "error": "channel_not_found",
+      "ok": false
+    },
+    "status": 200
+  },
+  "slack_conversations_replies_not_found": {
+    "body": {
+      "error": "thread_not_found",
+      "ok": false
+    },
+    "status": 200
+  },
+  "slack_post_missing_channel_invalid_blocks": {
+    "body": {
+      "error": "channel_not_found",
+      "ok": false
+    },
+    "status": 200
+  },
+  "slack_post_missing_channel_no_text": {
+    "body": {
+      "error": "channel_not_found",
+      "ok": false
+    },
+    "status": 200
+  },
+  "slack_post_no_text": {
+    "body": {
+      "error": "no_text",
+      "ok": false
+    },
+    "status": 200
+  },
+  "slack_post_thread_not_found": {
+    "body": {
+      "error": "thread_not_found",
+      "ok": false
+    },
+    "status": 200
+  },
+  "slack_update_channel_not_found": {
+    "body": {
+      "error": "channel_not_found",
+      "ok": false
+    },
+    "status": 200
+  },
+  "slack_update_message_not_found": {
+    "body": {
+      "error": "message_not_found",
+      "ok": false
+    },
+    "status": 200
+  },
+  "slack_update_missing_params": {
+    "body": {
+      "error": "message_not_found",
+      "ok": false
+    },
+    "status": 200
+  }
+}

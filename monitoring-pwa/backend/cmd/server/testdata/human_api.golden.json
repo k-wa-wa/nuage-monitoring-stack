@@ -1,0 +1,345 @@
+{
+  "auth_login_invalid": {
+    "body": {
+      "message": "合言葉が正しくない"
+    },
+    "status": 401
+  },
+  "auth_login_ok": {
+    "body": {
+      "user": {
+        "display_name": "Alice",
+        "id": "U01ALICE",
+        "name": "alice"
+      }
+    },
+    "status": 200
+  },
+  "auth_logout": {
+    "response": {
+      "status": 204
+    },
+    "set_cookie": [
+      "nuage_notify_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+    ]
+  },
+  "auth_me_authenticated": {
+    "body": {
+      "user": {
+        "display_name": "Alice",
+        "id": "U01ALICE",
+        "name": "alice"
+      }
+    },
+    "status": 200
+  },
+  "auth_me_unauthenticated": {
+    "body": {
+      "message": "authentication required"
+    },
+    "status": 401
+  },
+  "bootstrap": {
+    "body": {
+      "bot": {
+        "id": "B01BOT",
+        "name": "nuage-bot",
+        "online": false,
+        "user_id": "U01BOT"
+      },
+      "channels": [
+        {
+          "created_at": "\u003cTIME\u003e",
+          "id": "C01ALERTMGR",
+          "is_channel": true,
+          "is_im": false,
+          "name": "alertmanager",
+          "purpose": "Prometheus / Alertmanager の発報と解決スレッド",
+          "topic": "Alertmanager アラート",
+          "unread_count": 0
+        },
+        {
+          "created_at": "\u003cTIME\u003e",
+          "id": "C02ARGOCD",
+          "is_channel": true,
+          "is_im": false,
+          "name": "argocd",
+          "purpose": "Argo CD アプリケーション同期イベント",
+          "topic": "Argo CD 同期通知",
+          "unread_count": 0
+        },
+        {
+          "created_at": "\u003cTIME\u003e",
+          "id": "C03KEEL",
+          "is_channel": true,
+          "is_im": false,
+          "name": "keel",
+          "purpose": "Keel コンテナイメージ自動更新イベント",
+          "topic": "Keel 更新通知",
+          "unread_count": 0
+        },
+        {
+          "created_at": "\u003cTIME\u003e",
+          "id": "C04GENERIC",
+          "is_channel": true,
+          "is_im": false,
+          "name": "generic",
+          "purpose": "汎用 Webhook から送信された通知",
+          "topic": "汎用 Webhook 通知",
+          "unread_count": 0
+        },
+        {
+          "created_at": "\u003cTIME\u003e",
+          "id": "C05GENERAL",
+          "is_channel": true,
+          "is_im": false,
+          "name": "general",
+          "purpose": "Bot との会話や運用メモ",
+          "topic": "一般チャット",
+          "unread_count": 0
+        },
+        {
+          "created_at": "\u003cTIME\u003e",
+          "dm_user_id": "U01ALICE",
+          "id": "D01ALICE",
+          "is_channel": false,
+          "is_im": true,
+          "name": "dm-alice",
+          "purpose": "Alice と nuage-bot のダイレクトメッセージ",
+          "topic": "Alice と nuage-bot のダイレクトメッセージ",
+          "unread_count": 0
+        }
+      ],
+      "user": {
+        "display_name": "Alice",
+        "id": "U01ALICE",
+        "name": "alice"
+      }
+    },
+    "status": 200
+  },
+  "channels_list": {
+    "body": [
+      {
+        "created_at": "\u003cTIME\u003e",
+        "id": "C01ALERTMGR",
+        "is_channel": true,
+        "is_im": false,
+        "name": "alertmanager",
+        "purpose": "Prometheus / Alertmanager の発報と解決スレッド",
+        "topic": "Alertmanager アラート",
+        "unread_count": 0
+      },
+      {
+        "created_at": "\u003cTIME\u003e",
+        "id": "C02ARGOCD",
+        "is_channel": true,
+        "is_im": false,
+        "name": "argocd",
+        "purpose": "Argo CD アプリケーション同期イベント",
+        "topic": "Argo CD 同期通知",
+        "unread_count": 0
+      },
+      {
+        "created_at": "\u003cTIME\u003e",
+        "id": "C03KEEL",
+        "is_channel": true,
+        "is_im": false,
+        "name": "keel",
+        "purpose": "Keel コンテナイメージ自動更新イベント",
+        "topic": "Keel 更新通知",
+        "unread_count": 0
+      },
+      {
+        "created_at": "\u003cTIME\u003e",
+        "id": "C04GENERIC",
+        "is_channel": true,
+        "is_im": false,
+        "name": "generic",
+        "purpose": "汎用 Webhook から送信された通知",
+        "topic": "汎用 Webhook 通知",
+        "unread_count": 0
+      },
+      {
+        "created_at": "\u003cTIME\u003e",
+        "id": "C05GENERAL",
+        "is_channel": true,
+        "is_im": false,
+        "name": "general",
+        "purpose": "Bot との会話や運用メモ",
+        "topic": "一般チャット",
+        "unread_count": 0
+      },
+      {
+        "created_at": "\u003cTIME\u003e",
+        "dm_user_id": "U01ALICE",
+        "id": "D01ALICE",
+        "is_channel": false,
+        "is_im": true,
+        "name": "dm-alice",
+        "purpose": "Alice と nuage-bot のダイレクトメッセージ",
+        "topic": "Alice と nuage-bot のダイレクトメッセージ",
+        "unread_count": 0
+      }
+    ],
+    "status": 200
+  },
+  "get_thread": {
+    "body": {
+      "channel": {
+        "created_at": "\u003cTIME\u003e",
+        "id": "C05GENERAL",
+        "is_channel": true,
+        "is_im": false,
+        "name": "general",
+        "purpose": "Bot との会話や運用メモ",
+        "topic": "一般チャット",
+        "unread_count": 0
+      },
+      "parent": {
+        "channel_id": "C05GENERAL",
+        "created_at": "\u003cTIME\u003e",
+        "latest_reply": "TS_02",
+        "reply_count": 1,
+        "text": "hello \u003c@U01BOT\u003e check status",
+        "ts": "TS_01",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U01ALICE",
+        "username": "Alice"
+      },
+      "replies": [
+        {
+          "channel_id": "C05GENERAL",
+          "created_at": "\u003cTIME\u003e",
+          "text": "follow-up reply",
+          "thread_ts": "TS_01",
+          "ts": "TS_02",
+          "updated_at": "\u003cTIME\u003e",
+          "user_id": "U01ALICE",
+          "username": "Alice"
+        }
+      ]
+    },
+    "status": 200
+  },
+  "list_messages": {
+    "body": {
+      "channel": {
+        "created_at": "\u003cTIME\u003e",
+        "id": "C05GENERAL",
+        "is_channel": true,
+        "is_im": false,
+        "name": "general",
+        "purpose": "Bot との会話や運用メモ",
+        "topic": "一般チャット",
+        "unread_count": 0
+      },
+      "has_more": false,
+      "messages": [
+        {
+          "channel_id": "C05GENERAL",
+          "created_at": "\u003cTIME\u003e",
+          "latest_reply": "TS_02",
+          "reply_count": 1,
+          "text": "hello \u003c@U01BOT\u003e check status",
+          "ts": "TS_01",
+          "updated_at": "\u003cTIME\u003e",
+          "user_id": "U01ALICE",
+          "username": "Alice"
+        }
+      ]
+    },
+    "status": 200
+  },
+  "mark_read": {
+    "status": 204
+  },
+  "post_message": {
+    "body": {
+      "bot_online": false,
+      "delivered_to_bot": false,
+      "message": {
+        "channel_id": "C05GENERAL",
+        "created_at": "\u003cTIME\u003e",
+        "text": "hello \u003c@U01BOT\u003e check status",
+        "ts": "TS_01",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U01ALICE",
+        "username": "Alice"
+      }
+    },
+    "status": 201
+  },
+  "post_thread_reply": {
+    "body": {
+      "bot_online": false,
+      "delivered_to_bot": false,
+      "message": {
+        "channel_id": "C05GENERAL",
+        "created_at": "\u003cTIME\u003e",
+        "text": "follow-up reply",
+        "thread_ts": "TS_01",
+        "ts": "TS_02",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U01ALICE",
+        "username": "Alice"
+      }
+    },
+    "status": 201
+  },
+  "search_empty": {
+    "body": [],
+    "status": 200
+  },
+  "search_match": {
+    "body": [
+      {
+        "channel_id": "C05GENERAL",
+        "channel_name": "general",
+        "is_im": false,
+        "message": {
+          "channel_id": "C05GENERAL",
+          "created_at": "\u003cTIME\u003e",
+          "text": "follow-up reply",
+          "thread_ts": "TS_01",
+          "ts": "TS_02",
+          "updated_at": "\u003cTIME\u003e",
+          "user_id": "U01ALICE",
+          "username": "Alice"
+        }
+      }
+    ],
+    "status": 200
+  },
+  "subscribe_invalid": {
+    "body": {
+      "message": "endpoint and keys are required"
+    },
+    "status": 400
+  },
+  "subscribe_ok": {
+    "status": 201
+  },
+  "test_notify_default": {
+    "status": 200
+  },
+  "test_notify_pushes": [
+    {
+      "payload": {
+        "body": "monitoring-pwa からのテスト通知である。",
+        "level": "info",
+        "title": "テスト通知",
+        "url": "/"
+      }
+    }
+  ],
+  "unsubscribe_ok": {
+    "status": 204
+  },
+  "vapid_public_key": {
+    "body": {
+      "publicKey": "test-vapid-public-key"
+    },
+    "status": 200
+  }
+}

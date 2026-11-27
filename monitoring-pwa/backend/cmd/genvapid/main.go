@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/webpush"
 )
 
 func main() {
-	priv, pub, err := push.GenerateVAPIDKeys()
+	priv, pub, err := webpush.GenerateVAPIDKeys()
 	if err != nil {
 		log.Fatalf("failed to generate VAPID keys: %v", err)
 	}

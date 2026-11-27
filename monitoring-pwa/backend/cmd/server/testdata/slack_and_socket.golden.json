@@ -1,0 +1,776 @@
+{
+  "apps_connections_open": {
+    "body": {
+      "ok": true,
+      "url": "ws://\u003cHOST\u003e/slack/socket?ticket=\u003cTICKET\u003e"
+    },
+    "status": 200
+  },
+  "auth_test": {
+    "body": {
+      "bot_id": "B01BOT",
+      "is_enterprise_install": false,
+      "ok": true,
+      "team": "Nuage",
+      "team_id": "T01NUAGE",
+      "url": "http://\u003cHOST\u003e/",
+      "user": "nuage-bot",
+      "user_id": "U01BOT"
+    },
+    "status": 200
+  },
+  "chat_postMessage": {
+    "body": {
+      "channel": "C05GENERAL",
+      "message": {
+        "blocks": [
+          {
+            "text": {
+              "text": "*bot reply text*",
+              "type": "mrkdwn"
+            },
+            "type": "section"
+          }
+        ],
+        "bot_id": "B01BOT",
+        "subtype": "bot_message",
+        "text": "bot reply text",
+        "ts": "TS_02",
+        "type": "message",
+        "user": "U01BOT",
+        "username": "nuage-bot"
+      },
+      "ok": true,
+      "ts": "TS_02"
+    },
+    "status": 200
+  },
+  "chat_postMessage_dm": {
+    "body": {
+      "channel": "D01ALICE",
+      "message": {
+        "bot_id": "B01BOT",
+        "subtype": "bot_message",
+        "text": "private for alice",
+        "ts": "TS_04",
+        "type": "message",
+        "user": "U01BOT",
+        "username": "nuage-bot"
+      },
+      "ok": true,
+      "ts": "TS_04"
+    },
+    "status": 200
+  },
+  "chat_postMessage_dm_push": [
+    {
+      "payload": {
+        "body": "private for alice",
+        "level": "info",
+        "tag": "msg-D01ALICE-TS_04",
+        "title": "nuage-bot (DM)",
+        "url": "/channels/D01ALICE"
+      },
+      "target_user": "U01ALICE"
+    }
+  ],
+  "chat_postMessage_dm_sse_alice": {
+    "data": {
+      "channel_id": "D01ALICE",
+      "payload": {
+        "bot_id": "B01BOT",
+        "channel_id": "D01ALICE",
+        "created_at": "\u003cTIME\u003e",
+        "level": "info",
+        "text": "private for alice",
+        "ts": "TS_04",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U01BOT",
+        "username": "nuage-bot"
+      },
+      "type": "message_created"
+    },
+    "event": "message_created"
+  },
+  "chat_postMessage_push": [
+    {
+      "payload": {
+        "body": "bot reply text",
+        "level": "info",
+        "tag": "msg-C05GENERAL-TS_02",
+        "title": "nuage-bot (#general)",
+        "url": "/channels/C05GENERAL"
+      }
+    }
+  ],
+  "chat_postMessage_reply": {
+    "body": {
+      "channel": "C05GENERAL",
+      "message": {
+        "bot_id": "B01BOT",
+        "subtype": "bot_message",
+        "text": "bot thread detail",
+        "thread_ts": "TS_02",
+        "ts": "TS_03",
+        "type": "message",
+        "user": "U01BOT",
+        "username": "nuage-bot"
+      },
+      "ok": true,
+      "ts": "TS_03"
+    },
+    "status": 200
+  },
+  "chat_postMessage_reply_push": [
+    {
+      "payload": {
+        "body": "bot thread detail",
+        "level": "info",
+        "tag": "msg-C05GENERAL-TS_03",
+        "title": "nuage-bot (#general)",
+        "url": "/channels/C05GENERAL/threads/TS_02"
+      }
+    }
+  ],
+  "chat_postMessage_sse_alice": {
+    "data": {
+      "channel_id": "C05GENERAL",
+      "payload": {
+        "blocks": [
+          {
+            "text": {
+              "text": "*bot reply text*",
+              "type": "mrkdwn"
+            },
+            "type": "section"
+          }
+        ],
+        "bot_id": "B01BOT",
+        "channel_id": "C05GENERAL",
+        "created_at": "\u003cTIME\u003e",
+        "level": "info",
+        "text": "bot reply text",
+        "ts": "TS_02",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U01BOT",
+        "username": "nuage-bot"
+      },
+      "type": "message_created"
+    },
+    "event": "message_created"
+  },
+  "chat_postMessage_sse_bob": {
+    "data": {
+      "channel_id": "C05GENERAL",
+      "payload": {
+        "blocks": [
+          {
+            "text": {
+              "text": "*bot reply text*",
+              "type": "mrkdwn"
+            },
+            "type": "section"
+          }
+        ],
+        "bot_id": "B01BOT",
+        "channel_id": "C05GENERAL",
+        "created_at": "\u003cTIME\u003e",
+        "level": "info",
+        "text": "bot reply text",
+        "ts": "TS_02",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U01BOT",
+        "username": "nuage-bot"
+      },
+      "type": "message_created"
+    },
+    "event": "message_created"
+  },
+  "chat_update": {
+    "body": {
+      "channel": "C05GENERAL",
+      "message": {
+        "bot_id": "B01BOT",
+        "latest_reply": "TS_03",
+        "reply_count": 1,
+        "subtype": "bot_message",
+        "text": "bot updated text",
+        "thread_ts": "TS_02",
+        "ts": "TS_02",
+        "type": "message",
+        "user": "U01BOT",
+        "username": "nuage-bot"
+      },
+      "ok": true,
+      "text": "bot updated text",
+      "ts": "TS_02"
+    },
+    "status": 200
+  },
+  "chat_update_sse_alice": {
+    "data": {
+      "channel_id": "C05GENERAL",
+      "payload": {
+        "bot_id": "B01BOT",
+        "channel_id": "C05GENERAL",
+        "created_at": "\u003cTIME\u003e",
+        "latest_reply": "TS_03",
+        "level": "info",
+        "reply_count": 1,
+        "text": "bot updated text",
+        "ts": "TS_02",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U01BOT",
+        "username": "nuage-bot"
+      },
+      "type": "message_updated"
+    },
+    "event": "message_updated"
+  },
+  "chat_update_sse_bob": {
+    "data": {
+      "channel_id": "C05GENERAL",
+      "payload": {
+        "bot_id": "B01BOT",
+        "channel_id": "C05GENERAL",
+        "created_at": "\u003cTIME\u003e",
+        "latest_reply": "TS_03",
+        "level": "info",
+        "reply_count": 1,
+        "text": "bot updated text",
+        "ts": "TS_02",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U01BOT",
+        "username": "nuage-bot"
+      },
+      "type": "message_updated"
+    },
+    "event": "message_updated"
+  },
+  "conversations_history": {
+    "body": {
+      "has_more": false,
+      "messages": [
+        {
+          "bot_id": "B01BOT",
+          "latest_reply": "TS_03",
+          "reply_count": 1,
+          "subtype": "bot_message",
+          "text": "bot updated text",
+          "thread_ts": "TS_02",
+          "ts": "TS_02",
+          "type": "message",
+          "user": "U01BOT",
+          "username": "nuage-bot"
+        },
+        {
+          "text": "\u003c@U01BOT\u003e status please",
+          "ts": "TS_01",
+          "type": "message",
+          "user": "U01ALICE",
+          "username": "Alice"
+        }
+      ],
+      "ok": true,
+      "response_metadata": {
+        "next_cursor": ""
+      }
+    },
+    "status": 200
+  },
+  "conversations_info": {
+    "body": {
+      "channel": {
+        "created": "\u003cUNIX_TIME\u003e",
+        "id": "C01ALERTMGR",
+        "is_archived": false,
+        "is_channel": true,
+        "is_group": false,
+        "is_im": false,
+        "is_member": true,
+        "is_private": false,
+        "name": "alertmanager",
+        "purpose": {
+          "creator": "U01BOT",
+          "last_set": "\u003cUNIX_TIME\u003e",
+          "value": "Prometheus / Alertmanager の発報と解決スレッド"
+        },
+        "topic": {
+          "creator": "U01BOT",
+          "last_set": "\u003cUNIX_TIME\u003e",
+          "value": "Alertmanager アラート"
+        }
+      },
+      "ok": true
+    },
+    "status": 200
+  },
+  "conversations_list": {
+    "body": {
+      "channels": [
+        {
+          "created": "\u003cUNIX_TIME\u003e",
+          "id": "C01ALERTMGR",
+          "is_archived": false,
+          "is_channel": true,
+          "is_group": false,
+          "is_im": false,
+          "is_member": true,
+          "is_private": false,
+          "name": "alertmanager",
+          "purpose": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "Prometheus / Alertmanager の発報と解決スレッド"
+          },
+          "topic": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "Alertmanager アラート"
+          }
+        },
+        {
+          "created": "\u003cUNIX_TIME\u003e",
+          "id": "C02ARGOCD",
+          "is_archived": false,
+          "is_channel": true,
+          "is_group": false,
+          "is_im": false,
+          "is_member": true,
+          "is_private": false,
+          "name": "argocd",
+          "purpose": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "Argo CD アプリケーション同期イベント"
+          },
+          "topic": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "Argo CD 同期通知"
+          }
+        },
+        {
+          "created": "\u003cUNIX_TIME\u003e",
+          "id": "C03KEEL",
+          "is_archived": false,
+          "is_channel": true,
+          "is_group": false,
+          "is_im": false,
+          "is_member": true,
+          "is_private": false,
+          "name": "keel",
+          "purpose": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "Keel コンテナイメージ自動更新イベント"
+          },
+          "topic": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "Keel 更新通知"
+          }
+        },
+        {
+          "created": "\u003cUNIX_TIME\u003e",
+          "id": "C04GENERIC",
+          "is_archived": false,
+          "is_channel": true,
+          "is_group": false,
+          "is_im": false,
+          "is_member": true,
+          "is_private": false,
+          "name": "generic",
+          "purpose": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "汎用 Webhook から送信された通知"
+          },
+          "topic": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "汎用 Webhook 通知"
+          }
+        },
+        {
+          "created": "\u003cUNIX_TIME\u003e",
+          "id": "C05GENERAL",
+          "is_archived": false,
+          "is_channel": true,
+          "is_group": false,
+          "is_im": false,
+          "is_member": true,
+          "is_private": false,
+          "name": "general",
+          "purpose": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "Bot との会話や運用メモ"
+          },
+          "topic": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "一般チャット"
+          }
+        },
+        {
+          "created": "\u003cUNIX_TIME\u003e",
+          "id": "D01ALICE",
+          "is_archived": false,
+          "is_channel": false,
+          "is_group": false,
+          "is_im": true,
+          "is_member": true,
+          "is_private": false,
+          "name": "dm-alice",
+          "purpose": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "Alice と nuage-bot のダイレクトメッセージ"
+          },
+          "topic": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "Alice と nuage-bot のダイレクトメッセージ"
+          },
+          "user": "U01ALICE"
+        },
+        {
+          "created": "\u003cUNIX_TIME\u003e",
+          "id": "D02BOB",
+          "is_archived": false,
+          "is_channel": false,
+          "is_group": false,
+          "is_im": true,
+          "is_member": true,
+          "is_private": false,
+          "name": "dm-bob",
+          "purpose": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "Bob と nuage-bot のダイレクトメッセージ"
+          },
+          "topic": {
+            "creator": "U01BOT",
+            "last_set": "\u003cUNIX_TIME\u003e",
+            "value": "Bob と nuage-bot のダイレクトメッセージ"
+          },
+          "user": "U02BOB"
+        }
+      ],
+      "ok": true,
+      "response_metadata": {
+        "next_cursor": ""
+      }
+    },
+    "status": 200
+  },
+  "conversations_replies": {
+    "body": {
+      "has_more": false,
+      "messages": [
+        {
+          "bot_id": "B01BOT",
+          "latest_reply": "TS_03",
+          "reply_count": 1,
+          "subtype": "bot_message",
+          "text": "bot updated text",
+          "thread_ts": "TS_02",
+          "ts": "TS_02",
+          "type": "message",
+          "user": "U01BOT",
+          "username": "nuage-bot"
+        },
+        {
+          "bot_id": "B01BOT",
+          "subtype": "bot_message",
+          "text": "bot thread detail",
+          "thread_ts": "TS_02",
+          "ts": "TS_03",
+          "type": "message",
+          "user": "U01BOT",
+          "username": "nuage-bot"
+        }
+      ],
+      "ok": true,
+      "response_metadata": {
+        "next_cursor": ""
+      }
+    },
+    "status": 200
+  },
+  "human_mention_post": {
+    "body": {
+      "bot_online": true,
+      "delivered_to_bot": true,
+      "message": {
+        "channel_id": "C05GENERAL",
+        "created_at": "\u003cTIME\u003e",
+        "text": "\u003c@U01BOT\u003e status please",
+        "ts": "TS_01",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U01ALICE",
+        "username": "Alice"
+      }
+    },
+    "status": 201
+  },
+  "human_mention_sse_alice": {
+    "data": {
+      "channel_id": "C05GENERAL",
+      "payload": {
+        "channel_id": "C05GENERAL",
+        "created_at": "\u003cTIME\u003e",
+        "text": "\u003c@U01BOT\u003e status please",
+        "ts": "TS_01",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U01ALICE",
+        "username": "Alice"
+      },
+      "type": "message_created"
+    },
+    "event": "message_created"
+  },
+  "human_mention_sse_bob": {
+    "data": {
+      "channel_id": "C05GENERAL",
+      "payload": {
+        "channel_id": "C05GENERAL",
+        "created_at": "\u003cTIME\u003e",
+        "text": "\u003c@U01BOT\u003e status please",
+        "ts": "TS_01",
+        "updated_at": "\u003cTIME\u003e",
+        "user_id": "U01ALICE",
+        "username": "Alice"
+      },
+      "type": "message_created"
+    },
+    "event": "message_created"
+  },
+  "invalid_auth_bot": {
+    "body": {
+      "error": "invalid_auth",
+      "ok": false
+    },
+    "status": 200
+  },
+  "invalid_auth_connections_open": {
+    "body": {
+      "error": "invalid_auth",
+      "ok": false
+    },
+    "status": 200
+  },
+  "socket_bot_post_envelope": {
+    "accepts_response_payload": false,
+    "envelope_id": "\u003cENVELOPE_ID\u003e",
+    "payload": {
+      "api_app_id": "A01NUAGE",
+      "event": {
+        "bot_id": "B01BOT",
+        "channel": "C05GENERAL",
+        "channel_type": "channel",
+        "event_ts": "TS_02",
+        "text": "bot reply text",
+        "ts": "TS_02",
+        "type": "message",
+        "user": "U01BOT"
+      },
+      "event_id": "\u003cEVENT_ID\u003e",
+      "event_time": "\u003cUNIX_TIME\u003e",
+      "team_id": "T01NUAGE",
+      "token": "nuage-socket-mode",
+      "type": "event_callback"
+    },
+    "type": "events_api"
+  },
+  "socket_bot_reply_envelope": {
+    "accepts_response_payload": false,
+    "envelope_id": "\u003cENVELOPE_ID\u003e",
+    "payload": {
+      "api_app_id": "A01NUAGE",
+      "event": {
+        "bot_id": "B01BOT",
+        "channel": "C05GENERAL",
+        "channel_type": "channel",
+        "event_ts": "TS_03",
+        "text": "bot thread detail",
+        "thread_ts": "TS_02",
+        "ts": "TS_03",
+        "type": "message",
+        "user": "U01BOT"
+      },
+      "event_id": "\u003cEVENT_ID\u003e",
+      "event_time": "\u003cUNIX_TIME\u003e",
+      "team_id": "T01NUAGE",
+      "token": "nuage-socket-mode",
+      "type": "event_callback"
+    },
+    "type": "events_api"
+  },
+  "socket_dm_envelope": {
+    "accepts_response_payload": false,
+    "envelope_id": "\u003cENVELOPE_ID\u003e",
+    "payload": {
+      "api_app_id": "A01NUAGE",
+      "event": {
+        "bot_id": "B01BOT",
+        "channel": "D01ALICE",
+        "channel_type": "im",
+        "event_ts": "TS_04",
+        "text": "private for alice",
+        "ts": "TS_04",
+        "type": "message",
+        "user": "U01BOT"
+      },
+      "event_id": "\u003cEVENT_ID\u003e",
+      "event_time": "\u003cUNIX_TIME\u003e",
+      "team_id": "T01NUAGE",
+      "token": "nuage-socket-mode",
+      "type": "event_callback"
+    },
+    "type": "events_api"
+  },
+  "socket_hello": {
+    "connection_info": {
+      "app_id": "A01NUAGE"
+    },
+    "debug_info": {
+      "approximate_connection_time": 1800,
+      "build_number": 1,
+      "host": "nuage-monitoring-pwa",
+      "started_connecting": "\u003cTIME\u003e"
+    },
+    "num_connections": 1,
+    "type": "hello"
+  },
+  "socket_human_mention_envelopes": [
+    {
+      "accepts_response_payload": false,
+      "envelope_id": "\u003cENVELOPE_ID\u003e",
+      "payload": {
+        "api_app_id": "A01NUAGE",
+        "event": {
+          "channel": "C05GENERAL",
+          "channel_type": "channel",
+          "event_ts": "TS_01",
+          "text": "\u003c@U01BOT\u003e status please",
+          "ts": "TS_01",
+          "type": "message",
+          "user": "U01ALICE"
+        },
+        "event_id": "\u003cEVENT_ID\u003e",
+        "event_time": "\u003cUNIX_TIME\u003e",
+        "team_id": "T01NUAGE",
+        "token": "nuage-socket-mode",
+        "type": "event_callback"
+      },
+      "type": "events_api"
+    },
+    {
+      "accepts_response_payload": false,
+      "envelope_id": "\u003cENVELOPE_ID\u003e",
+      "payload": {
+        "api_app_id": "A01NUAGE",
+        "event": {
+          "channel": "C05GENERAL",
+          "channel_type": "channel",
+          "event_ts": "TS_01",
+          "text": "\u003c@U01BOT\u003e status please",
+          "ts": "TS_01",
+          "type": "app_mention",
+          "user": "U01ALICE"
+        },
+        "event_id": "\u003cEVENT_ID\u003e",
+        "event_time": "\u003cUNIX_TIME\u003e",
+        "team_id": "T01NUAGE",
+        "token": "nuage-socket-mode",
+        "type": "event_callback"
+      },
+      "type": "events_api"
+    }
+  ],
+  "sse_bot_online_alice": {
+    "data": {
+      "payload": {
+        "online": true
+      },
+      "type": "bot_status"
+    },
+    "event": "bot_status"
+  },
+  "sse_bot_online_bob": {
+    "data": {
+      "payload": {
+        "online": true
+      },
+      "type": "bot_status"
+    },
+    "event": "bot_status"
+  },
+  "unknown_method": {
+    "body": {
+      "error": "unknown_method",
+      "ok": false
+    },
+    "status": 200
+  },
+  "users_info_bot": {
+    "body": {
+      "ok": true,
+      "user": {
+        "id": "U01BOT",
+        "is_bot": true,
+        "name": "nuage-bot",
+        "profile": {
+          "display_name": "nuage-bot",
+          "real_name": "nuage-bot"
+        },
+        "real_name": "nuage-bot",
+        "team_id": "T01NUAGE"
+      }
+    },
+    "status": 200
+  },
+  "users_info_human": {
+    "body": {
+      "ok": true,
+      "user": {
+        "id": "U01ALICE",
+        "is_bot": false,
+        "name": "alice",
+        "profile": {
+          "display_name": "Alice",
+          "real_name": "Alice"
+        },
+        "real_name": "Alice",
+        "team_id": "T01NUAGE"
+      }
+    },
+    "status": 200
+  },
+  "users_info_not_found": {
+    "body": {
+      "error": "user_not_found",
+      "ok": false
+    },
+    "status": 200
+  },
+  "users_info_system": {
+    "body": {
+      "ok": true,
+      "user": {
+        "id": "U00SYSTEM",
+        "is_bot": true,
+        "name": "nuage-notify",
+        "profile": {
+          "display_name": "nuage-notify",
+          "real_name": "nuage-notify"
+        },
+        "real_name": "nuage-notify",
+        "team_id": "T01NUAGE"
+      }
+    },
+    "status": 200
+  }
+}
