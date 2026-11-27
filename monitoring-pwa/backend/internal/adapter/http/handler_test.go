@@ -3,6 +3,7 @@ package httpadapter_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -192,5 +193,53 @@ func TestActivityAPI(t *testing.T) {
 	}
 	if rec, _ := get("?filter=bogus"); rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for unknown filter, got %d", rec.Code)
+	}
+}
+
+type failingActivityRepo struct {
+	usecase.MessageRepository
+	listErr  error
+	countErr error
+}
+
+func (f failingActivityRepo) ListActivity(domain.ActivityFilter, string, int) ([]domain.ActivityItem, bool, error) {
+	return nil, false, f.listErr
+}
+
+func (f failingActivityRepo) CountFiringAlerts() (int, error) {
+	return 0, f.countErr
+}
+
+func TestActivityAPI_Errors(t *testing.T) {
+	cases := []struct {
+		name    string
+		repo    failingActivityRepo
+		wantMsg string
+	}{
+		{
+			name:    "ListActivity failure",
+			repo:    failingActivityRepo{listErr: errors.New("db down")},
+			wantMsg: "failed to list activity",
+		},
+		{
+			name:    "CountFiringAlerts failure",
+			repo:    failingActivityRepo{countErr: errors.New("db down")},
+			wantMsg: "failed to count firing alerts",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := httpadapter.NewActivityHandler(usecase.NewActivityUsecase(tc.repo))
+			rec := httptest.NewRecorder()
+			err := h.Activity(echo.New().NewContext(httptest.NewRequest(http.MethodGet, "/api/activity", nil), rec))
+			he, ok := err.(*echo.HTTPError)
+			if !ok {
+				t.Fatalf("expected *echo.HTTPError, got %T (%v)", err, err)
+			}
+			if he.Code != http.StatusInternalServerError || he.Message != tc.wantMsg {
+				t.Fatalf("got (%d, %v), want (%d, %q)", he.Code, he.Message, http.StatusInternalServerError, tc.wantMsg)
+			}
+		})
 	}
 }

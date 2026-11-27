@@ -1,6 +1,10 @@
 package usecase
 
-import "github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/domain"
+import (
+	"fmt"
+
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/domain"
+)
 
 // ActivityResult は通知タブ一覧の応答データである。
 type ActivityResult struct {
@@ -27,7 +31,7 @@ func (a *ActivityUsecase) List(filter domain.ActivityFilter, beforeTS string, li
 	}
 	firing, err := a.messages.CountFiringAlerts()
 	if err != nil {
-		return ActivityResult{}, err
+		return ActivityResult{}, fmt.Errorf("%w: %v", ErrCountFiringAlerts, err)
 	}
 	return ActivityResult{
 		Items:       items,

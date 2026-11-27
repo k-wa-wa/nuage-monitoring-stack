@@ -47,9 +47,9 @@ func TestArchitectureDependencies(t *testing.T) {
 	pkgs := listModulePackages(t)
 
 	forbiddenInUsecase := map[string]bool{
-		"database/sql":                     true,
-		"modernc.org/sqlite":               true,
-		"github.com/gorilla/websocket":     true,
+		"database/sql":                          true,
+		"modernc.org/sqlite":                    true,
+		"github.com/gorilla/websocket":          true,
 		"github.com/SherClockHolmes/webpush-go": true,
 	}
 

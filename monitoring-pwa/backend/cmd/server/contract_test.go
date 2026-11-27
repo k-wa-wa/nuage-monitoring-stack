@@ -269,9 +269,9 @@ func toSnapshot(status int, raw []byte) httpSnapshot {
 }
 
 type normalizer struct {
-	tsMap  map[string]string
-	tsSeq  int
-	host   string
+	tsMap map[string]string
+	tsSeq int
+	host  string
 }
 
 func newNormalizer(host string) *normalizer {

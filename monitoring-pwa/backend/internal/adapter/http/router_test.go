@@ -23,7 +23,7 @@ import (
 
 type noopSender struct{}
 
-func (noopSender) Broadcast(context.Context, domain.PushNotification)                 {}
+func (noopSender) Broadcast(context.Context, domain.PushNotification)               {}
 func (noopSender) BroadcastToUser(context.Context, string, domain.PushNotification) {}
 
 func TestEndToEndAuthBoundary(t *testing.T) {

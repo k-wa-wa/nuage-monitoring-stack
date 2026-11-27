@@ -13,6 +13,7 @@ var (
 	ErrChannelFetch      = errors.New("failed to fetch channel")
 	ErrThreadNotFound    = errors.New("thread parent not found")
 	ErrThreadVerify      = errors.New("failed to verify thread parent")
+	ErrCountFiringAlerts = errors.New("failed to count firing alerts")
 	ErrForbidden         = errors.New("forbidden")
 	ErrInvalidInput      = errors.New("invalid input")
 	ErrInvalidPassphrase = errors.New("invalid passphrase")

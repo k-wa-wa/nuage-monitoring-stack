@@ -1,6 +1,7 @@
 package httpadapter
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -30,6 +31,9 @@ func (h *ActivityHandler) Activity(c echo.Context) error {
 	limit := parseLimitParam(c, 50, 200)
 	res, err := h.activityUC.List(filter, strings.TrimSpace(c.QueryParam("before")), limit)
 	if err != nil {
+		if errors.Is(err, usecase.ErrCountFiringAlerts) {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to count firing alerts")
+		}
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to list activity")
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
