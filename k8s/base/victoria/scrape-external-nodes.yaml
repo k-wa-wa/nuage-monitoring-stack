@@ -1,4 +1,5 @@
 # クラスタ外の NixOS ホストの node-exporter。
+# virt ラベル (lxc / vm) で仮想化方式を区別し、NodeSystemSaturation アラート等の指標を切り替える。
 # TODO:
 # - 追加したホスト (swfs-cluster-1/2/3, mainframe, atelier, lm-server, bluray-extractor, chaos-monitor) の勘定を nuage-usage-ledger の mvs/cntl/ACCTDEF に登録する
 apiVersion: operator.victoriametrics.com/v1beta1
@@ -14,11 +15,13 @@ spec:
         - 10.20.1.23:9100
       labels:
         role: loadbalancer
+        virt: lxc
       interval: 30s
     - targets:
         - 10.20.1.30:9100
       labels:
         role: egress-gateway
+        virt: lxc
       interval: 30s
     - targets:
         - 10.20.1.41:9100
@@ -26,11 +29,13 @@ spec:
         - 10.20.1.43:9100
       labels:
         role: postgres-cluster
+        virt: lxc
       interval: 30s
     - targets:
         - 10.20.1.52:9100
       labels:
         role: atelier
+        virt: vm
       interval: 30s
     - targets:
         - 10.20.1.61:9100
@@ -38,25 +43,30 @@ spec:
         - 10.20.1.63:9100
       labels:
         role: swfs-cluster
+        virt: lxc
       interval: 30s
     - targets:
         - 10.20.1.80:9100
       labels:
         role: bluray-extractor
+        virt: vm
       interval: 30s
     - targets:
         - 10.20.1.90:9100
       labels:
         role: mainframe
+        virt: lxc
       interval: 30s
     - targets:
         - 10.20.1.250:9100
       labels:
         role: chaos-monitor
+        virt: lxc
       interval: 30s
     # lm-server は現在 VM 停止中（起動および SDN 接続後に有効化する）
     # - targets:
     #     - 192.168.5.222:9100
     #   labels:
     #     role: lm-server
+    #     virt: vm
     #   interval: 30s
