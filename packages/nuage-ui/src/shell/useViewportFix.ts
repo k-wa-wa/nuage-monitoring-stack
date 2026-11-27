@@ -8,11 +8,11 @@ function isEditableElement(el: Element | null): boolean {
 }
 
 /**
- * iOS Safari / PWA のソフトウェアキーボード開閉に合わせて
+ * iPhone (Safari のタブ・ホーム画面 PWA) のソフトウェアキーボード開閉に合わせて
  * --app-height / --app-offset-top を更新し、閉じた際のスクロールずれを戻すフックである。
  * あわせて通常画面でのピンチズーム (iOS gesturestart 等) を抑止する。
  */
-export function useVisualViewport(): void {
+export function useViewportFix(): void {
 	useEffect(() => {
 		const root = document.documentElement
 		let maxObservedHeight = window.innerHeight

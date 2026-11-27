@@ -1,63 +1,50 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-	IonBackButton,
-	IonButtons,
-	IonContent,
-	IonFooter,
-	IonHeader,
-	IonPage,
-	IonSpinner,
-	IonTitle,
-	IonToolbar,
-	useIonViewDidEnter,
-	useIonViewWillLeave
-} from '@ionic/react'
-import { useParams } from 'react-router-dom'
+import { BackButton, EmptyState, IconButton, Page, Spinner, useIsTopPage, useIsWide } from '@nuage/ui'
+import { X } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router-dom'
 import Composer from '../components/Composer'
 import MessageRow from '../components/MessageRow'
 import MessageTimeline from '../components/MessageTimeline'
 import NewMessagesButton from '../components/NewMessagesButton'
 import NotificationDetailPanel from '../components/NotificationDetailPanel'
-import { useIonChatScroll } from '../hooks/useIonChatScroll'
-import { channelTitle, threadKey, useChat } from '../state/chatStore'
-import { useChannelsById } from '../state/selectors'
+import { useChatScroll } from '../hooks/useChatScroll'
+import { channelTitle, threadKey, useChatActions, useChatState } from '../state/chatStore'
 import { channelPath, useTabBase } from '../state/routes'
+import { useChannelsById } from '../state/selectors'
 import { GRAFANA_BASE_URL } from '../utils/url'
 import { messageToUnified } from '../utils/notification'
 
+const EMPTY: never[] = []
+
 export default function ThreadPage() {
 	const { channelId = '', ts = '' } = useParams<{ channelId: string; ts: string }>()
-	const { user, bot, channels, threadData, loadThread, postMessage, enterChannel } = useChat()
+	const { loadThread, postMessage, enterChannel } = useChatActions()
+	const user = useChatState((s) => s.user)
+	const bot = useChatState((s) => s.bot)
+	const channel = useChatState((s) => s.channels.find((c) => c.id === channelId))
+	const data = useChatState((s) => s.threadData[threadKey(channelId, ts)])
 	const channelsById = useChannelsById()
 	const base = useTabBase()
-	const channel = channels.find((c) => c.id === channelId)
-	const data = threadData[threadKey(channelId, ts)]
+	const isTop = useIsTopPage()
+	const isWide = useIsWide()
+	const navigate = useNavigate()
 	const parent = data?.parent ?? null
-	const replies = useMemo(() => data?.replies ?? [], [data])
+	const replies = data?.replies ?? EMPTY
 	const [sendError, setSendError] = useState<string | null>(null)
-	const contentRef = useRef<HTMLIonContentElement | null>(null)
-	const leaveRef = useRef<(() => void) | null>(null)
+	const scrollRef = useRef<HTMLDivElement | null>(null)
 
 	useEffect(() => {
 		if (channelId && ts) void loadThread(channelId, ts)
 	}, [channelId, ts, loadThread])
 
-	useIonViewDidEnter(() => {
-		leaveRef.current?.()
-		leaveRef.current = enterChannel(channelId)
-	}, [channelId, enterChannel])
-	useIonViewWillLeave(() => {
-		leaveRef.current?.()
-		leaveRef.current = null
-	}, [])
-	useEffect(() => () => leaveRef.current?.(), [])
+	useEffect(() => {
+		if (!isTop || !channelId) return
+		return enterChannel(channelId)
+	}, [isTop, channelId, enterChannel])
 
-	const itemIds = useMemo(
-		() => (parent ? [parent.ts, ...replies.map((r) => r.ts)] : []),
-		[parent, replies]
-	)
-	const { handleScroll, hasNewMessages, scrollToBottom, stickToBottomOnNext } = useIonChatScroll({
-		contentRef,
+	const itemIds = useMemo(() => (parent ? [parent.ts, ...replies.map((r) => r.ts)] : []), [parent, replies])
+	const { handleScroll, hasNewMessages, scrollToBottom, stickToBottomOnNext } = useChatScroll({
+		scrollRef,
 		itemIds,
 		hasMore: false,
 		loadingOlder: false,
@@ -74,35 +61,27 @@ export default function ThreadPage() {
 		return res.ok
 	}
 
+	// PC の横並びでは右の列に出すので、戻るの代わりに閉じる (スレッドを閉じて元の画面に戻る)
+	const close = () => navigate(base === '/tabs/activity' ? base : channelPath(base, channelId))
+
 	return (
-		<IonPage className="chat-page">
-			<IonHeader translucent>
-				<IonToolbar>
-					<IonButtons slot="start">
-						<IonBackButton defaultHref={channelPath(base, channelId)} text="" />
-					</IonButtons>
-					<IonTitle>
-						<div className="chat-title">
-							<span className="chat-title-name">スレッド</span>
-							<span className="chat-title-status">{channelTitle(channel, bot)}</span>
-						</div>
-					</IonTitle>
-				</IonToolbar>
-			</IonHeader>
-			<IonContent
-				ref={contentRef}
-				fullscreen
-				scrollEvents
-				onIonScroll={handleScroll}
-				className="chat-content"
-			>
-				<div className="chat-inner">
+		<Page
+			className="chat-page"
+			title="スレッド"
+			subtitle={channelTitle(channel, bot)}
+			start={isWide ? undefined : <BackButton />}
+			end={isWide ? <IconButton label="スレッドを閉じる" icon={<X size={18} aria-hidden="true" />} onClick={close} /> : undefined}
+			scrollRef={scrollRef}
+			onScroll={handleScroll}
+			footer={<Composer placeholder="スレッドに返信" onSend={handleSend} error={sendError} />}
+		>
+			<div className="chat-inner">
 				{!data?.loaded && !parent ? (
 					<div className="center-spinner">
-						<IonSpinner name="crescent" />
+						<Spinner />
 					</div>
 				) : !parent ? (
-					<div className="empty-note">このスレッドは見つからなかった。</div>
+					<EmptyState>このスレッドは見つからなかった。</EmptyState>
 				) : (
 					<>
 						<MessageRow
@@ -131,12 +110,8 @@ export default function ThreadPage() {
 						/>
 					</>
 				)}
-				</div>
-				<NewMessagesButton visible={hasNewMessages} onClick={() => scrollToBottom(true)} />
-			</IonContent>
-			<IonFooter translucent>
-				<Composer placeholder="スレッドに返信" onSend={handleSend} error={sendError} />
-			</IonFooter>
-		</IonPage>
+			</div>
+			<NewMessagesButton visible={hasNewMessages} onClick={() => scrollToBottom(true)} />
+		</Page>
 	)
 }

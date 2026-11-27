@@ -1,22 +1,13 @@
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	type ReactNode
-} from 'react'
-import type { AuthUser, BootstrapResponse, BotInfo, Channel, ChatMessage } from '../types/chat'
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from 'react'
+import type { BootstrapResponse, ChatMessage } from '../types/chat'
 import {
 	API_BASE,
 	ChatContext,
+	ChatStore,
 	DEFAULT_BOT,
 	threadKey,
-	type AuthState,
-	type ChannelData,
 	type ChatContextValue,
-	type PostResult,
-	type ThreadData
+	type PostResult
 } from './chatStore'
 
 function appendUnique(list: ChatMessage[], msg: ChatMessage): ChatMessage[] {
@@ -24,13 +15,28 @@ function appendUnique(list: ChatMessage[], msg: ChatMessage): ChatMessage[] {
 }
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-	const [authState, setAuthState] = useState<AuthState>('loading')
-	const [user, setUser] = useState<AuthUser | null>(null)
-	const [bot, setBot] = useState<BotInfo>(DEFAULT_BOT)
-	const [channels, setChannels] = useState<Channel[]>([])
-	const [channelData, setChannelData] = useState<Record<string, ChannelData>>({})
-	const [threadData, setThreadData] = useState<Record<string, ThreadData>>({})
-	const [activityVersion, setActivityVersion] = useState(0)
+	const store = useMemo(
+		() =>
+			new ChatStore({
+				authState: 'loading',
+				user: null,
+				bot: DEFAULT_BOT,
+				channels: [],
+				channelData: {},
+				threadData: {},
+				activityVersion: 0
+			}),
+		[]
+	)
+	const setAuthState = useMemo(() => store.setter('authState'), [store])
+	const setUser = useMemo(() => store.setter('user'), [store])
+	const setBot = useMemo(() => store.setter('bot'), [store])
+	const setChannels = useMemo(() => store.setter('channels'), [store])
+	const setChannelData = useMemo(() => store.setter('channelData'), [store])
+	const setThreadData = useMemo(() => store.setter('threadData'), [store])
+	const setActivityVersion = useMemo(() => store.setter('activityVersion'), [store])
+	const authState = useSyncExternalStore(store.subscribe, () => store.get().authState)
+	const user = useSyncExternalStore(store.subscribe, () => store.get().user)
 
 	const userIdRef = useRef<string | null>(null)
 	// チャンネル ID ごとの表示中の画面数 (チャンネル画面とスレッド画面が重なることがある)
@@ -44,7 +50,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 	const handleUnauthorized = useCallback(() => {
 		setAuthState('unauthenticated')
 		setUser(null)
-	}, [])
+	}, [setAuthState, setUser])
 
 	const apiFetch = useCallback(
 		async (path: string, init?: RequestInit): Promise<Response | null> => {
@@ -75,7 +81,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 			console.error('Bootstrap failed:', err)
 			setAuthState((prev) => (prev === 'loading' ? 'unauthenticated' : prev))
 		}
-	}, [apiFetch])
+	}, [apiFetch, setAuthState, setUser, setBot, setChannels])
 
 	useEffect(() => {
 		void reloadBootstrap()
@@ -96,7 +102,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				// 既読の記録に失敗しても表示は続ける (次の bootstrap で未読数が戻る)
 			}
 		},
-		[apiFetch]
+		[apiFetch, setChannels]
 	)
 
 	const loadChannel = useCallback(
@@ -124,12 +130,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				console.error('Failed to load messages:', err)
 			}
 		},
-		[apiFetch, markRead]
+		[apiFetch, markRead, setChannelData]
 	)
 
 	const loadOlder = useCallback(
 		async (channelId: string) => {
-			const current = channelData[channelId]
+			const current = store.get().channelData[channelId]
 			if (!current || current.loadingOlder || !current.hasMore || current.messages.length === 0) {
 				return
 			}
@@ -169,7 +175,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				)
 			}
 		},
-		[apiFetch, channelData]
+		[apiFetch, store, setChannelData]
 	)
 
 	const loadThread = useCallback(
@@ -196,7 +202,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				console.error('Failed to load thread:', err)
 			}
 		},
-		[apiFetch]
+		[apiFetch, setThreadData]
 	)
 
 	const postMessage = useCallback(
@@ -237,7 +243,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 				return { ok: false, error: 'ネットワークエラーで送信できなかった。接続を確かめて再送してほしい。' }
 			}
 		},
-		[apiFetch]
+		[apiFetch, setBot, setChannelData, setThreadData]
 	)
 
 	const enterChannel = useCallback(
@@ -263,21 +269,24 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 			loadedThreadsRef.current.clear()
 			handleUnauthorized()
 		}
-	}, [handleUnauthorized])
+	}, [handleUnauthorized, setChannelData, setThreadData])
 
 	// 再接続・復帰時に取りこぼしを埋めるため、表示中のものを読み直す
 	const resyncRef = useRef<() => void>(() => {})
-	resyncRef.current = () => {
-		void reloadBootstrap()
-		for (const channelId of viewingRef.current.keys()) {
-			void loadChannel(channelId)
+	useEffect(() => {
+		resyncRef.current = () => {
+			void reloadBootstrap()
+			for (const channelId of viewingRef.current.keys()) {
+				void loadChannel(channelId)
+			}
+			for (const key of loadedThreadsRef.current) {
+				const idx = key.indexOf(':')
+				void loadThread(key.slice(0, idx), key.slice(idx + 1))
+			}
+			setActivityVersion((v) => v + 1)
 		}
-		for (const key of loadedThreadsRef.current) {
-			const idx = key.indexOf(':')
-			void loadThread(key.slice(0, idx), key.slice(idx + 1))
-		}
-		setActivityVersion((v) => v + 1)
-	}
+	})
+
 
 	// SSE でリアルタイム更新を受ける
 	useEffect(() => {
@@ -399,41 +408,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 			window.removeEventListener('online', handleOnline)
 			es.close()
 		}
-	}, [authState, markRead])
+	}, [authState, markRead, setBot, setChannels, setChannelData, setThreadData, setActivityVersion])
 
 	const value = useMemo<ChatContextValue>(
 		() => ({
-			authState,
-			user,
-			bot,
-			channels,
-			channelData,
-			threadData,
-			activityVersion,
-			reloadBootstrap,
-			logout,
-			loadChannel,
-			loadOlder,
-			loadThread,
-			postMessage,
-			enterChannel
+			store,
+			actions: { reloadBootstrap, logout, loadChannel, loadOlder, loadThread, postMessage, enterChannel }
 		}),
-		[
-			authState,
-			user,
-			bot,
-			channels,
-			channelData,
-			threadData,
-			activityVersion,
-			reloadBootstrap,
-			logout,
-			loadChannel,
-			loadOlder,
-			loadThread,
-			postMessage,
-			enterChannel
-		]
+		[store, reloadBootstrap, logout, loadChannel, loadOlder, loadThread, postMessage, enterChannel]
 	)
 
 	return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>

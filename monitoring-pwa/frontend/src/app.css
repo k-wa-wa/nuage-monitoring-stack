@@ -1,0 +1,746 @@
+/*
+ * Nuage Notify 固有の見た目 (メッセージ行・本文・通知の詳細など)。
+ * 色・余白・文字の大きさ・角丸は @nuage/ui のトークン (Nuage UI 規約) を経由する。
+ */
+
+.boot-spinner,
+.center-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) 0;
+}
+
+.boot-spinner {
+  flex: 1;
+}
+
+.iframe-fallback {
+  padding: var(--space-5);
+  text-align: center;
+}
+
+/* ---------- チャンネルの一覧 (ホーム・サイドバー) ---------- */
+.channel-nav {
+  padding-bottom: var(--space-2);
+}
+
+.channel-nav-search {
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.bot-status-line {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.status-dot[data-online='true'] {
+  background: var(--success);
+}
+
+.dm-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-md);
+  background: var(--accent-emphasis);
+  color: var(--accent);
+}
+
+.dm-presence {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--card);
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.dm-presence[data-online='true'] {
+  background: var(--success);
+}
+
+.search-result-author,
+.search-result-time {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+/* ---------- 通知タブ ---------- */
+.activity-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+
+.activity-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.activity-source {
+  font-family: var(--font-mono);
+}
+
+.activity-time {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.tone-warn {
+  color: var(--warn);
+}
+
+.tone-success {
+  color: var(--success);
+}
+
+.tone-blocked {
+  color: var(--blocked);
+}
+
+.tone-accent {
+  color: var(--accent);
+}
+
+/* ---------- チャット画面 ---------- */
+.timeline-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.channel-intro {
+  align-self: stretch;
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+
+.channel-intro-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+.channel-intro-text {
+  color: var(--muted);
+}
+
+.timeline {
+  padding-bottom: var(--space-1);
+}
+
+.day-divider,
+.replies-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) var(--space-4) var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.day-divider::before,
+.day-divider::after,
+.replies-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.msg-row {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+}
+
+.msg-row.compact {
+  padding-top: 0;
+  padding-bottom: var(--space-1);
+}
+
+@media (hover: hover) {
+  .msg-row:hover {
+    background: var(--muted-subtle);
+  }
+  .msg-row.compact:hover .msg-gutter-time {
+    visibility: visible;
+  }
+}
+
+.msg-gutter {
+  flex: 0 0 36px;
+  display: flex;
+  justify-content: center;
+}
+
+.msg-gutter-time {
+  visibility: hidden;
+  font-size: var(--text-xs);
+  line-height: 20px;
+  color: var(--muted);
+}
+
+.msg-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--muted-subtle);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.msg-avatar.tone-accent {
+  background: var(--accent-emphasis);
+  color: var(--accent);
+}
+
+.msg-avatar.tone-success {
+  background: var(--success-emphasis);
+  color: var(--success);
+}
+
+.msg-avatar.tone-warn {
+  background: var(--warn-emphasis);
+  color: var(--warn);
+}
+
+.msg-avatar.tone-blocked {
+  background: var(--blocked-emphasis);
+  color: var(--blocked);
+}
+
+.msg-avatar.tone-self {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.msg-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.msg-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  line-height: 1.3;
+}
+
+.msg-author {
+  font-weight: 600;
+}
+
+.msg-app-badge {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--muted-emphasis);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.msg-time {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.msg-status {
+  display: inline-block;
+  margin: var(--space-1) 0 0;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.msg-status.firing {
+  background: var(--warn-emphasis);
+  color: var(--warn);
+}
+
+.msg-status.resolved {
+  background: var(--success-emphasis);
+  color: var(--success);
+}
+
+.msg-body {
+  font-size: var(--text-md);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.msg-thread-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.thread-detail {
+  margin: var(--space-1) var(--space-4) var(--space-2) 64px;
+}
+
+/* 「新着あり」は本文のいちばん下に貼り付け、スクロールしても見える位置に置く */
+.new-messages-anchor {
+  position: sticky;
+  bottom: var(--space-3);
+  display: flex;
+  justify-content: center;
+  height: 0;
+  overflow: visible;
+}
+
+.new-messages-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 32px;
+  margin-top: -40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--bg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  box-shadow: var(--shadow-pop);
+}
+
+/* 送信欄 */
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.composer-input {
+  flex: 1;
+  min-height: 36px;
+}
+
+.composer-send {
+  flex-shrink: 0;
+}
+
+.composer-error,
+.composer-notice {
+  margin: 0 var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.composer-error {
+  color: var(--warn);
+}
+
+.composer-notice {
+  color: var(--muted);
+}
+
+/* ---------- 設定・ログイン ---------- */
+.settings-value {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.settings-link {
+  color: var(--accent);
+}
+
+.settings-code {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.code-sample,
+.log-line {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.settings-note {
+  color: var(--muted);
+}
+
+.logout-area {
+  padding: var(--space-6) var(--space-4) 0;
+}
+
+.login-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--space-6) + var(--safe-top)) var(--space-4) calc(var(--space-6) + var(--safe-bottom));
+}
+
+.login-card {
+  width: min(400px, 100%);
+  padding: var(--space-6) var(--space-5);
+}
+
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.login-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: url('/icons/icon-192.png') center / cover no-repeat;
+}
+
+.login-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.login-subtitle {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+/* ---------- 通知の詳細 (NotificationDetailPanel) ---------- */
+.history-detail-panel {
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  font-size: var(--text-sm);
+}
+
+.details-parsed,
+.details-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.details-parsed {
+  gap: var(--space-3);
+}
+
+.details-sec-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.tag-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.badge-tag {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.details-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.details-table td {
+  padding: var(--space-1) var(--space-1);
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.details-table tr:last-child td {
+  border-bottom: none;
+}
+
+.details-key {
+  width: 32%;
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+
+.details-val {
+  word-break: break-all;
+}
+
+.details-text {
+  white-space: pre-wrap;
+}
+
+.details-links-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.btn-secondary {
+  border: 1px solid var(--line);
+  background: var(--muted-subtle);
+  color: var(--fg);
+}
+
+.log-code {
+  max-height: 240px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ---------- 本文 (Markdown・Block Kit。SlackRichText) ---------- */
+.slack-mrkdwn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.gfm-body ul,
+.gfm-body ol {
+  margin: 2px 0;
+  padding-left: var(--space-5);
+}
+
+.gfm-body li.task-list-item {
+  list-style: none;
+  margin-left: calc(var(--space-4) * -1);
+}
+
+.gfm-body h1,
+.gfm-body h2,
+.gfm-body h3,
+.gfm-body h4 {
+  margin: var(--space-1) 0 2px;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.slack-inline-code {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.slack-codeblock {
+  margin: var(--space-1) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.slack-quote {
+  margin: 2px 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--muted-border);
+  color: var(--muted);
+}
+
+.slack-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.slack-mention,
+.slack-channel {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--accent-emphasis);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.slack-mention-special {
+  background: var(--blocked-emphasis);
+  color: var(--blocked);
+}
+
+.slack-divider {
+  margin: var(--space-2) 0;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+.slack-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.slack-section-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.slack-block-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.gfm-table-wrap {
+  margin: var(--space-2) 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.gfm-table {
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.gfm-table th,
+.gfm-table td {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line);
+  text-align: left;
+}
+
+.gfm-table th {
+  background: var(--muted-subtle);
+  font-weight: 600;
+}
+
+.slack-image-trigger {
+  display: inline-block;
+  max-width: 100%;
+  margin: var(--space-1) 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  line-height: 0;
+  cursor: zoom-in;
+}
+
+.slack-inline-image {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+}
+
+/* 画像の全画面表示 (ImageLightbox) */
+.image-lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  background: var(--overlay);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.image-lightbox-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.image-lightbox-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background: var(--muted-emphasis);
+  color: var(--fg);
+}
+
+.image-lightbox-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.image-lightbox-stage.zoomed {
+  overflow: auto;
+  touch-action: pan-x pan-y;
+}
+
+.image-lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center;
+  transition: transform 0.2s ease;
+}

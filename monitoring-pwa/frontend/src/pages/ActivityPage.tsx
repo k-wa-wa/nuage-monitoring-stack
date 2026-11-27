@@ -1,47 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-	IonContent,
-	IonHeader,
-	IonIcon,
-	IonItem,
-	IonItemGroup,
-	IonLabel,
-	IonList,
-	IonNote,
-	IonPage,
-	IonRefresher,
-	IonRefresherContent,
-	IonSegment,
-	IonSegmentButton,
-	IonSpinner,
-	IonTitle,
-	IonToolbar,
-	type RefresherEventDetail
-} from '@ionic/react'
-import { alertCircle, checkmarkCircle, closeCircle, notifications, warning } from 'ionicons/icons'
-import { API_BASE, useChat } from '../state/chatStore'
-import { formatMessageTime } from '../utils/date'
+import { useCallback, useEffect, useState } from 'react'
+import { Chip, EmptyState, ListItem, ListSection, Page, Segmented, Spinner } from '@nuage/ui'
+import { AlertTriangle, Bell, CheckCircle2, CircleAlert, XCircle } from 'lucide-react'
+import { API_BASE, useChatState } from '../state/chatStore'
 import { threadPath } from '../state/routes'
+import { formatMessageTime } from '../utils/date'
 import type { ActivityItem, ActivityResponse, ChatMessage } from '../types/chat'
 
 type ActivityFilter = 'all' | 'firing' | 'resolved' | 'notice'
 
-
 function iconFor(m: ChatMessage) {
 	if (m.source_kind === 'alert') {
-		return m.alert_status === 'firing'
-			? { icon: alertCircle, color: 'danger' }
-			: { icon: checkmarkCircle, color: 'success' }
+		return m.alert_status === 'firing' ? <CircleAlert size={18} className="tone-warn" /> : <CheckCircle2 size={18} className="tone-success" />
 	}
 	switch (m.level) {
 		case 'error':
-			return { icon: closeCircle, color: 'danger' }
+			return <XCircle size={18} className="tone-warn" />
 		case 'warning':
-			return { icon: warning, color: 'warning' }
+			return <AlertTriangle size={18} className="tone-blocked" />
 		case 'success':
-			return { icon: checkmarkCircle, color: 'success' }
+			return <CheckCircle2 size={18} className="tone-success" />
 		default:
-			return { icon: notifications, color: 'primary' }
+			return <Bell size={18} className="tone-accent" />
 	}
 }
 
@@ -68,9 +47,15 @@ function durationLabel(firedAt?: string, resolvedAt?: string): string | null {
 	return `${Math.floor(min / 60)}時間${min % 60}分で解決`
 }
 
+const EMPTY_TEXT: Record<ActivityFilter, string> = {
+	all: '通知はまだない。',
+	firing: '発生中のアラートはない。',
+	resolved: '解決済みのアラートはない。',
+	notice: '一般の通知はない。'
+}
 
 export default function ActivityPage() {
-	const { activityVersion } = useChat()
+	const activityVersion = useChatState((s) => s.activityVersion)
 	const [items, setItems] = useState<ActivityItem[] | null>(null)
 	const [firingCount, setFiringCount] = useState(0)
 	const [filter, setFilter] = useState<ActivityFilter>('all')
@@ -89,104 +74,71 @@ export default function ActivityPage() {
 	}, [filter])
 
 	useEffect(() => {
+		// 取得は非同期で、結果は await の後に反映する (描画中に同期で state を変えてはいない)
+		// oxlint-disable-next-line react/set-state-in-effect
 		void fetchItems()
 	}, [fetchItems, activityVersion])
 
-	const handleRefresh = async (e: CustomEvent<RefresherEventDetail>) => {
-		await fetchItems()
-		e.detail.complete()
-	}
-
-	const shown = useMemo(() => items ?? [], [items])
-
 	return (
-		<IonPage>
-			<IonHeader translucent>
-				<IonToolbar>
-					<IonTitle>通知</IonTitle>
-				</IonToolbar>
-				<IonToolbar>
-					<IonSegment
-						value={filter}
-						onIonChange={(e) => {
-							setItems(null)
-							setFilter((e.detail.value as ActivityFilter) ?? 'all')
-						}}
-						aria-label="通知の絞り込み"
-					>
-						<IonSegmentButton value="all">
-							<IonLabel>すべて</IonLabel>
-						</IonSegmentButton>
-						<IonSegmentButton value="firing">
-							<IonLabel>発生中{firingCount > 0 ? ` ${firingCount}` : ''}</IonLabel>
-						</IonSegmentButton>
-						<IonSegmentButton value="resolved">
-							<IonLabel>解決済み</IonLabel>
-						</IonSegmentButton>
-						<IonSegmentButton value="notice">
-							<IonLabel>一般</IonLabel>
-						</IonSegmentButton>
-					</IonSegment>
-				</IonToolbar>
-			</IonHeader>
-			<IonContent fullscreen color="light">
-				<IonRefresher slot="fixed" onIonRefresh={handleRefresh}>
-					<IonRefresherContent />
-				</IonRefresher>
-
-				{items === null ? (
-					<div className="center-spinner">
-						<IonSpinner name="crescent" />
-					</div>
-				) : shown.length === 0 ? (
-					<div className="empty-note">
-						{filter === 'firing'
-							? '発生中のアラートはない。'
-							: filter === 'resolved'
-								? '解決済みのアラートはない。'
-								: filter === 'notice'
-									? '一般の通知はない。'
-									: '通知はまだない。'}
-					</div>
-				) : (
-					<IonList inset className="activity-list">
-						<IonItemGroup>
-							{shown.map(({ channel_id, channel_name, message: m }) => {
-								const { icon, color } = iconFor(m)
-								const { title, body } = summarize(m.text)
-								const resolvedIn = m.source_kind === 'alert' ? durationLabel(m.fired_at, m.resolved_at) : null
-								return (
-									<IonItem
-										key={`${channel_id}-${m.ts}`}
-										button
-										detail={false}
-										routerLink={threadPath('/tabs/activity', channel_id, m.ts)}
-										className="activity-item"
-									>
-										<IonIcon slot="start" icon={icon} color={color} className="activity-icon" />
-										<IonLabel>
-											<div className="activity-head">
-												<span className="activity-source"># {channel_name}</span>
-												{m.source_kind === 'alert' && m.alert_status && (
-													<span className={`msg-status ${m.alert_status === 'firing' ? 'firing' : 'resolved'}`}>
-														{m.alert_status === 'firing' ? '発生中' : '解決済み'}
-													</span>
-												)}
-											</div>
-											<h2 className="activity-title">{title}</h2>
-											{body && <p className="activity-body">{body}</p>}
-											{resolvedIn && <p className="activity-sub">{resolvedIn}</p>}
-										</IonLabel>
-										<IonNote slot="end" className="activity-time">
-											{formatMessageTime(m.fired_at || m.created_at)}
-										</IonNote>
-									</IonItem>
-								)
-							})}
-						</IonItemGroup>
-					</IonList>
-				)}
-			</IonContent>
-		</IonPage>
+		<Page
+			title="通知"
+			headerExtra={
+				<Segmented
+					label="通知の絞り込み"
+					value={filter}
+					onChange={(v) => {
+						setItems(null)
+						setFilter(v)
+					}}
+					options={[
+						{ value: 'all', label: 'すべて' },
+						{ value: 'firing', label: `発生中${firingCount > 0 ? ` ${firingCount}` : ''}` },
+						{ value: 'resolved', label: '解決済み' },
+						{ value: 'notice', label: '一般' }
+					]}
+				/>
+			}
+		>
+			{items === null ? (
+				<div className="center-spinner">
+					<Spinner />
+				</div>
+			) : items.length === 0 ? (
+				<EmptyState>{EMPTY_TEXT[filter]}</EmptyState>
+			) : (
+				<ListSection>
+					{items.map(({ channel_id, channel_name, message: m }) => {
+						const { title, body } = summarize(m.text)
+						const resolvedIn = m.source_kind === 'alert' ? durationLabel(m.fired_at, m.resolved_at) : null
+						return (
+							<ListItem
+								key={`${channel_id}-${m.ts}`}
+								className="activity-item"
+								to={threadPath('/tabs/activity', channel_id, m.ts)}
+								start={iconFor(m)}
+								title={
+									<span className="activity-head">
+										<span className="activity-title">{title}</span>
+										{m.source_kind === 'alert' && m.alert_status && (
+											<Chip tone={m.alert_status === 'firing' ? 'warn' : 'success'}>
+												{m.alert_status === 'firing' ? '発生中' : '解決済み'}
+											</Chip>
+										)}
+									</span>
+								}
+								subtitle={
+									<span className="activity-sub">
+										<span className="activity-source"># {channel_name}</span>
+										{body ? ` · ${body}` : ''}
+										{resolvedIn ? ` · ${resolvedIn}` : ''}
+									</span>
+								}
+								end={<span className="activity-time">{formatMessageTime(m.fired_at || m.created_at)}</span>}
+							/>
+						)
+					})}
+				</ListSection>
+			)}
+		</Page>
 	)
 }

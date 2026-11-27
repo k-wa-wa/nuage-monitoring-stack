@@ -1,0 +1,8 @@
+{
+  "name": "nuage-monitoring-stack",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "monitoring-pwa/frontend"
+  ]
+}

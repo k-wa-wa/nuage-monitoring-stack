@@ -1,14 +1,5 @@
-import { IonIcon } from '@ionic/react'
-import {
-	alertCircle,
-	checkmarkCircle,
-	chatbubbleOutline,
-	closeCircle,
-	hardwareChip,
-	informationCircle,
-	notifications,
-	warning
-} from 'ionicons/icons'
+import type { LucideIcon } from 'lucide-react'
+import { AlertTriangle, Bell, Bot, CheckCircle2, CircleAlert, Info, MessageSquare, XCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import SlackRichText from './SlackRichText'
 import { formatMessageTime } from '../utils/date'
@@ -27,28 +18,26 @@ interface MessageRowProps {
 	compact?: boolean
 }
 
-function avatarFor(msg: ChatMessage, isSelf: boolean, initial: string) {
+type Avatar = { icon?: LucideIcon; initial?: string; tone: 'accent' | 'success' | 'warn' | 'blocked' | 'muted' | 'self' }
+
+function avatarFor(msg: ChatMessage, isSelf: boolean, initial: string): Avatar {
 	if (msg.source_kind === 'alert') {
-		return msg.alert_status === 'resolved'
-			? { icon: checkmarkCircle, tone: 'success' }
-			: { icon: alertCircle, tone: 'danger' }
+		return msg.alert_status === 'resolved' ? { icon: CheckCircle2, tone: 'success' } : { icon: CircleAlert, tone: 'warn' }
 	}
 	if (msg.bot_id) {
 		switch (msg.level) {
 			case 'error':
-				return { icon: closeCircle, tone: 'danger' }
+				return { icon: XCircle, tone: 'warn' }
 			case 'warning':
-				return { icon: warning, tone: 'warning' }
+				return { icon: AlertTriangle, tone: 'blocked' }
 			case 'success':
-				return { icon: checkmarkCircle, tone: 'success' }
+				return { icon: CheckCircle2, tone: 'success' }
 			default:
-				return msg.source_kind === 'notification'
-					? { icon: notifications, tone: 'primary' }
-					: { icon: hardwareChip, tone: 'primary' }
+				return msg.source_kind === 'notification' ? { icon: Bell, tone: 'accent' } : { icon: Bot, tone: 'accent' }
 		}
 	}
 	if (isSelf) return { initial, tone: 'self' }
-	return { icon: informationCircle, tone: 'medium' }
+	return { icon: Info, tone: 'muted' }
 }
 
 // Slack と同じく、アイコン・名前・時刻・本文を左寄せで並べるメッセージ行である。
@@ -81,7 +70,7 @@ export default function MessageRow({
 					</time>
 				) : (
 					<div className={`msg-avatar tone-${avatar.tone}`} aria-hidden="true">
-						{'icon' in avatar && avatar.icon ? <IonIcon icon={avatar.icon} /> : avatar.initial}
+						{avatar.icon ? <avatar.icon size={18} /> : avatar.initial}
 					</div>
 				)}
 			</div>
@@ -100,7 +89,7 @@ export default function MessageRow({
 						{message.alert_status === 'firing' ? '発生中' : '解決済み'}
 					</span>
 				)}
-				<div className="msg-body">
+				<div className="msg-body nui-selectable">
 					<SlackRichText
 						text={message.text}
 						blocks={message.blocks}
@@ -111,7 +100,7 @@ export default function MessageRow({
 				</div>
 				{threadLink && (replyCount > 0 || hasDetail) && (
 					<Link to={threadLink} className="msg-thread-link">
-						<IonIcon icon={chatbubbleOutline} aria-hidden="true" />
+						<MessageSquare size={13} aria-hidden="true" />
 						{replyCount > 0 ? `${replyCount} 件の返信` : '詳細を見る'}
 					</Link>
 				)}

@@ -1,5 +1,4 @@
-import { IonIcon } from '@ionic/react'
-import { openOutline } from 'ionicons/icons'
+import { ExternalLink as ExternalLinkIcon } from 'lucide-react'
 import { extractExternalLinks, parseAlertDetails } from '../utils/url'
 import type { UnifiedNotification } from '../types/notification'
 
@@ -79,7 +78,7 @@ export default function NotificationDetailPanel({ item, grafanaBase }: Notificat
 	}
 
 	return (
-		<div className="history-detail-panel">
+		<div className="history-detail-panel nui-selectable">
 			<div className="details-parsed">
 				{renderBody()}
 				{links.length > 0 && (
@@ -92,7 +91,7 @@ export default function NotificationDetailPanel({ item, grafanaBase }: Notificat
 								rel="noopener noreferrer"
 								className={`btn btn-${link.variant} btn-sm`}
 							>
-								<IonIcon icon={openOutline} aria-hidden="true" />
+								<ExternalLinkIcon size={13} aria-hidden="true" />
 								{link.label}
 							</a>
 						))}

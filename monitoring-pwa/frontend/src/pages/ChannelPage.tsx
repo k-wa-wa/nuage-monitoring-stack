@@ -1,56 +1,43 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-	IonBackButton,
-	IonButtons,
-	IonContent,
-	IonFooter,
-	IonHeader,
-	IonPage,
-	IonSpinner,
-	IonTitle,
-	IonToolbar,
-	useIonViewDidEnter,
-	useIonViewWillLeave
-} from '@ionic/react'
+import { BackButton, EmptyState, Page, Spinner, useIsTopPage } from '@nuage/ui'
 import { useParams } from 'react-router-dom'
 import Composer from '../components/Composer'
 import MessageTimeline from '../components/MessageTimeline'
 import NewMessagesButton from '../components/NewMessagesButton'
-import { useIonChatScroll } from '../hooks/useIonChatScroll'
-import { channelTitle, useChat } from '../state/chatStore'
-import { useChannelsById } from '../state/selectors'
+import { useChatScroll } from '../hooks/useChatScroll'
+import { channelTitle, useChatActions, useChatState } from '../state/chatStore'
 import { threadPath, useTabBase } from '../state/routes'
+import { useChannelsById } from '../state/selectors'
+
+const EMPTY: never[] = []
 
 export default function ChannelPage() {
 	const { channelId = '' } = useParams<{ channelId: string }>()
-	const { user, bot, channels, channelData, loadChannel, loadOlder, postMessage, enterChannel } =
-		useChat()
+	const { loadChannel, loadOlder, postMessage, enterChannel } = useChatActions()
+	const user = useChatState((s) => s.user)
+	const bot = useChatState((s) => s.bot)
+	const channel = useChatState((s) => s.channels.find((c) => c.id === channelId))
+	const data = useChatState((s) => s.channelData[channelId])
 	const channelsById = useChannelsById()
 	const base = useTabBase()
-	const channel = channels.find((c) => c.id === channelId)
-	const data = channelData[channelId]
-	const messages = useMemo(() => data?.messages ?? [], [data])
+	const isTop = useIsTopPage()
+	const messages = data?.messages ?? EMPTY
 	const [sendError, setSendError] = useState<string | null>(null)
-	const contentRef = useRef<HTMLIonContentElement | null>(null)
-	const leaveRef = useRef<(() => void) | null>(null)
+	const scrollRef = useRef<HTMLDivElement | null>(null)
 
 	useEffect(() => {
 		if (channelId) void loadChannel(channelId)
 	}, [channelId, loadChannel])
 
-	useIonViewDidEnter(() => {
-		leaveRef.current?.()
-		leaveRef.current = enterChannel(channelId)
-	}, [channelId, enterChannel])
-	useIonViewWillLeave(() => {
-		leaveRef.current?.()
-		leaveRef.current = null
-	}, [])
-	useEffect(() => () => leaveRef.current?.(), [])
+	// いちばん手前に見えている間だけ「表示中」にする (未読を数えず、既読にする)
+	useEffect(() => {
+		if (!isTop || !channelId) return
+		return enterChannel(channelId)
+	}, [isTop, channelId, enterChannel])
 
 	const itemIds = useMemo(() => messages.map((m) => m.ts), [messages])
-	const { handleScroll, hasNewMessages, scrollToBottom, stickToBottomOnNext } = useIonChatScroll({
-		contentRef,
+	const { handleScroll, hasNewMessages, scrollToBottom, stickToBottomOnNext } = useChatScroll({
+		scrollRef,
 		itemIds,
 		hasMore: Boolean(data?.hasMore),
 		loadingOlder: Boolean(data?.loadingOlder),
@@ -70,55 +57,44 @@ export default function ChannelPage() {
 	}
 
 	return (
-		<IonPage className="chat-page">
-			<IonHeader translucent>
-				<IonToolbar>
-					<IonButtons slot="start">
-						<IonBackButton defaultHref={base} text="" />
-					</IonButtons>
-					<IonTitle>
-						<div className="chat-title">
-							<span className="chat-title-name">{title}</span>
-							{isDm && (
-								<span className={`chat-title-status ${bot.online ? 'online' : ''}`}>
-									{bot.online ? 'オンライン' : 'オフライン'}
-								</span>
-							)}
-						</div>
-					</IonTitle>
-				</IonToolbar>
-			</IonHeader>
-			<IonContent
-				ref={contentRef}
-				fullscreen
-				scrollEvents
-				onIonScroll={handleScroll}
-				className="chat-content"
-			>
-				<div className="chat-inner">
+		<Page
+			className="chat-page"
+			title={title}
+			subtitle={isDm ? (bot.online ? 'オンライン' : 'オフライン') : channel?.topic}
+			start={<BackButton />}
+			scrollRef={scrollRef}
+			onScroll={handleScroll}
+			footer={
+				<Composer
+					placeholder={placeholder}
+					onSend={handleSend}
+					error={sendError}
+					notice={isDm && !bot.online ? `${bot.name} はオフライン。送ったメッセージは残るが、すぐには返事が来ない。` : null}
+				/>
+			}
+		>
+			<div className="chat-inner">
 				<div className="timeline-top">
-					{data?.loadingOlder && <IonSpinner name="crescent" />}
+					{data?.loadingOlder && <Spinner size={16} />}
 					{data && !data.hasMore && data.loaded && channel && (
 						<div className="channel-intro">
 							<div className="channel-intro-title">{title}</div>
 							<div className="channel-intro-text">
-								{isDm
-									? `${channel.name || bot.name} とのダイレクトメッセージの始まり`
-									: `${title} チャンネルの始まり`}
+								{isDm ? `${channel.name || bot.name} とのダイレクトメッセージの始まり` : `${title} チャンネルの始まり`}
 							</div>
 						</div>
 					)}
 				</div>
 				{!data?.loaded ? (
 					<div className="center-spinner">
-						<IonSpinner name="crescent" />
+						<Spinner />
 					</div>
 				) : messages.length === 0 ? (
-					<div className="channel-empty">
+					<EmptyState>
 						{isDm
 							? `まだメッセージはない。${channel?.name || bot.name} に話しかけてみよう。`
 							: 'まだメッセージはない。通知が届くとここに並ぶ。'}
-					</div>
+					</EmptyState>
 				) : (
 					<MessageTimeline
 						messages={messages}
@@ -130,17 +106,8 @@ export default function ChannelPage() {
 						threadLinkFor={(m) => threadPath(base, channelId, m.ts)}
 					/>
 				)}
-				</div>
-				<NewMessagesButton visible={hasNewMessages} onClick={() => scrollToBottom(true)} />
-			</IonContent>
-			<IonFooter translucent>
-				<Composer
-					placeholder={placeholder}
-					onSend={handleSend}
-					error={sendError}
-					notice={isDm && !bot.online ? `${bot.name} はオフライン。送ったメッセージは残るが、すぐには返事が来ない。` : null}
-				/>
-			</IonFooter>
-		</IonPage>
+			</div>
+			<NewMessagesButton visible={hasNewMessages} onClick={() => scrollToBottom(true)} />
+		</Page>
 	)
 }

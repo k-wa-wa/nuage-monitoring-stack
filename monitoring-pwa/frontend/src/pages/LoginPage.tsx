@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react'
-import { IonButton, IonContent, IonInput, IonItem, IonItemGroup, IonList, IonPage, IonSpinner } from '@ionic/react'
-import { API_BASE, useChat } from '../state/chatStore'
+import { Button, Card, TextField } from '@nuage/ui'
+import { API_BASE, useChatActions } from '../state/chatStore'
 
 export default function LoginPage() {
-	const { reloadBootstrap } = useChat()
+	const { reloadBootstrap } = useChatActions()
 	const [passphrase, setPassphrase] = useState('')
 	const [submitting, setSubmitting] = useState(false)
 	const [error, setError] = useState<string | null>(null)
@@ -40,40 +40,31 @@ export default function LoginPage() {
 	}
 
 	return (
-		<IonPage>
-			<IonContent fullscreen className="login-content">
-				<form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
-					<div className="login-logo" aria-hidden="true" />
-					<h1 className="login-title app-title-tap">Nuage Notify</h1>
-					<p className="login-subtitle">クラスタの通知と bot のチャット</p>
-					<IonList inset>
-						<IonItemGroup>
-							<IonItem>
-								<IonInput
-									id="passphrase-input"
-									type="password"
-									label="合言葉"
-									labelPlacement="stacked"
-									placeholder="合言葉を入力"
-									autocomplete="current-password"
-									value={passphrase}
-									onIonInput={(e) => setPassphrase(String(e.detail.value ?? ''))}
-								/>
-							</IonItem>
-						</IonItemGroup>
-					</IonList>
-					{error && (
-						<p className="login-error" role="alert">
-							{error}
-						</p>
-					)}
-					<div className="login-actions">
-						<IonButton type="submit" expand="block" disabled={!passphrase.trim() || submitting}>
-							{submitting ? <IonSpinner name="crescent" /> : 'ログイン'}
-						</IonButton>
+		<div className="login-screen nui-scroll">
+			<Card className="login-card">
+				<form onSubmit={(e) => void handleSubmit(e)}>
+					<div className="login-brand">
+						<span className="login-logo" aria-hidden="true" />
+						<div>
+							<h1 className="login-title app-title-tap">Nuage Notify</h1>
+							<p className="login-subtitle">クラスタの通知と bot のチャット</p>
+						</div>
 					</div>
+					<TextField
+						id="passphrase-input"
+						label="合言葉"
+						type="password"
+						placeholder="合言葉を入力"
+						autoComplete="current-password"
+						value={passphrase}
+						error={error}
+						onChange={(e) => setPassphrase(e.target.value)}
+					/>
+					<Button type="submit" variant="primary" block loading={submitting} disabled={!passphrase.trim()}>
+						ログイン
+					</Button>
 				</form>
-			</IonContent>
-		</IonPage>
+			</Card>
+		</div>
 	)
 }

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react'
-import { IonIcon } from '@ionic/react'
-import { close, contractOutline, expandOutline } from 'ionicons/icons'
+import { Minimize2, Maximize2, X } from 'lucide-react'
 
 interface ImageLightboxProps {
 	src: string
@@ -119,7 +118,7 @@ export default function ImageLightbox({ src, alt, onClose }: ImageLightboxProps)
 					className="image-lightbox-btn"
 					aria-label={zoomed ? '元のサイズに戻す' : '画像を拡大する'}
 				>
-					<IonIcon icon={zoomed ? contractOutline : expandOutline} aria-hidden="true" />
+					{zoomed ? <Minimize2 size={18} aria-hidden="true" /> : <Maximize2 size={18} aria-hidden="true" />}
 					<span>{zoomed ? '1x' : '2x'}</span>
 				</button>
 				<button
@@ -128,7 +127,7 @@ export default function ImageLightbox({ src, alt, onClose }: ImageLightboxProps)
 					className="image-lightbox-btn"
 					aria-label="画像を閉じる"
 				>
-					<IonIcon icon={close} aria-hidden="true" />
+					<X size={20} aria-hidden="true" />
 				</button>
 			</div>
 

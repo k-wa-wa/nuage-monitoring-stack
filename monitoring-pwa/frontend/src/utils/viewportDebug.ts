@@ -146,7 +146,7 @@ export function installViewportDebug(): void {
 		{ passive: true }
 	)
 
-	// 画面が真っ暗になる不具合の調査用: JS のエラーと、Ionic の画面の重なりを出す
+	// 画面が真っ暗になる不具合の調査用: JS のエラーと、画面 (タブ・積み重ね) の重なりを出す
 	const errors: string[] = []
 	window.addEventListener('error', (e) => {
 		errors.unshift(`${e.message} @${(e.filename || '').split('/').pop()}:${e.lineno}`)
@@ -159,17 +159,17 @@ export function installViewportDebug(): void {
 		render()
 	})
 	const describePages = () =>
-		Array.from(document.querySelectorAll('.ion-page'))
-			.filter((el) => el.tagName !== 'ION-APP')
-			.map((el) => {
-				const cls = el.className
-				const name =
-					cls.match(/\bchat-page\b/) ? 'chat' : el.querySelector(':scope > ion-tabs, :scope ion-tab-bar') ? 'tabs' : el.querySelector('ion-title')?.textContent?.slice(0, 8) || '?'
-				const flags = ['ion-page-hidden', 'ion-page-invisible', 'can-go-back']
-					.filter((f) => el.classList.contains(f))
-					.map((f) => f.replace('ion-page-', ''))
-				const shown = getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden'
-				return `  ${name}${flags.length ? `[${flags.join(',')}]` : ''} ${shown ? 'shown' : 'not-shown'} op=${getComputedStyle(el).opacity}`
+		Array.from(document.querySelectorAll('.nui-tab-pane, .nui-split'))
+			.map((pane) => {
+				const pages = Array.from(pane.querySelectorAll('.nui-stack-page, .nui-split > *'))
+					.map((p) => {
+						const title = p.querySelector('.nui-toolbar-title-main')?.textContent?.slice(0, 10) || '?'
+						const vis = p.getAttribute('data-visible')
+						return `${title}${vis === 'false' ? '(hidden)' : ''}`
+					})
+					.join(' > ')
+				const label = pane.classList.contains('nui-split') ? 'split' : `tab${pane.getAttribute('data-active') === 'true' ? '*' : ''}`
+				return `  ${label}: ${pages}`
 			})
 			.join('\n')
 

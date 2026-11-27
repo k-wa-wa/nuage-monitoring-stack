@@ -1,21 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-	IonButton,
-	IonContent,
-	IonHeader,
-	IonItem,
-	IonItemGroup,
-	IonLabel,
-	IonList,
-	IonListHeader,
-	IonNote,
-	IonPage,
-	IonTitle,
-	IonToggle,
-	IonToolbar,
-	useIonAlert
-} from '@ionic/react'
-import { API_BASE, useChat } from '../state/chatStore'
+import { Button, ListItem, ListSection, Modal, Page, Toggle, useToast } from '@nuage/ui'
+import { API_BASE, useChatActions, useChatState } from '../state/chatStore'
 import {
 	getCurrentSubscription,
 	isPushSupported,
@@ -30,12 +15,14 @@ const WEBHOOK_CURL_EXAMPLE = `curl -X POST https://monitoring.wpcapp.net/webhook
   -d '{"title": "デプロイ完了", "body": "アプリを更新した。", "level": "info", "url": "https://argocd.wpcapp.net", "details": "revision: abc1234"}'`
 
 export default function SettingsPage() {
-	const { user, bot, logout } = useChat()
+	const user = useChatState((s) => s.user)
+	const bot = useChatState((s) => s.bot)
+	const { logout } = useChatActions()
+	const toast = useToast()
 	const [subscribed, setSubscribed] = useState(false)
 	const [busy, setBusy] = useState(false)
 	const [logs, setLogs] = useState<string[]>([])
-	const [copied, setCopied] = useState(false)
-	const [presentAlert] = useIonAlert()
+	const [confirmLogout, setConfirmLogout] = useState(false)
 
 	const log = useCallback((msg: string) => {
 		setLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50))
@@ -53,14 +40,16 @@ export default function SettingsPage() {
 			if (enable) {
 				await subscribePush(API_BASE)
 				setSubscribed(true)
-				log('通知を受け取るように登録した。')
+				toast('通知を受け取るように登録した。', 'success')
 			} else {
 				await unsubscribePush(API_BASE)
 				setSubscribed(false)
-				log('通知の登録を解除した。')
+				toast('通知の登録を解除した。')
 			}
 		} catch (err: unknown) {
-			log(`エラー: ${err instanceof Error ? err.message : String(err)}`)
+			const message = err instanceof Error ? err.message : String(err)
+			log(`エラー: ${message}`)
+			toast(message, 'warn')
 		} finally {
 			setBusy(false)
 		}
@@ -69,132 +58,97 @@ export default function SettingsPage() {
 	const handleTest = async () => {
 		try {
 			await sendTestNotify(API_BASE)
-			log('テスト通知の送信を頼んだ。')
+			toast('テスト通知の送信を頼んだ。', 'success')
 		} catch (err: unknown) {
-			log(`エラー: ${err instanceof Error ? err.message : String(err)}`)
+			const message = err instanceof Error ? err.message : String(err)
+			log(`エラー: ${message}`)
+			toast(message, 'warn')
 		}
 	}
 
 	const handleCopy = async () => {
 		try {
 			await navigator.clipboard.writeText(WEBHOOK_CURL_EXAMPLE)
-			setCopied(true)
-			window.setTimeout(() => setCopied(false), 1500)
+			toast('コピーした')
 		} catch {
-			log('コピーできなかった。')
+			toast('コピーできなかった。', 'warn')
 		}
 	}
 
-	const confirmLogout = () =>
-		presentAlert({
-			header: 'ログアウトする？',
-			buttons: [
-				{ text: 'キャンセル', role: 'cancel' },
-				{ text: 'ログアウト', role: 'destructive', handler: () => void logout() }
-			]
-		})
-
 	return (
-		<IonPage>
-			<IonHeader translucent>
-				<IonToolbar>
-					<IonTitle>設定</IonTitle>
-				</IonToolbar>
-			</IonHeader>
-			<IonContent fullscreen color="light">
+		<Page title="設定">
+			<ListSection title="アカウント">
+				<ListItem title="名前" end={<span className="settings-value">{user?.display_name}</span>} />
+				<ListItem title={bot.name} end={<span className="settings-value">{bot.online ? 'オンライン' : 'オフライン'}</span>} />
+			</ListSection>
 
-				<IonList inset>
-					<IonListHeader>
-						<IonLabel>アカウント</IonLabel>
-					</IonListHeader>
-					<IonItemGroup>
-						<IonItem>
-							<IonLabel>名前</IonLabel>
-							<IonNote slot="end">{user?.display_name}</IonNote>
-						</IonItem>
-						<IonItem>
-							<IonLabel>{bot.name}</IonLabel>
-							<IonNote slot="end">{bot.online ? 'オンライン' : 'オフライン'}</IonNote>
-						</IonItem>
-					</IonItemGroup>
-				</IonList>
+			<ListSection
+				title="通知"
+				footer={
+					isPushSupported()
+						? undefined
+						: 'このブラウザは Web Push に対応していない。iPhone ではホーム画面に追加して開くと使える。'
+				}
+			>
+				<ListItem
+					title="プッシュ通知を受け取る"
+					end={
+						<Toggle
+							label="プッシュ通知を受け取る"
+							checked={subscribed}
+							disabled={busy || !isPushSupported()}
+							onChange={(v) => void togglePush(v)}
+						/>
+					}
+				/>
+				<ListItem title={<span className="settings-link">テスト通知を送る</span>} onClick={() => void handleTest()} />
+			</ListSection>
 
-				<IonList inset>
-					<IonListHeader>
-						<IonLabel>通知</IonLabel>
-					</IonListHeader>
-					<IonItemGroup>
-						<IonItem>
-							<IonToggle
-								checked={subscribed}
-								disabled={busy || !isPushSupported()}
-								onIonChange={(e) => void togglePush(e.detail.checked)}
-							>
-								プッシュ通知を受け取る
-							</IonToggle>
-						</IonItem>
-						<IonItem button detail={false} onClick={() => void handleTest()}>
-							<IonLabel color="primary">テスト通知を送る</IonLabel>
-						</IonItem>
-					</IonItemGroup>
-				</IonList>
-				{!isPushSupported() && (
-					<p className="list-footnote">
-						このブラウザは Web Push に対応していない。iPhone ではホーム画面に追加して開くと使える。
-					</p>
-				)}
-
-				<IonList inset>
-					<IonListHeader>
-						<IonLabel>Webhook で通知を送る</IonLabel>
-					</IonListHeader>
-					<IonItemGroup>
-						<IonItem lines="none">
-							<pre className="code-sample">{WEBHOOK_CURL_EXAMPLE}</pre>
-						</IonItem>
-						<IonItem button detail={false} onClick={() => void handleCopy()}>
-							<IonLabel color="primary">{copied ? 'コピーした' : 'コピー'}</IonLabel>
-						</IonItem>
-					</IonItemGroup>
-				</IonList>
-
-				<IonList inset>
-					<IonListHeader>
-						<IonLabel>開発</IonLabel>
-					</IonListHeader>
-					<IonItemGroup>
-						<IonItem>
-							<IonToggle
-								checked={isViewportDebugEnabled()}
-								onIonChange={(e) => setViewportDebugEnabled(e.detail.checked)}
-							>
-								画面の計測表示
-							</IonToggle>
-						</IonItem>
-					</IonItemGroup>
-				</IonList>
-
-				{logs.length > 0 && (
-					<IonList inset>
-						<IonListHeader>
-							<IonLabel>ログ</IonLabel>
-						</IonListHeader>
-						<IonItemGroup>
-							{logs.map((l, i) => (
-								<IonItem key={i} lines="inset">
-									<IonLabel className="ion-text-wrap log-line">{l}</IonLabel>
-								</IonItem>
-							))}
-						</IonItemGroup>
-					</IonList>
-				)}
-
-				<div className="logout-area">
-					<IonButton expand="block" color="danger" fill="clear" onClick={() => void confirmLogout()}>
-						ログアウト
-					</IonButton>
+			<ListSection title="Webhook で通知を送る">
+				<div className="settings-code nui-selectable">
+					<pre className="code-sample">{WEBHOOK_CURL_EXAMPLE}</pre>
 				</div>
-			</IonContent>
-		</IonPage>
+				<ListItem title={<span className="settings-link">コピー</span>} onClick={() => void handleCopy()} />
+			</ListSection>
+
+			<ListSection title="開発">
+				<ListItem
+					title="画面の計測表示"
+					end={
+						<Toggle label="画面の計測表示" checked={isViewportDebugEnabled()} onChange={(v) => setViewportDebugEnabled(v)} />
+					}
+				/>
+			</ListSection>
+
+			{logs.length > 0 && (
+				<ListSection title="ログ">
+					{logs.map((l, i) => (
+						<ListItem key={i} title={<span className="log-line">{l}</span>} />
+					))}
+				</ListSection>
+			)}
+
+			<div className="logout-area">
+				<Button variant="danger" block onClick={() => setConfirmLogout(true)}>
+					ログアウト
+				</Button>
+			</div>
+
+			<Modal
+				open={confirmLogout}
+				onClose={() => setConfirmLogout(false)}
+				title="ログアウトする？"
+				footer={
+					<>
+						<Button onClick={() => setConfirmLogout(false)}>キャンセル</Button>
+						<Button variant="danger" onClick={() => void logout()}>
+							ログアウト
+						</Button>
+					</>
+				}
+			>
+				<p className="settings-note">もう一度使うには合言葉が要る。</p>
+			</Modal>
+		</Page>
 	)
 }
