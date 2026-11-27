@@ -476,6 +476,21 @@ func TestSlackAlertAndNotificationMetadata(t *testing.T) {
 		return env.Payload["event"].(map[string]interface{})
 	}
 
+	assertAlertDetails := func(t *testing.T, label string, obj map[string]interface{}, wantFingerprint string) {
+		t.Helper()
+		raw, ok := obj["details"].(string)
+		if !ok || raw == "" {
+			t.Fatalf("%s: expected non-empty string details, got %#v", label, obj["details"])
+		}
+		var detailsObj map[string]interface{}
+		if err := json.Unmarshal([]byte(raw), &detailsObj); err != nil {
+			t.Fatalf("%s: expected valid JSON details: %v", label, err)
+		}
+		if detailsObj["fingerprint"] != wantFingerprint {
+			t.Fatalf("%s: unexpected fingerprint in details: %+v", label, detailsObj)
+		}
+	}
+
 	t.Run("Alertmanager アラートの発報・解決とスレッド返信", func(t *testing.T) {
 		alertPayload := func(status string) map[string]interface{} {
 			return map[string]interface{}{
@@ -503,17 +518,10 @@ func TestSlackAlertAndNotificationMetadata(t *testing.T) {
 		if firingEv["url"] != "http://vm-grafana.local/explore?alert=NodeDown" ||
 			firingEv["source_kind"] != "alert" ||
 			firingEv["alert_status"] != "firing" ||
-			firingEv["level"] != "error" ||
-			firingEv["details"] == "" {
+			firingEv["level"] != "error" {
 			t.Fatalf("missing alert metadata in socket event: %+v", firingEv)
 		}
-		var detailsObj map[string]interface{}
-		if err := json.Unmarshal([]byte(firingEv["details"].(string)), &detailsObj); err != nil {
-			t.Fatalf("expected valid JSON details in socket event: %v", err)
-		}
-		if detailsObj["fingerprint"] != "fp-slack-1" {
-			t.Fatalf("unexpected fingerprint in socket event details: %+v", detailsObj)
-		}
+		assertAlertDetails(t, "socket event", firingEv, "fp-slack-1")
 
 		// 2. conversations.history で firing アラートのメタデータが返る
 		histRes := callSlackMethod(t, e, "conversations.history", testBotToken, map[string]interface{}{
@@ -528,10 +536,10 @@ func TestSlackAlertAndNotificationMetadata(t *testing.T) {
 		if root["url"] != "http://vm-grafana.local/explore?alert=NodeDown" ||
 			root["source_kind"] != "alert" ||
 			root["alert_status"] != "firing" ||
-			root["level"] != "error" ||
-			root["details"] == "" {
+			root["level"] != "error" {
 			t.Fatalf("missing alert metadata in conversations.history: %+v", root)
 		}
+		assertAlertDetails(t, "conversations.history", root, "fp-slack-1")
 
 		// 3. resolved 投入 -> Socket Mode に解決イベントが届く
 		postWebhookJSON(t, e, "/webhook/alertmanager", alertPayload("resolved"))
@@ -573,10 +581,10 @@ func TestSlackAlertAndNotificationMetadata(t *testing.T) {
 		if repRoot["url"] != "http://vm-grafana.local/explore?alert=NodeDown" ||
 			repRoot["source_kind"] != "alert" ||
 			repRoot["alert_status"] != "resolved" ||
-			repRoot["level"] != "success" ||
-			repRoot["details"] == "" {
+			repRoot["level"] != "success" {
 			t.Fatalf("unexpected parent metadata in conversations.replies: %+v", repRoot)
 		}
+		assertAlertDetails(t, "conversations.replies parent", repRoot, "fp-slack-1")
 
 		repResolved := repMsgs[1].(map[string]interface{})
 		if repResolved["source_kind"] != "alert" ||
