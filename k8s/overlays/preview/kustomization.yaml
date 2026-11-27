@@ -102,3 +102,20 @@ patches:
         value:
           name: ALERT_RECONCILE
           value: "off"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: SPIFFE_JWT_AUDIENCE
+          value: "monitoring-pwa.$(POD_NAMESPACE)"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: BOT_USERS_JSON
+          value: '[{"sub":"spiffe://nuage/ns/$(POD_NAMESPACE)/sa/echo-bot","user_id":"U02ECHOBOT","bot_id":"B02ECHOBOT","name":"echo-bot","is_default":true},{"sub":"spiffe://nuage/host/atelier/bot","user_id":"U01BOT","bot_id":"B01BOT","name":"nuage-bot"}]'

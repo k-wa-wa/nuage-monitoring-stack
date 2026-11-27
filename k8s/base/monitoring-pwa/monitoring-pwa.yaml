@@ -71,16 +71,8 @@ spec:
                 secretKeyRef:
                   name: pwa-notifier-secret
                   key: USERS_JSON
-            - name: SLACK_BOT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: pwa-notifier-secret
-                  key: SLACK_BOT_TOKEN
-            - name: SLACK_APP_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: pwa-notifier-secret
-                  key: SLACK_APP_TOKEN
+            - name: SPIFFE_JWKS_URL
+              value: "http://spiffe-oidc-discovery-provider.spire.svc.cluster.local/keys"
           volumeMounts:
             - name: db-volume
               mountPath: /data

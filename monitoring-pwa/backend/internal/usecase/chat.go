@@ -38,6 +38,7 @@ type ChatUsecase struct {
 	events   EventPublisher
 	browser  BrowserEventSubscriber
 	push     PushSender
+	bots     []domain.BotIdentity
 }
 
 // NewChatUsecase は新しい ChatUsecase を生成する。
@@ -47,13 +48,17 @@ func NewChatUsecase(
 	events EventPublisher,
 	browser BrowserEventSubscriber,
 	push PushSender,
+	bots ...domain.BotIdentity,
 ) *ChatUsecase {
+	copied := make([]domain.BotIdentity, len(bots))
+	copy(copied, bots)
 	return &ChatUsecase{
 		channels: channels,
 		messages: messages,
 		events:   events,
 		browser:  browser,
 		push:     push,
+		bots:     copied,
 	}
 }
 
@@ -67,13 +72,14 @@ func (c *ChatUsecase) Bootstrap(user domain.User) (BootstrapResult, error) {
 	if c.events != nil {
 		online = c.events.IsBotOnline()
 	}
+	def := domain.DefaultBot(c.bots)
 	return BootstrapResult{
 		User:     user,
 		Channels: chs,
 		Bot: BotStatus{
-			ID:     domain.SlackBotID,
-			UserID: domain.SlackBotUserID,
-			Name:   domain.SlackBotName,
+			ID:     def.BotID,
+			UserID: def.UserID,
+			Name:   def.Name,
 			Online: online,
 		},
 	}, nil
@@ -163,7 +169,7 @@ func (c *ChatUsecase) PostHumanMessage(ctx context.Context, user domain.User, ch
 		return PostHumanMessageResult{}, ErrInvalidInput
 	}
 
-	normalizedText := domain.NormalizeBotMentions(text)
+	normalizedText := domain.NormalizeBotMentions(text, c.bots)
 	threadTS = strings.TrimSpace(threadTS)
 	if threadTS != "" {
 		if _, err := c.messages.GetMessageByTS(ch.ID, threadTS); err != nil {
@@ -200,7 +206,11 @@ func (c *ChatUsecase) PostHumanMessage(ctx context.Context, user domain.User, ch
 }
 
 // PostBotMessage は Slack bot からのメッセージを保存し、SSE・Socket Mode・Web Push へ配信する。
-func (c *ChatUsecase) PostBotMessage(ctx context.Context, channelID, threadTS, username, text, blocksJSON string) (*domain.Message, error) {
+func (c *ChatUsecase) PostBotMessage(
+	ctx context.Context,
+	bot domain.BotIdentity,
+	channelID, threadTS, username, text, blocksJSON string,
+) (*domain.Message, error) {
 	ch, err := c.GetChannel(channelID)
 	if err != nil {
 		return nil, err
@@ -214,14 +224,14 @@ func (c *ChatUsecase) PostBotMessage(ctx context.Context, channelID, threadTS, u
 		}
 	}
 	if username == "" {
-		username = domain.SlackBotName
+		username = bot.Name
 	}
 
 	msg, err := c.messages.CreateMessage(domain.CreateMessageParams{
 		ChannelID: channelID,
 		ThreadTS:  threadTS,
-		UserID:    domain.SlackBotUserID,
-		BotID:     domain.SlackBotID,
+		UserID:    bot.UserID,
+		BotID:     bot.BotID,
 		Username:  username,
 		Text:      text,
 		Blocks:    blocksJSON,
@@ -250,12 +260,25 @@ func (c *ChatUsecase) PostBotMessage(ctx context.Context, channelID, threadTS, u
 	return msg, nil
 }
 
-// UpdateBotMessage は Slack bot からのメッセージ更新を保存し、SSE へ配信する。
-func (c *ChatUsecase) UpdateBotMessage(ctx context.Context, channelID, ts, text, blocksJSON string) (*domain.Message, error) {
+// UpdateBotMessage は Slack bot からのメッセージ更新を検証・保存し、SSE へ配信する。
+// 対象メッセージの投稿者 (BotID と UserID) が呼び出し元 bot と一致しない場合は ErrCantUpdateMessage を返す。
+func (c *ChatUsecase) UpdateBotMessage(
+	ctx context.Context,
+	bot domain.BotIdentity,
+	channelID, ts, text, blocksJSON string,
+) (*domain.Message, error) {
 	ch, err := c.GetChannel(channelID)
 	if err != nil {
 		return nil, err
 	}
+	existing, err := c.messages.GetMessageByTS(channelID, ts)
+	if err != nil {
+		return nil, err
+	}
+	if existing.BotID == "" || existing.BotID != bot.BotID || existing.UserID != bot.UserID {
+		return nil, ErrCantUpdateMessage
+	}
+
 	updated, err := c.messages.UpdateMessage(channelID, ts, text, blocksJSON)
 	if err != nil {
 		return nil, err

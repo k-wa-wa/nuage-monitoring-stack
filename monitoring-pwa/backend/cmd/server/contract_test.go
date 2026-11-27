@@ -4,6 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -20,12 +24,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/config"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/domain"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/realtime"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/spiffe"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/sqlite"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/webpush"
 )
@@ -70,9 +76,11 @@ func (s *contractPushSpy) drain() []contractPushRecord {
 }
 
 type contractEnv struct {
-	server  *httptest.Server
-	cfg     config.Config
-	pushSpy *contractPushSpy
+	server        *httptest.Server
+	cfg           config.Config
+	pushSpy       *contractPushSpy
+	botJWT        string
+	wrongAudJWT   string
 }
 
 func newContractEnv(t *testing.T) *contractEnv {
@@ -80,14 +88,64 @@ func newContractEnv(t *testing.T) *contractEnv {
 	hashAlice, _ := bcrypt.GenerateFromPassword([]byte("alice-secret"), bcrypt.MinCost)
 	hashBob, _ := bcrypt.GenerateFromPassword([]byte("bob-secret"), bcrypt.MinCost)
 
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey failed: %v", err)
+	}
+	xb := make([]byte, 32)
+	yb := make([]byte, 32)
+	privKey.PublicKey.X.FillBytes(xb)
+	privKey.PublicKey.Y.FillBytes(yb)
+
+	jwksSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"keys": []map[string]interface{}{
+				{
+					"kty": "EC",
+					"kid": "contract-key-1",
+					"use": "sig",
+					"alg": "ES256",
+					"crv": "P-256",
+					"x":   base64.RawURLEncoding.EncodeToString(xb),
+					"y":   base64.RawURLEncoding.EncodeToString(yb),
+				},
+			},
+		})
+	}))
+	t.Cleanup(jwksSrv.Close)
+
+	signSVID := func(sub, aud string) string {
+		tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.RegisteredClaims{
+			Subject:   sub,
+			Audience:  jwt.ClaimStrings{aud},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		})
+		tok.Header["kid"] = "contract-key-1"
+		signed, err := tok.SignedString(privKey)
+		if err != nil {
+			t.Fatalf("SignedString failed: %v", err)
+		}
+		return signed
+	}
+
 	cfg := config.Config{
-		Port:             "8080",
-		VAPIDPublicKey:   "test-vapid-public-key",
-		VAPIDPrivateKey:  "test-vapid-private-key",
-		VAPIDSubject:     "mailto:test@example.com",
-		CookieSigningKey: strings.Repeat("s", 32),
-		SlackBotToken:    "xoxb-contract-bot-token",
-		SlackAppToken:    "xapp-contract-app-token",
+		Port:              "8080",
+		VAPIDPublicKey:    "test-vapid-public-key",
+		VAPIDPrivateKey:   "test-vapid-private-key",
+		VAPIDSubject:      "mailto:test@example.com",
+		CookieSigningKey:  strings.Repeat("s", 32),
+		SPIFFEJWKSURL:     jwksSrv.URL,
+		SPIFFEJWTAudience: "monitoring-pwa",
+		BotUsers: []config.BotUserConfig{
+			{
+				Sub:       "spiffe://nuage/host/atelier/bot",
+				UserID:    "U01BOT",
+				BotID:     "B01BOT",
+				Name:      "nuage-bot",
+				IsDefault: true,
+			},
+		},
 		Users: []config.UserConfig{
 			{ID: "U01ALICE", Name: "alice", DisplayName: "Alice", PassphraseHash: string(hashAlice)},
 			{ID: "U02BOB", Name: "bob", DisplayName: "Bob", PassphraseHash: string(hashBob)},
@@ -95,6 +153,7 @@ func newContractEnv(t *testing.T) *contractEnv {
 	}
 
 	users := toDomainUsers(cfg.Users)
+	bots := toDomainBots(cfg.BotUsers)
 	db, err := sqlite.InitDB(filepath.Join(t.TempDir(), "contract.db"))
 	if err != nil {
 		t.Fatalf("InitDB failed: %v", err)
@@ -106,15 +165,18 @@ func newContractEnv(t *testing.T) *contractEnv {
 
 	hub := realtime.NewHub()
 	spy := &contractPushSpy{}
-	e, _ := buildApp(cfg, users, db, hub, spy)
+	verifier := spiffe.NewVerifier(cfg.SPIFFEJWKSURL, cfg.SPIFFEJWTAudience)
+	e, _ := buildApp(cfg, users, bots, verifier, db, hub, spy)
 
 	srv := httptest.NewServer(e)
 	t.Cleanup(srv.Close)
 
 	return &contractEnv{
-		server:  srv,
-		cfg:     cfg,
-		pushSpy: spy,
+		server:      srv,
+		cfg:         cfg,
+		pushSpy:     spy,
+		botJWT:      signSVID("spiffe://nuage/host/atelier/bot", cfg.SPIFFEJWTAudience),
+		wrongAudJWT: signSVID("spiffe://nuage/host/atelier/bot", "monitoring-pwa.nuage-monitoring-stack-pr-99"),
 	}
 }
 
@@ -708,12 +770,12 @@ func TestContractSlackAndSocketMode(t *testing.T) {
 	results := map[string]interface{}{}
 
 	// 1. Auth errors & unknown_method
-	results["invalid_auth_bot"] = callSlack("auth.test", "xoxb-wrong", map[string]interface{}{})
-	results["invalid_auth_connections_open"] = callSlack("apps.connections.open", env.cfg.SlackBotToken, map[string]interface{}{})
-	results["unknown_method"] = callSlack("emoji.list", env.cfg.SlackBotToken, map[string]interface{}{})
+	results["invalid_auth_bot"] = callSlack("auth.test", "jwt-invalid", map[string]interface{}{})
+	results["invalid_auth_connections_open"] = callSlack("apps.connections.open", env.wrongAudJWT, map[string]interface{}{})
+	results["unknown_method"] = callSlack("emoji.list", env.botJWT, map[string]interface{}{})
 
 	// 2. apps.connections.open & Socket Mode connect
-	openSnap := callSlack("apps.connections.open", env.cfg.SlackAppToken, map[string]interface{}{})
+	openSnap := callSlack("apps.connections.open", env.botJWT, map[string]interface{}{})
 	results["apps_connections_open"] = openSnap
 
 	wsURL := openSnap.Body.(map[string]interface{})["url"].(string)
@@ -732,16 +794,16 @@ func TestContractSlackAndSocketMode(t *testing.T) {
 	results["sse_bot_online_bob"] = bobSSE.next(t)
 
 	// 3. auth.test, conversations.list/info, users.info
-	results["auth_test"] = callSlack("auth.test", env.cfg.SlackBotToken, map[string]interface{}{})
+	results["auth_test"] = callSlack("auth.test", env.botJWT, map[string]interface{}{})
 
 	listForm := url.Values{}
 	listForm.Set("types", "public_channel,im")
-	results["conversations_list"] = callSlack("conversations.list", env.cfg.SlackBotToken, listForm)
-	results["conversations_info"] = callSlack("conversations.info", env.cfg.SlackBotToken, map[string]string{"channel": "C01ALERTMGR"})
-	results["users_info_human"] = callSlack("users.info", env.cfg.SlackBotToken, map[string]string{"user": "U01ALICE"})
-	results["users_info_bot"] = callSlack("users.info", env.cfg.SlackBotToken, map[string]string{"user": "U01BOT"})
-	results["users_info_system"] = callSlack("users.info", env.cfg.SlackBotToken, map[string]string{"user": "U00SYSTEM"})
-	results["users_info_not_found"] = callSlack("users.info", env.cfg.SlackBotToken, map[string]string{"user": "U99MISSING"})
+	results["conversations_list"] = callSlack("conversations.list", env.botJWT, listForm)
+	results["conversations_info"] = callSlack("conversations.info", env.botJWT, map[string]string{"channel": "C01ALERTMGR"})
+	results["users_info_human"] = callSlack("users.info", env.botJWT, map[string]string{"user": "U01ALICE"})
+	results["users_info_bot"] = callSlack("users.info", env.botJWT, map[string]string{"user": "U01BOT"})
+	results["users_info_system"] = callSlack("users.info", env.botJWT, map[string]string{"user": "U00SYSTEM"})
+	results["users_info_not_found"] = callSlack("users.info", env.botJWT, map[string]string{"user": "U99MISSING"})
 
 	// 4. Human posts @bot mention in C05GENERAL -> SSE + Socket Mode message & app_mention
 	st, _, raw := doJSONReq(t, http.MethodPost, base+"/api/channels/C05GENERAL/messages", aliceCookie, nil, map[string]string{
@@ -764,7 +826,7 @@ func TestContractSlackAndSocketMode(t *testing.T) {
 	results["socket_human_mention_envelopes"] = wsEvents
 
 	// 5. Bot chat.postMessage (root with blocks + reply + DM) and chat.update
-	postSnap := callSlack("chat.postMessage", env.cfg.SlackBotToken, map[string]interface{}{
+	postSnap := callSlack("chat.postMessage", env.botJWT, map[string]interface{}{
 		"channel": "C05GENERAL",
 		"text":    "bot reply text",
 		"blocks": []map[string]interface{}{
@@ -784,7 +846,7 @@ func TestContractSlackAndSocketMode(t *testing.T) {
 	}
 	results["socket_bot_post_envelope"] = botPostEnv
 
-	replySnap := callSlack("chat.postMessage", env.cfg.SlackBotToken, map[string]interface{}{
+	replySnap := callSlack("chat.postMessage", env.botJWT, map[string]interface{}{
 		"channel":   "C05GENERAL",
 		"thread_ts": botMsgTS,
 		"text":      "bot thread detail",
@@ -802,7 +864,7 @@ func TestContractSlackAndSocketMode(t *testing.T) {
 	results["socket_bot_reply_envelope"] = botReplyEnv
 
 	// DM post to Alice: only Alice's SSE receives it, only Alice receives Push
-	dmSnap := callSlack("chat.postMessage", env.cfg.SlackBotToken, map[string]interface{}{
+	dmSnap := callSlack("chat.postMessage", env.botJWT, map[string]interface{}{
 		"channel": "D01ALICE",
 		"text":    "private for alice",
 	})
@@ -819,7 +881,7 @@ func TestContractSlackAndSocketMode(t *testing.T) {
 	results["socket_dm_envelope"] = dmEnv
 
 	// chat.update
-	updSnap := callSlack("chat.update", env.cfg.SlackBotToken, map[string]interface{}{
+	updSnap := callSlack("chat.update", env.botJWT, map[string]interface{}{
 		"channel": "C05GENERAL",
 		"ts":      botMsgTS,
 		"text":    "bot updated text",
@@ -829,10 +891,10 @@ func TestContractSlackAndSocketMode(t *testing.T) {
 	results["chat_update_sse_bob"] = bobSSE.next(t)
 
 	// 6. conversations.history & conversations.replies
-	results["conversations_history"] = callSlack("conversations.history", env.cfg.SlackBotToken, map[string]interface{}{
+	results["conversations_history"] = callSlack("conversations.history", env.botJWT, map[string]interface{}{
 		"channel": "C05GENERAL",
 	})
-	results["conversations_replies"] = callSlack("conversations.replies", env.cfg.SlackBotToken, map[string]interface{}{
+	results["conversations_replies"] = callSlack("conversations.replies", env.botJWT, map[string]interface{}{
 		"channel": "C05GENERAL",
 		"ts":      botMsgTS,
 	})
@@ -865,7 +927,7 @@ func TestContractErrorPaths(t *testing.T) {
 	}
 
 	callSlack := func(method string, body interface{}) httpSnapshot {
-		headers := map[string]string{"Authorization": "Bearer " + env.cfg.SlackBotToken}
+		headers := map[string]string{"Authorization": "Bearer " + env.botJWT}
 		st, _, raw := doJSONReq(t, http.MethodPost, base+"/slack/api/"+method, nil, headers, body)
 		return toSnapshot(st, raw)
 	}

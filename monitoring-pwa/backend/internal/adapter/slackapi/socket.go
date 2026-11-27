@@ -25,8 +25,8 @@ func (s *wsSocketSession) SendJSON(v interface{}) error {
 // SocketModeWS は `/slack/socket` の WebSocket 接続を受け付け、hello・events_api・ack・disconnect を処理する。
 func (h *Handler) SocketModeWS(c echo.Context) error {
 	ticket := c.QueryParam("ticket")
-	token := extractBearerToken(c)
-	if !h.socketUC.AuthorizeSocket(ticket, token) {
+	bot, ok := h.socketUC.AuthorizeSocket(ticket)
+	if !ok {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid socket mode ticket")
 	}
 
@@ -36,14 +36,14 @@ func (h *Handler) SocketModeWS(c echo.Context) error {
 	}
 	defer conn.Close()
 
-	connID, cleanup, err := h.socketUC.RegisterSocket(&wsSocketSession{conn: conn})
+	connID, cleanup, err := h.socketUC.RegisterSocket(bot, &wsSocketSession{conn: conn})
 	if err != nil {
-		slog.Error("failed to register socket mode connection", "error", err)
+		slog.Error("failed to register socket mode connection", "bot_user_id", bot.UserID, "error", err)
 		return nil
 	}
 	defer cleanup()
 
-	slog.Info("socket mode client connected", "conn_id", connID)
+	slog.Info("socket mode client connected", "conn_id", connID, "bot_user_id", bot.UserID, "bot_id", bot.BotID)
 
 	_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	conn.SetPongHandler(func(string) error {
@@ -58,7 +58,7 @@ func (h *Handler) SocketModeWS(c echo.Context) error {
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
-			slog.Info("socket mode client disconnected", "conn_id", connID, "error", err)
+			slog.Info("socket mode client disconnected", "conn_id", connID, "bot_user_id", bot.UserID, "error", err)
 			return nil
 		}
 		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
