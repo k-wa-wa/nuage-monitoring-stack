@@ -76,6 +76,18 @@ func waitWithContext(ctx context.Context, d time.Duration) error {
 
 // Login は IP ごとのバックオフ試行制限を適用しつつ合言葉を検証し、セッショントークンを返す。
 func (u *AuthUsecase) Login(ctx context.Context, clientIP, passphrase, usernameOrID string) (*domain.User, string, error) {
+	return u.LoginWithReader(ctx, clientIP, func() (string, string, error) {
+		return passphrase, usernameOrID, nil
+	})
+}
+
+// LoginWithReader は IP ごとのバックオフ試行制限を予約・待機した後に readCredentials を呼び出して合言葉を検証する。
+// リクエスト解析 (Bind) 前に試行制限を適用することで、過負荷時や遅延待機中の順序を維持する。
+func (u *AuthUsecase) LoginWithReader(
+	ctx context.Context,
+	clientIP string,
+	readCredentials func() (passphrase, usernameOrID string, err error),
+) (*domain.User, string, error) {
 	now := u.nowFunc()
 	wait, overloaded := u.reserveAttempt(clientIP, now)
 	if overloaded {
@@ -85,6 +97,11 @@ func (u *AuthUsecase) Login(ctx context.Context, clientIP, passphrase, usernameO
 		if err := u.sleepFunc(ctx, wait); err != nil {
 			return nil, "", ErrRequestCancelled
 		}
+	}
+
+	passphrase, usernameOrID, err := readCredentials()
+	if err != nil {
+		return nil, "", err
 	}
 
 	user, err := u.VerifyPassphrase(passphrase, usernameOrID)

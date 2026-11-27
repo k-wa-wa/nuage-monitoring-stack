@@ -2,6 +2,7 @@ package httpadapter
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 
@@ -27,7 +28,7 @@ func (h *ActivityHandler) Activity(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid filter")
 	}
 	limit := parseLimitParam(c, 50, 200)
-	res, err := h.activityUC.List(filter, c.QueryParam("before"), limit)
+	res, err := h.activityUC.List(filter, strings.TrimSpace(c.QueryParam("before")), limit)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to list activity")
 	}

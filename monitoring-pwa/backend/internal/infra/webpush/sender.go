@@ -43,8 +43,9 @@ func NewSender(publicKey, privateKey, subject string, subs usecase.SubscriptionR
 
 // Broadcast は登録されたすべてのデバイスに通知を送信する。
 func (s *Sender) Broadcast(_ context.Context, n domain.PushNotification) {
-	payload, ok := encodePushNotification(n)
-	if !ok {
+	payload, err := EncodePayload(n)
+	if err != nil {
+		slog.Error("failed to encode push payload", "error", err)
 		return
 	}
 	s.sendToSubscriptions(s.subs.List(), payload)
@@ -55,14 +56,16 @@ func (s *Sender) BroadcastToUser(_ context.Context, userID string, n domain.Push
 	if userID == "" {
 		return
 	}
-	payload, ok := encodePushNotification(n)
-	if !ok {
+	payload, err := EncodePayload(n)
+	if err != nil {
+		slog.Error("failed to encode push payload", "error", err)
 		return
 	}
 	s.sendToSubscriptions(s.subs.ListByUser(userID), payload)
 }
 
-func encodePushNotification(n domain.PushNotification) ([]byte, bool) {
+// EncodePayload はドメインの通知を Service Worker 向け Web Push JSON バイト列へ符号化する。
+func EncodePayload(n domain.PushNotification) ([]byte, error) {
 	dto := pushPayloadDTO{
 		Title:      n.Title,
 		Body:       n.Body,
@@ -72,12 +75,7 @@ func encodePushNotification(n domain.PushNotification) ([]byte, bool) {
 		Level:      n.Level,
 		Tag:        n.Tag,
 	}
-	payload, err := json.Marshal(dto)
-	if err != nil {
-		slog.Error("failed to encode push payload", "error", err)
-		return nil, false
-	}
-	return payload, true
+	return json.Marshal(dto)
 }
 
 // sendToSubscriptions は購読一覧へ通知を送信し、404/410 応答の購読を削除する。

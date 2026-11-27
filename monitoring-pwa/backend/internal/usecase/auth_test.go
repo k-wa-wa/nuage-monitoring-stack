@@ -115,6 +115,18 @@ func TestLoginRateLimit(t *testing.T) {
 		t.Fatal("expected ErrTooManyRequests when concurrent/burst queue wait exceeds limit")
 	}
 
+	// 過負荷時は readCredentials (リクエスト Bind) より先に ErrTooManyRequests で弾かれること
+	called := false
+	if _, _, err := uc.LoginWithReader(context.Background(), "198.51.100.11", func() (string, string, error) {
+		called = true
+		return "", "", ErrInvalidInput
+	}); err != ErrTooManyRequests {
+		t.Fatalf("expected ErrTooManyRequests before reader, got %v", err)
+	}
+	if called {
+		t.Fatal("readCredentials must not be called when overloaded")
+	}
+
 	// 別 IP は遅延なくログイン可能であること
 	waitsBefore := len(waits)
 	if u, _, err := uc.Login(context.Background(), "198.51.100.20", "valid-pass", ""); err != nil || u == nil {

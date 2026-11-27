@@ -53,8 +53,10 @@ func (h *ChatHandler) ListChannels(c echo.Context) error {
 
 func mapChannelError(err error, fallback string) error {
 	switch {
-	case errors.Is(err, usecase.ErrNotFound):
+	case errors.Is(err, usecase.ErrChannelNotFound):
 		return echo.NewHTTPError(http.StatusNotFound, "channel not found")
+	case errors.Is(err, usecase.ErrChannelFetch):
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch channel")
 	case errors.Is(err, usecase.ErrForbidden):
 		return echo.NewHTTPError(http.StatusForbidden, "access denied to another user's DM")
 	default:
@@ -88,10 +90,7 @@ func (h *ChatHandler) GetThread(c echo.Context) error {
 		if errors.Is(err, usecase.ErrNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound, "thread not found")
 		}
-		if errors.Is(err, usecase.ErrForbidden) {
-			return echo.NewHTTPError(http.StatusForbidden, "access denied to another user's DM")
-		}
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load thread")
+		return mapChannelError(err, "failed to load thread")
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -104,6 +103,11 @@ func (h *ChatHandler) GetThread(c echo.Context) error {
 // PostMessage は人間ユーザーからのメッセージを投稿し、Socket Mode で bot へ配信する。
 func (h *ChatHandler) PostMessage(c echo.Context) error {
 	user := GetUser(c)
+	channelID := c.Param("id")
+	if _, err := h.chatUC.AuthorizeChannel(user.ID, channelID); err != nil {
+		return mapChannelError(err, "failed to fetch channel")
+	}
+
 	var req struct {
 		Text     string `json:"text"`
 		ThreadTS string `json:"thread_ts,omitempty"`
@@ -112,13 +116,15 @@ func (h *ChatHandler) PostMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid message payload")
 	}
 
-	res, err := h.chatUC.PostHumanMessage(c.Request().Context(), *user, c.Param("id"), req.Text, req.ThreadTS)
+	res, err := h.chatUC.PostHumanMessage(c.Request().Context(), *user, channelID, req.Text, req.ThreadTS)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidInput):
 			return echo.NewHTTPError(http.StatusBadRequest, "text is required")
 		case errors.Is(err, usecase.ErrThreadNotFound):
 			return echo.NewHTTPError(http.StatusNotFound, "thread parent not found")
+		case errors.Is(err, usecase.ErrThreadVerify):
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to verify thread parent")
 		default:
 			return mapChannelError(err, "failed to save message")
 		}

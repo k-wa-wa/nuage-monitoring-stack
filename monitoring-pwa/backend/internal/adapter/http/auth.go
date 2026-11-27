@@ -21,21 +21,24 @@ func NewAuthHandler(authUC *usecase.AuthUsecase) *AuthHandler {
 
 // Login は合言葉を検証し、署名付きセッション Cookie を発行する。
 func (h *AuthHandler) Login(c echo.Context) error {
-	var req struct {
-		Passphrase string `json:"passphrase"`
-		User       string `json:"user,omitempty"`
-	}
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
-	}
-
-	user, token, err := h.authUC.Login(c.Request().Context(), c.RealIP(), req.Passphrase, req.User)
+	user, token, err := h.authUC.LoginWithReader(c.Request().Context(), c.RealIP(), func() (string, string, error) {
+		var req struct {
+			Passphrase string `json:"passphrase"`
+			User       string `json:"user,omitempty"`
+		}
+		if err := c.Bind(&req); err != nil {
+			return "", "", usecase.ErrInvalidInput
+		}
+		return req.Passphrase, req.User, nil
+	})
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrTooManyRequests):
 			return echo.NewHTTPError(http.StatusTooManyRequests, "ログイン試行が集中しているため、しばらく待ってから再試行してほしい")
 		case errors.Is(err, usecase.ErrRequestCancelled):
 			return echo.NewHTTPError(http.StatusRequestTimeout, "request cancelled")
+		case errors.Is(err, usecase.ErrInvalidInput):
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 		case errors.Is(err, usecase.ErrInvalidPassphrase):
 			return echo.NewHTTPError(http.StatusUnauthorized, "合言葉が正しくない")
 		default:

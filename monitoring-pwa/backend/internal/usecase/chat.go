@@ -91,11 +91,19 @@ func (c *ChatUsecase) ListAllChannels(includePublic, includeIM bool) ([]domain.C
 
 // GetChannel は ID でチャンネルを取得する (アクセス制御なし、Slack API 用)。
 func (c *ChatUsecase) GetChannel(channelID string) (*domain.Channel, error) {
-	return c.channels.GetChannelByID(channelID)
+	ch, err := c.channels.GetChannelByID(channelID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, ErrChannelNotFound
+		}
+		return nil, fmt.Errorf("%w: %w", ErrChannelFetch, err)
+	}
+	return ch, nil
 }
 
-func (c *ChatUsecase) authorizeChannelAccess(userID, channelID string) (*domain.Channel, error) {
-	ch, err := c.channels.GetChannelByID(channelID)
+// AuthorizeChannel は指定ユーザーがチャンネルへアクセスできるか検証する。
+func (c *ChatUsecase) AuthorizeChannel(userID, channelID string) (*domain.Channel, error) {
+	ch, err := c.GetChannel(channelID)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +115,7 @@ func (c *ChatUsecase) authorizeChannelAccess(userID, channelID string) (*domain.
 
 // ListMessages は人間向け UI 向けにチャンネルのメッセージ一覧（昇順）を返す。
 func (c *ChatUsecase) ListMessages(userID, channelID, beforeTS string, limit int) (*domain.Channel, []domain.Message, bool, error) {
-	ch, err := c.authorizeChannelAccess(userID, channelID)
+	ch, err := c.AuthorizeChannel(userID, channelID)
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -120,7 +128,7 @@ func (c *ChatUsecase) ListMessages(userID, channelID, beforeTS string, limit int
 
 // ListMessagesDesc は Slack API (`conversations.history`) 向けにチャンネルのメッセージ一覧（降順）を返す。
 func (c *ChatUsecase) ListMessagesDesc(channelID, oldest, latest string, inclusive bool, limit int) ([]domain.Message, bool, error) {
-	if _, err := c.channels.GetChannelByID(channelID); err != nil {
+	if _, err := c.GetChannel(channelID); err != nil {
 		return nil, false, err
 	}
 	return c.messages.ListChannelMessagesDesc(channelID, oldest, latest, inclusive, limit)
@@ -128,7 +136,7 @@ func (c *ChatUsecase) ListMessagesDesc(channelID, oldest, latest string, inclusi
 
 // GetThreadForUser は人間向け UI 向けにスレッドの親メッセージと返信一覧を返す。
 func (c *ChatUsecase) GetThreadForUser(userID, channelID, parentTS string) (*domain.Channel, *domain.Message, []domain.Message, error) {
-	ch, err := c.authorizeChannelAccess(userID, channelID)
+	ch, err := c.AuthorizeChannel(userID, channelID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -146,7 +154,7 @@ func (c *ChatUsecase) GetThread(channelID, parentTS string) (*domain.Message, []
 
 // PostHumanMessage は人間ユーザーからのメッセージを保存し、既読を更新し、SSE・Socket Mode へ配信する。
 func (c *ChatUsecase) PostHumanMessage(ctx context.Context, user domain.User, channelID, rawText, threadTS string) (PostHumanMessageResult, error) {
-	ch, err := c.authorizeChannelAccess(user.ID, channelID)
+	ch, err := c.AuthorizeChannel(user.ID, channelID)
 	if err != nil {
 		return PostHumanMessageResult{}, err
 	}
@@ -162,7 +170,7 @@ func (c *ChatUsecase) PostHumanMessage(ctx context.Context, user domain.User, ch
 			if errors.Is(err, ErrNotFound) {
 				return PostHumanMessageResult{}, ErrThreadNotFound
 			}
-			return PostHumanMessageResult{}, err
+			return PostHumanMessageResult{}, fmt.Errorf("%w: %w", ErrThreadVerify, err)
 		}
 	}
 
@@ -193,7 +201,7 @@ func (c *ChatUsecase) PostHumanMessage(ctx context.Context, user domain.User, ch
 
 // PostBotMessage は Slack bot からのメッセージを保存し、SSE・Socket Mode・Web Push へ配信する。
 func (c *ChatUsecase) PostBotMessage(ctx context.Context, channelID, threadTS, username, text, blocksJSON string) (*domain.Message, error) {
-	ch, err := c.channels.GetChannelByID(channelID)
+	ch, err := c.GetChannel(channelID)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +252,7 @@ func (c *ChatUsecase) PostBotMessage(ctx context.Context, channelID, threadTS, u
 
 // UpdateBotMessage は Slack bot からのメッセージ更新を保存し、SSE へ配信する。
 func (c *ChatUsecase) UpdateBotMessage(ctx context.Context, channelID, ts, text, blocksJSON string) (*domain.Message, error) {
-	ch, err := c.channels.GetChannelByID(channelID)
+	ch, err := c.GetChannel(channelID)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +266,7 @@ func (c *ChatUsecase) UpdateBotMessage(ctx context.Context, channelID, ts, text,
 
 // MarkRead は指定ユーザーのチャンネル既読位置を更新する。
 func (c *ChatUsecase) MarkRead(userID, channelID, ts string) error {
-	ch, err := c.authorizeChannelAccess(userID, channelID)
+	ch, err := c.AuthorizeChannel(userID, channelID)
 	if err != nil {
 		return err
 	}

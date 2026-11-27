@@ -55,15 +55,18 @@ func TestArchitectureDependencies(t *testing.T) {
 
 	for _, p := range pkgs {
 		rel := strings.TrimPrefix(p.ImportPath, modulePrefix)
+		isSubpkg := func(prefix string) bool {
+			return rel == prefix || strings.HasPrefix(rel, prefix+"/")
+		}
 
 		switch {
-		case rel == "internal/domain":
+		case isSubpkg("internal/domain"):
 			for _, imp := range p.Imports {
 				if strings.HasPrefix(imp, modulePrefix+"internal/") {
-					t.Errorf("domain must not import internal packages, found %s", imp)
+					t.Errorf("domain (%s) must not import internal packages, found %s", rel, imp)
 				}
 				if strings.HasPrefix(imp, "github.com/labstack/echo") || forbiddenInUsecase[imp] {
-					t.Errorf("domain must not import framework/driver %s", imp)
+					t.Errorf("domain (%s) must not import framework/driver %s", rel, imp)
 				}
 			}
 			// domain の型には JSON タグを付けない
@@ -91,19 +94,19 @@ func TestArchitectureDependencies(t *testing.T) {
 				})
 			}
 
-		case rel == "internal/usecase":
+		case isSubpkg("internal/usecase"):
 			for _, imp := range p.Imports {
 				if strings.HasPrefix(imp, modulePrefix+"internal/adapter") ||
 					strings.HasPrefix(imp, modulePrefix+"internal/infra") ||
 					strings.HasPrefix(imp, modulePrefix+"internal/config") {
-					t.Errorf("usecase must not import %s", imp)
+					t.Errorf("usecase (%s) must not import %s", rel, imp)
 				}
 				if strings.HasPrefix(imp, "github.com/labstack/echo") || forbiddenInUsecase[imp] {
-					t.Errorf("usecase must not import framework/driver %s", imp)
+					t.Errorf("usecase (%s) must not import framework/driver %s", rel, imp)
 				}
 			}
 
-		case strings.HasPrefix(rel, "internal/adapter"):
+		case isSubpkg("internal/adapter"):
 			for _, imp := range p.Imports {
 				if strings.HasPrefix(imp, modulePrefix+"internal/infra") {
 					t.Errorf("adapter (%s) must not import infra (%s)", rel, imp)
@@ -113,7 +116,7 @@ func TestArchitectureDependencies(t *testing.T) {
 				}
 			}
 
-		case strings.HasPrefix(rel, "internal/infra"):
+		case isSubpkg("internal/infra"):
 			for _, imp := range p.Imports {
 				if strings.HasPrefix(imp, modulePrefix+"internal/adapter") {
 					t.Errorf("infra (%s) must not import adapter (%s)", rel, imp)
@@ -123,12 +126,23 @@ func TestArchitectureDependencies(t *testing.T) {
 				}
 			}
 
-		case rel == "internal/config":
+		case isSubpkg("internal/config"):
 			for _, imp := range p.Imports {
 				if strings.HasPrefix(imp, modulePrefix+"internal/") {
-					t.Errorf("config must not import internal packages, found %s", imp)
+					t.Errorf("config (%s) must not import internal packages, found %s", rel, imp)
 				}
 			}
+
+		case rel == "internal":
+			if len(p.GoFiles) > 0 {
+				t.Errorf("internal root package must not contain non-test Go files: %v", p.GoFiles)
+			}
+
+		case isSubpkg("cmd"):
+			// cmd 配下は各層を組み立てる配線層のため制限しない
+
+		default:
+			t.Errorf("unexpected package outside standard layers: %s", rel)
 		}
 	}
 }

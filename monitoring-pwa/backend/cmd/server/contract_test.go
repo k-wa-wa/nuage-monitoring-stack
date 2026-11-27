@@ -27,6 +27,7 @@ import (
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/domain"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/realtime"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/sqlite"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/webpush"
 )
 
 var updateGolden = flag.Bool("update", false, "update golden files")
@@ -36,48 +37,27 @@ type contractPushRecord struct {
 	Payload    json.RawMessage `json:"payload"`
 }
 
-type contractPushPayload struct {
-	Title      string `json:"title"`
-	Body       string `json:"body"`
-	URL        string `json:"url,omitempty"`
-	TargetURL  string `json:"target_url,omitempty"`
-	DirectOpen bool   `json:"direct_open,omitempty"`
-	Level      string `json:"level,omitempty"`
-	Tag        string `json:"tag,omitempty"`
-}
-
 type contractPushSpy struct {
 	mu      sync.Mutex
 	records []contractPushRecord
 }
 
-func encodeContractPush(n domain.PushNotification) json.RawMessage {
-	b, _ := json.Marshal(contractPushPayload{
-		Title:      n.Title,
-		Body:       n.Body,
-		URL:        n.URL,
-		TargetURL:  n.TargetURL,
-		DirectOpen: n.DirectOpen,
-		Level:      n.Level,
-		Tag:        n.Tag,
-	})
-	return b
-}
-
 func (s *contractPushSpy) Broadcast(_ context.Context, n domain.PushNotification) {
+	b, _ := webpush.EncodePayload(n)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.records = append(s.records, contractPushRecord{
-		Payload: encodeContractPush(n),
+		Payload: b,
 	})
 }
 
 func (s *contractPushSpy) BroadcastToUser(_ context.Context, userID string, n domain.PushNotification) {
+	b, _ := webpush.EncodePayload(n)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.records = append(s.records, contractPushRecord{
 		TargetUser: userID,
-		Payload:    encodeContractPush(n),
+		Payload:    b,
 	})
 }
 
@@ -858,4 +838,119 @@ func TestContractSlackAndSocketMode(t *testing.T) {
 	})
 
 	assertGolden(t, "slack_and_socket", results, norm)
+}
+
+func TestContractErrorPaths(t *testing.T) {
+	env := newContractEnv(t)
+	base := env.server.URL
+	u, _ := url.Parse(base)
+	norm := newNormalizer(u.Host)
+
+	req, _ := http.NewRequest(http.MethodPost, base+"/api/auth/login", strings.NewReader(`{"passphrase":"alice-secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	loginResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+	loginResp.Body.Close()
+	aliceCookie := loginResp.Cookies()[0]
+
+	// 1 件通知を投稿し、activity の before 空白トリム比較に使う
+	st, _, raw := doJSONReq(t, http.MethodPost, base+"/webhook/generic", nil, nil, map[string]string{
+		"title": "deploy",
+		"body":  "ok",
+	})
+	if st != http.StatusOK {
+		t.Fatalf("generic webhook failed: %d %s", st, string(raw))
+	}
+
+	callSlack := func(method string, body interface{}) httpSnapshot {
+		headers := map[string]string{"Authorization": "Bearer " + env.cfg.SlackBotToken}
+		st, _, raw := doJSONReq(t, http.MethodPost, base+"/slack/api/"+method, nil, headers, body)
+		return toSnapshot(st, raw)
+	}
+
+	results := map[string]interface{}{}
+
+	// Auth: invalid JSON body
+	st, _, raw = doJSONReq(t, http.MethodPost, base+"/api/auth/login", nil, nil, `{invalid`)
+	results["auth_login_invalid_json"] = toSnapshot(st, raw)
+
+	// /api/channels/:id/* 404 / 403 / 400
+	st, _, raw = doJSONReq(t, http.MethodGet, base+"/api/channels/C99UNKNOWN/messages", aliceCookie, nil, nil)
+	results["list_messages_404"] = toSnapshot(st, raw)
+	st, _, raw = doJSONReq(t, http.MethodGet, base+"/api/channels/D02BOB/messages", aliceCookie, nil, nil)
+	results["list_messages_403_dm"] = toSnapshot(st, raw)
+
+	st, _, raw = doJSONReq(t, http.MethodGet, base+"/api/channels/C99UNKNOWN/threads/1", aliceCookie, nil, nil)
+	results["get_thread_404_channel"] = toSnapshot(st, raw)
+	st, _, raw = doJSONReq(t, http.MethodGet, base+"/api/channels/C05GENERAL/threads/9999999999.000001", aliceCookie, nil, nil)
+	results["get_thread_404_thread"] = toSnapshot(st, raw)
+	st, _, raw = doJSONReq(t, http.MethodGet, base+"/api/channels/D02BOB/threads/1", aliceCookie, nil, nil)
+	results["get_thread_403_dm"] = toSnapshot(st, raw)
+
+	st, _, raw = doJSONReq(t, http.MethodPost, base+"/api/channels/C99UNKNOWN/messages", aliceCookie, nil, `{invalid`)
+	results["post_message_404_before_bind"] = toSnapshot(st, raw)
+	st, _, raw = doJSONReq(t, http.MethodPost, base+"/api/channels/D02BOB/messages", aliceCookie, nil, `{invalid`)
+	results["post_message_403_before_bind"] = toSnapshot(st, raw)
+	st, _, raw = doJSONReq(t, http.MethodPost, base+"/api/channels/C05GENERAL/messages", aliceCookie, nil, `{invalid`)
+	results["post_message_400_invalid_json"] = toSnapshot(st, raw)
+	st, _, raw = doJSONReq(t, http.MethodPost, base+"/api/channels/C05GENERAL/messages", aliceCookie, nil, map[string]string{"text": "   "})
+	results["post_message_400_empty_text"] = toSnapshot(st, raw)
+	st, _, raw = doJSONReq(t, http.MethodPost, base+"/api/channels/C05GENERAL/messages", aliceCookie, nil, map[string]string{
+		"text":      "reply",
+		"thread_ts": "9999999999.000001",
+	})
+	results["post_message_404_thread_parent"] = toSnapshot(st, raw)
+
+	st, _, raw = doJSONReq(t, http.MethodPost, base+"/api/channels/C99UNKNOWN/read", aliceCookie, nil, map[string]string{})
+	results["mark_read_404"] = toSnapshot(st, raw)
+	st, _, raw = doJSONReq(t, http.MethodPost, base+"/api/channels/D02BOB/read", aliceCookie, nil, map[string]string{})
+	results["mark_read_403_dm"] = toSnapshot(st, raw)
+
+	// /api/activity before whitespace trimming
+	st, _, raw = doJSONReq(t, http.MethodGet, base+"/api/activity?before=%20", aliceCookie, nil, nil)
+	results["activity_before_whitespace"] = toSnapshot(st, raw)
+
+	// Slack API error paths and check ordering
+	results["slack_post_missing_channel_no_text"] = callSlack("chat.postMessage", map[string]interface{}{
+		"channel": "C99UNKNOWN",
+	})
+	results["slack_post_missing_channel_invalid_blocks"] = callSlack("chat.postMessage", map[string]interface{}{
+		"channel": "C99UNKNOWN",
+		"blocks":  map[string]string{"type": "section"},
+	})
+	results["slack_post_no_text"] = callSlack("chat.postMessage", map[string]interface{}{
+		"channel": "C05GENERAL",
+	})
+	results["slack_post_thread_not_found"] = callSlack("chat.postMessage", map[string]interface{}{
+		"channel":   "C05GENERAL",
+		"thread_ts": "9999999999.000001",
+		"text":      "reply",
+	})
+	results["slack_update_missing_params"] = callSlack("chat.update", map[string]interface{}{
+		"channel": "C05GENERAL",
+	})
+	results["slack_update_channel_not_found"] = callSlack("chat.update", map[string]interface{}{
+		"channel": "C99UNKNOWN",
+		"ts":      "1700000000.000001",
+		"text":    "x",
+	})
+	results["slack_update_message_not_found"] = callSlack("chat.update", map[string]interface{}{
+		"channel": "C05GENERAL",
+		"ts":      "9999999999.000001",
+		"text":    "x",
+	})
+	results["slack_conversations_info_not_found"] = callSlack("conversations.info", map[string]interface{}{
+		"channel": "C99UNKNOWN",
+	})
+	results["slack_conversations_history_not_found"] = callSlack("conversations.history", map[string]interface{}{
+		"channel": "C99UNKNOWN",
+	})
+	results["slack_conversations_replies_not_found"] = callSlack("conversations.replies", map[string]interface{}{
+		"channel": "C05GENERAL",
+		"ts":      "9999999999.000001",
+	})
+
+	assertGolden(t, "error_paths", results, norm)
 }

@@ -171,7 +171,7 @@ func (h *Handler) conversationsInfo(c echo.Context, params map[string]interface{
 	}
 	ch, err := h.chatUC.GetChannel(chID)
 	if err != nil {
-		if errors.Is(err, usecase.ErrNotFound) {
+		if errors.Is(err, usecase.ErrChannelNotFound) {
 			return slackErr(c, "channel_not_found")
 		}
 		return slackErr(c, "internal_error")
@@ -197,7 +197,7 @@ func (h *Handler) conversationsHistory(c echo.Context, params map[string]interfa
 
 	msgs, hasMore, err := h.chatUC.ListMessagesDesc(chID, oldest, latest, inclusive, limit)
 	if err != nil {
-		if errors.Is(err, usecase.ErrNotFound) {
+		if errors.Is(err, usecase.ErrChannelNotFound) {
 			return slackErr(c, "channel_not_found")
 		}
 		return slackErr(c, "internal_error")
@@ -260,6 +260,12 @@ func (h *Handler) chatPostMessage(c echo.Context, params map[string]interface{})
 	if chID == "" {
 		return slackErr(c, "channel_not_found")
 	}
+	if _, err := h.chatUC.GetChannel(chID); err != nil {
+		if errors.Is(err, usecase.ErrChannelNotFound) {
+			return slackErr(c, "channel_not_found")
+		}
+		return slackErr(c, "internal_error")
+	}
 
 	text, blocksJSON, errCode := extractMessageContent(params)
 	if errCode != "" {
@@ -272,7 +278,7 @@ func (h *Handler) chatPostMessage(c echo.Context, params map[string]interface{})
 	msg, err := h.chatUC.PostBotMessage(c.Request().Context(), chID, threadTS, username, text, blocksJSON)
 	if err != nil {
 		switch {
-		case errors.Is(err, usecase.ErrNotFound):
+		case errors.Is(err, usecase.ErrChannelNotFound):
 			return slackErr(c, "channel_not_found")
 		case errors.Is(err, usecase.ErrThreadNotFound):
 			return slackErr(c, "thread_not_found")
@@ -297,7 +303,7 @@ func (h *Handler) chatUpdate(c echo.Context, params map[string]interface{}) erro
 	}
 
 	if _, err := h.chatUC.GetChannel(chID); err != nil {
-		if errors.Is(err, usecase.ErrNotFound) {
+		if errors.Is(err, usecase.ErrChannelNotFound) {
 			return slackErr(c, "channel_not_found")
 		}
 		return slackErr(c, "internal_error")
@@ -310,6 +316,9 @@ func (h *Handler) chatUpdate(c echo.Context, params map[string]interface{}) erro
 
 	updated, err := h.chatUC.UpdateBotMessage(c.Request().Context(), chID, ts, text, blocksJSON)
 	if err != nil {
+		if errors.Is(err, usecase.ErrChannelNotFound) {
+			return slackErr(c, "channel_not_found")
+		}
 		if errors.Is(err, usecase.ErrNotFound) {
 			return slackErr(c, "message_not_found")
 		}
