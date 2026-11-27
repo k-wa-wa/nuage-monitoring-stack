@@ -39,6 +39,11 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    // 書体 (IBM Plex Sans JP は文字の範囲ごとの小さなファイルに分かれている) は CSS に埋め込まず、
+    // 別のファイルのまま配って、使う文字の分だけ読み込ませる
+    assetsInlineLimit: (file) => (/\.(woff2?|ttf|otf)$/.test(file) ? false : undefined)
+  },
   server: {
     port: 3000,
     host: true

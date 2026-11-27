@@ -1,0 +1,118 @@
+/*
+ * 土台。規約「3. ガードレール」をここで一括して守る。
+ * 対象は PC・タブレットのブラウザと iPhone の PWA (ホーム画面に追加して開くもの)。
+ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  /* ガードレール 2: モバイル WebKit のタップハイライトを消す */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * 画面全体は動かさない。スクロールは各領域 (.nui-scroll) の中だけで起こす。
+ * iOS Safari は overflow: hidden だけでは文書が動くので、position: fixed と useDocumentScrollLock を併用する。
+ */
+html,
+body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* アプリの外枠。キーボードが開いている間だけ、見えている高さに合わせる (useViewportFix と対) */
+.nui-app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+html[data-keyboard-open='true'] .nui-app {
+  top: var(--app-offset-top, 0px);
+  bottom: auto;
+  height: var(--app-height, 100dvh);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ガードレール 2: キーボード操作の時だけ枠を出す */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ガードレール 4: 押せる要素は長押しで文字を選ばない・連打で拡大しない */
+button,
+[role='button'],
+a,
+.nui-pressable {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* ガードレール 6: iOS が入力欄で画面を拡大しないよう 16px 以上にする (スマホ幅とタッチ端末) */
+@media (max-width: 768px), (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* 本文やコードは選んでコピーできるように残す */
+.nui-selectable,
+.nui-selectable * {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* スクロールする領域。スクロールしきっても外へ伝えない */
+.nui-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

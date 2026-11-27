@@ -78,7 +78,7 @@ export default function NotificationDetailPanel({ item, grafanaBase }: Notificat
 	}
 
 	return (
-		<div className="history-detail-panel">
+		<div className="history-detail-panel nui-selectable">
 			<div className="details-parsed">
 				{renderBody()}
 				{links.length > 0 && (
@@ -91,7 +91,7 @@ export default function NotificationDetailPanel({ item, grafanaBase }: Notificat
 								rel="noopener noreferrer"
 								className={`btn btn-${link.variant} btn-sm`}
 							>
-								<ExternalLinkIcon size={12} />
+								<ExternalLinkIcon size={13} aria-hidden="true" />
 								{link.label}
 							</a>
 						))}

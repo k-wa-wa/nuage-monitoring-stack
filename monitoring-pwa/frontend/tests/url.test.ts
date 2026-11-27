@@ -3,7 +3,6 @@ import {
 	GRAFANA_BASE_URL,
 	extractExternalLinks,
 	getLogsUrl,
-	parseAppRoute,
 	rewriteGeneratorUrl,
 	sanitizeExternalUrl
 } from '../src/utils/url'
@@ -46,7 +45,6 @@ describe('extractExternalLinks', () => {
 	test('一般通知では対象アプリリンクを抽出する', () => {
 		const note: UnifiedNotification = {
 			uid: 'notification-1',
-			id: 1,
 			kind: 'notification',
 			source: 'argocd',
 			title: 'Argo CD Synced',
@@ -71,7 +69,6 @@ describe('extractExternalLinks', () => {
 	test('アラートではログ・Grafana・Runbook リンクを抽出する', () => {
 		const alert: UnifiedNotification = {
 			uid: 'alert-2',
-			id: 2,
 			kind: 'alert',
 			source: 'alertmanager',
 			title: 'PodCrashLooping',
@@ -96,45 +93,5 @@ describe('extractExternalLinks', () => {
 		expect(links[0].url).toBe(
 			getLogsUrl({ alertname: 'PodCrashLooping', namespace: 'default', pod: 'api-1' }) || ''
 		)
-	})
-})
-
-describe('parseAppRoute', () => {
-	test('通知詳細・設定・旧ルートを正しく判定する', () => {
-		expect(parseAppRoute('/')).toEqual({
-			tab: 'notifications',
-			selectedUid: null,
-			detailKind: null,
-			detailId: null,
-			legacyHistoryId: null
-		})
-		expect(parseAppRoute('/settings')).toEqual({
-			tab: 'settings',
-			selectedUid: null,
-			detailKind: null,
-			detailId: null,
-			legacyHistoryId: null
-		})
-		expect(parseAppRoute('/alerts/12')).toEqual({
-			tab: 'notifications',
-			selectedUid: 'alert-12',
-			detailKind: 'alert',
-			detailId: 12,
-			legacyHistoryId: null
-		})
-		expect(parseAppRoute('/notifications/5')).toEqual({
-			tab: 'notifications',
-			selectedUid: 'notification-5',
-			detailKind: 'notification',
-			detailId: 5,
-			legacyHistoryId: null
-		})
-		expect(parseAppRoute('/history/7')).toEqual({
-			tab: 'notifications',
-			selectedUid: null,
-			detailKind: null,
-			detailId: null,
-			legacyHistoryId: 7
-		})
 	})
 })

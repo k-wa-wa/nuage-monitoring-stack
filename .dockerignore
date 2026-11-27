@@ -1,0 +1,11 @@
+# monitoring-pwa-frontend のイメージ (文脈はリポジトリ直下) に要るものだけを送る
+*
+!package.json
+!bun.lock
+!packages/nuage-ui
+!monitoring-pwa/frontend
+**/node_modules
+**/dist
+**/storybook-static
+monitoring-pwa/frontend/test-results
+monitoring-pwa/frontend/playwright-report

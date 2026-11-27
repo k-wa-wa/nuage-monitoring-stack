@@ -6,6 +6,9 @@ on:
       - master
     paths:
       - "monitoring-pwa/**"
+      - "packages/**"
+      - "package.json"
+      - "bun.lock"
       - ".github/workflows/docker-build-push.yml"
   pull_request:
 
@@ -25,16 +28,22 @@ jobs:
             context: ./monitoring-pwa/backend
             image: ghcr.io/${{ github.repository }}-monitoring-pwa-backend
           - name: monitoring-pwa-frontend
-            context: ./monitoring-pwa/frontend
+            # @nuage/ui (packages/nuage-ui) を取り込むため、文脈はリポジトリ直下 (.dockerignore で絞る)
+            context: .
+            file: monitoring-pwa/frontend/Dockerfile
             image: ghcr.io/${{ github.repository }}-monitoring-pwa-frontend
             pr-comment-marker: "🚀 Preview Environment"
             pr-comment-body: |
               ### 🚀 Preview Environment
               PR プレビュー環境のイメージビルドが完了した:
               🔗 [Preview Environment](https://monitoring-pr-${{ github.event.pull_request.number }}.wpcapp.net)
+          - name: monitoring-pwa-echo-bot
+            context: ./monitoring-pwa/echo-bot
+            image: ghcr.io/${{ github.repository }}-monitoring-pwa-echo-bot
     uses: k-wa-wa/nuage-workspace/.github/workflows/docker-build-push.yml@master
     with:
       context: ${{ matrix.context }}
+      file: ${{ matrix.file }}
       image: ${{ matrix.image }}
       pr-comment-marker: ${{ matrix.pr-comment-marker }}
       pr-comment-body: ${{ matrix.pr-comment-body }}

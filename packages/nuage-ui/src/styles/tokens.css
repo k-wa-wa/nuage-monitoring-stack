@@ -1,0 +1,97 @@
+/*
+ * Nuage のデザイントークン。
+ * 値は nuage-workspace/docs/ui-design.md の「2.6 トークン定義リファレンス」と一致させる (ダークテーマ専用)。
+ * 規約に無いものは、末尾の「拡張」に @nuage/ui が足したものとして分けて置く。
+ */
+:root {
+  color-scheme: dark;
+
+  /* ベースカラー（ダークテーマ専用） */
+  --bg: #191816;
+  --fg: #e8e4dc;
+  --card: #211f1c;
+  --line: #2f2d29;
+  --muted: #98928a;
+
+  /* セマンティック・状態カラー */
+  --accent: #60a5fa;
+  --warn: #e0a08a;
+  --success: #10b981;
+  --blocked: #f59e0b;
+
+  /* 半透明（Alpha）パターントークン（弱 ~8%, 中 ~16%, 強 ~25%） */
+  --accent-subtle: rgba(96, 165, 250, 0.08);
+  --accent-emphasis: rgba(96, 165, 250, 0.16);
+  --accent-border: rgba(96, 165, 250, 0.25);
+
+  --warn-subtle: rgba(224, 160, 138, 0.08);
+  --warn-emphasis: rgba(224, 160, 138, 0.16);
+  --warn-border: rgba(224, 160, 138, 0.25);
+
+  --muted-subtle: rgba(152, 146, 138, 0.08);
+  --muted-emphasis: rgba(152, 146, 138, 0.16);
+  --muted-border: rgba(152, 146, 138, 0.25);
+
+  --success-subtle: rgba(16, 185, 129, 0.08);
+  --success-emphasis: rgba(16, 185, 129, 0.16);
+  --success-border: rgba(16, 185, 129, 0.25);
+
+  --blocked-subtle: rgba(245, 158, 11, 0.08);
+  --blocked-emphasis: rgba(245, 158, 11, 0.16);
+  --blocked-border: rgba(245, 158, 11, 0.25);
+
+  /* タイポグラフィ */
+  --font-sans:
+    "IBM Plex Sans", "IBM Plex Sans JP", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* 角丸 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+
+  /* モーション・触覚トークン（iOS Fluid Interaction） */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-snappy: ease-out;
+  --duration-press: 0.08s;
+  --duration-release: 0.35s;
+  --scale-button-active: 0.94;
+  --scale-icon-active: 0.88;
+
+  /* ---- 拡張 (@nuage/ui が足したもの。規約に取り込むか検討する) ---- */
+
+  /* 文字の大きさ (規約「2.3 サイズ階層」の 5 段階) */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 14px;
+  --text-lg: 15px;
+  --text-xl: 20px;
+
+  /* 余白 (規約「2.2 スペーシング」の 4px / 8px グリッド) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* ガラス (ヘッダー・タブバー)。背景色 --bg を透かしてぼかす */
+  --bg-glass: rgba(25, 24, 22, 0.78);
+  --glass-blur: blur(20px) saturate(1.4);
+  /* 重なり (モーダルの背景・押し込まれた画面の暗がり) */
+  --overlay: rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.35);
+
+  /* 画面の移り変わり (iOS の押し込み・戻りに近い動き) */
+  --ease-nav: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-nav: 0.42s;
+
+  /* 大きさ */
+  --toolbar-height: 48px;
+  --tabbar-height: 56px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
