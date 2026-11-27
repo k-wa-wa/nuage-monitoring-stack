@@ -208,6 +208,8 @@ spec:
           for: 15m
           labels:
             severity: info
+        # Proxmox LXC コンテナでは /proc/loadavg (node_load1) が物理ホスト全体の値を返すため、
+        # VM (virt="vm") は従来の load per core を維持し、LXC (virt="lxc") は cgroup の CPU PSI に切り替える。
         - alert: NodeSystemSaturation
           record: ""
           annotations:
@@ -215,8 +217,20 @@ spec:
             runbook_url: "https://runbooks.prometheus-operator.dev/runbooks/node/nodesystemsaturation"
             summary: "System saturated, load per core is very high."
           expr: |-
-            node_load1{job="external-nodes"}
-            / count without (cpu, mode) (node_cpu_seconds_total{job="external-nodes", mode="idle"}) > 2
+            node_load1{job="external-nodes", virt="vm"}
+            / count without (cpu, mode) (node_cpu_seconds_total{job="external-nodes", virt="vm", mode="idle"}) > 2
+          for: 15m
+          labels:
+            severity: warning
+        # LXC コンテナ別の /sys/fs/cgroup/cpu.pressure (some 行) を NixOS 側の textfile collector で出力する。
+        # 未対応の LXC ではメトリクス自体が存在しないためクエリ結果が空になり誤発火しない。
+        - alert: NodeSystemSaturation
+          record: ""
+          annotations:
+            description: "LXC container CPU pressure (some, waiting seconds/s) at {{ $labels.instance }} has been above 0.25 (25%) for the last 15 minutes, is currently at {{ printf \"%.2f\" $value }}.\nThis might indicate CPU contention in this container and can cause it becoming unresponsive."
+            summary: "LXC container saturated, CPU pressure (PSI) is high."
+          expr: |-
+            rate(lxc_cgroup_pressure_cpu_waiting_seconds_total{job="external-nodes", virt="lxc"}[5m]) > 0.25
           for: 15m
           labels:
             severity: warning
