@@ -1,41 +1,15 @@
 import { useState, type FormEvent } from 'react'
 import { Button, Card, TextField } from '@nuage/ui'
-import { API_BASE, useChatActions } from '../state/chatStore'
+import { useLogin } from '../hooks/useLogin'
 
 export default function LoginPage() {
-	const { reloadBootstrap } = useChatActions()
+	const { submitting, error, login } = useLogin()
 	const [passphrase, setPassphrase] = useState('')
-	const [submitting, setSubmitting] = useState(false)
-	const [error, setError] = useState<string | null>(null)
 
 	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
-		if (!passphrase.trim() || submitting) return
-		setSubmitting(true)
-		setError(null)
-		try {
-			const res = await fetch(`${API_BASE}/api/auth/login`, {
-				method: 'POST',
-				credentials: 'include',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ passphrase })
-			})
-			if (!res.ok) {
-				setError(
-					res.status === 429
-						? 'ログインの試行が多すぎる。少し待ってからもう一度試してほしい。'
-						: res.status === 401
-							? '合言葉が正しくない。'
-							: `ログインに失敗した (HTTP ${res.status})。`
-				)
-				return
-			}
+		if (await login(passphrase)) {
 			setPassphrase('')
-			await reloadBootstrap()
-		} catch {
-			setError('サーバーにつながらなかった。')
-		} finally {
-			setSubmitting(false)
 		}
 	}
 

@@ -3,16 +3,8 @@
  * 色・余白・文字の大きさ・角丸は @nuage/ui のトークン (Nuage UI 規約) を経由する。
  */
 
-.boot-spinner,
-.center-spinner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-6) 0;
-}
-
-.boot-spinner {
-  flex: 1;
+.empty-action {
+  margin-top: var(--space-3);
 }
 
 .iframe-fallback {
@@ -680,9 +672,15 @@
   padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
+  background: var(--card);
   overflow: hidden;
   line-height: 0;
   cursor: zoom-in;
+}
+
+.slack-image-trigger[data-loaded='false'] {
+  min-width: 160px;
+  min-height: 120px;
 }
 
 .slack-inline-image {

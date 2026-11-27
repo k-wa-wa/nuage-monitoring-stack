@@ -15,6 +15,7 @@ const mimeTypes = {
 	'.png': 'image/png',
 	'.ico': 'image/x-icon',
 	'.svg': 'image/svg+xml',
+	'.woff2': 'font/woff2',
 	'.webmanifest': 'application/manifest+json'
 }
 

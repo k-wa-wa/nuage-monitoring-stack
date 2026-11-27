@@ -179,9 +179,14 @@
 .nui-page-body {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .nui-page-content {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
   padding-bottom: calc(var(--space-4) + var(--nui-tabbar-space, 0px) + var(--safe-bottom));
 }
 
@@ -207,6 +212,7 @@ html[data-keyboard-open='true'] .nui-page-footer {
   position: sticky;
   top: 0;
   z-index: 20;
+  flex-shrink: 0;
   padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
   border-bottom: 1px solid var(--line);
   background: var(--bg-glass);
@@ -328,6 +334,12 @@ html[data-keyboard-open='true'] .nui-page-footer {
   }
 }
 
+.nui-button[data-variant='primary'] .nui-spinner,
+.nui-icon-button[data-variant='filled'] .nui-spinner {
+  border-color: var(--muted-border);
+  border-top-color: var(--bg);
+}
+
 .nui-icon-button {
   display: inline-flex;
   align-items: center;
@@ -346,6 +358,10 @@ html[data-keyboard-open='true'] .nui-page-footer {
 .nui-icon-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.nui-icon-button[aria-busy='true']:disabled {
+  opacity: 0.8;
 }
 
 .nui-back-button {
@@ -414,8 +430,16 @@ html[data-keyboard-open='true'] .nui-page-footer {
   margin: var(--space-4) var(--space-4) 0;
 }
 
-.nui-list-title {
+.nui-list-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0 var(--space-1) var(--space-2);
+  min-height: 18px;
+}
+
+.nui-list-title {
+  margin: 0;
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--muted);
@@ -616,6 +640,9 @@ html[data-keyboard-open='true'] .nui-page-footer {
 
 .nui-toggle {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   width: 44px;
   height: 26px;
@@ -628,9 +655,17 @@ html[data-keyboard-open='true'] .nui-page-footer {
   background: var(--success);
 }
 
+.nui-toggle[data-loading='true'] {
+  background: var(--muted-subtle);
+}
+
 .nui-toggle:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.nui-toggle[data-loading='true']:disabled {
+  opacity: 0.85;
 }
 
 .nui-toggle-thumb {
@@ -648,7 +683,7 @@ html[data-keyboard-open='true'] .nui-page-footer {
   transform: translateX(18px);
 }
 
-/* ---------- 読み込み中・空 ---------- */
+/* ---------- 読み込み中・空・スケルトン ---------- */
 .nui-spinner {
   display: inline-block;
   flex-shrink: 0;
@@ -661,6 +696,54 @@ html[data-keyboard-open='true'] .nui-page-footer {
 @keyframes nui-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+.nui-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.nui-loading-state[data-fill='true'] {
+  flex: 1;
+}
+
+.nui-loading-message {
+  margin: 0;
+}
+
+.nui-skeleton {
+  display: inline-block;
+  width: 100%;
+  height: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--muted-emphasis);
+  animation: nui-pulse 1.4s ease-in-out infinite;
+}
+
+.nui-skeleton[data-variant='rect'] {
+  border-radius: var(--radius-md);
+}
+
+.nui-skeleton[data-variant='circle'] {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+}
+
+@keyframes nui-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
   }
 }
 

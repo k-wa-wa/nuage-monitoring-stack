@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ImgHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -20,6 +20,39 @@ interface SlackRichTextProps {
 interface LightboxImage {
 	src: string
 	alt: string
+}
+
+function SlackInlineImage({
+	src,
+	alt,
+	onOpen,
+	...rest
+}: {
+	src: string
+	alt: string
+	onOpen: () => void
+} & ImgHTMLAttributes<HTMLImageElement>) {
+	const [loaded, setLoaded] = useState(false)
+	const label = alt || '画像'
+	return (
+		<button
+			type="button"
+			onClick={onOpen}
+			className="slack-image-trigger"
+			data-loaded={loaded ? 'true' : 'false'}
+			aria-label={`${label} を全画面で表示`}
+		>
+			<img
+				{...rest}
+				src={src}
+				alt={alt}
+				className="slack-inline-image"
+				loading="lazy"
+				onLoad={() => setLoaded(true)}
+				onError={() => setLoaded(true)}
+			/>
+		</button>
+	)
 }
 
 function createMarkdownComponents(onOpenImage: (img: LightboxImage) => void): Components {
@@ -50,14 +83,12 @@ function createMarkdownComponents(onOpenImage: (img: LightboxImage) => void): Co
 			}
 			const label = alt || '画像'
 			return (
-				<button
-					type="button"
-					onClick={() => onOpenImage({ src: safeSrc, alt: label })}
-					className="slack-image-trigger"
-					aria-label={`${label} を全画面で表示`}
-				>
-					<img {...rest} src={safeSrc} alt={alt || ''} className="slack-inline-image" loading="lazy" />
-				</button>
+				<SlackInlineImage
+					{...rest}
+					src={safeSrc}
+					alt={alt || ''}
+					onOpen={() => onOpenImage({ src: safeSrc, alt: label })}
+				/>
 			)
 		},
 		code: ({ node: _node, className, children, ...rest }) => {

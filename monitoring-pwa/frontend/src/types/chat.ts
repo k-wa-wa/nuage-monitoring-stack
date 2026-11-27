@@ -67,6 +67,8 @@ export interface SearchResult {
 	message: ChatMessage
 }
 
+export type ActivityFilter = 'all' | 'firing' | 'resolved' | 'notice'
+
 // 通知タブの 1 件 (アラート・通知のスレッドの親メッセージ)
 export interface ActivityItem {
 	channel_id: string

@@ -13,9 +13,14 @@ async function setupRoutes(page: Page) {
 	})
 }
 
-// 画面の移り変わりの動き (Web Animations) が終わるまで待つ
+// 画面の移り変わりの動き (Web Animations) が終わるまで待つ (スピナー等の無限ループは除く)
 async function settle(page: Page) {
-	await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'))
+	await page.waitForFunction(() =>
+		document
+			.getAnimations()
+			.filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+			.every((a) => a.playState !== 'running')
+	)
 	await page.waitForTimeout(50)
 }
 
@@ -339,5 +344,60 @@ test.describe('Nuage Notify (@nuage/ui) スマホ E2E', () => {
 		await page.getByRole('button', { name: 'スレッドを閉じる' }).click()
 		await expect(page).toHaveURL(/\/tabs\/home\/channels\/C01ALERTS$/)
 		await expect(page.locator('.nui-split-aside')).toHaveCount(0)
+	})
+
+	test('ホームの検索では入力直後 (デバウンス中) から読み込み中を表示する', async ({ page }) => {
+		await page.route('**/api/search**', async (route) => {
+			await new Promise((resolve) => setTimeout(resolve, 250))
+			await route.continue()
+		})
+		await login(page)
+		await page.locator('.nui-search-input').filter({ visible: true }).fill('メッセージ')
+		await expect(page.locator('.nui-list-header').filter({ hasText: '検索結果' }).locator('.nui-spinner')).toBeVisible()
+		await expect(page.locator('.search-result-item').filter({ visible: true })).toHaveCount(1)
+	})
+
+	test('通知とチャンネルの取得失敗時は空表示に化けずエラーと再読み込み導線を出す', async ({ page }) => {
+		let activityFailed = false
+		await page.route('**/api/activity?filter=all**', async (route) => {
+			if (!activityFailed) {
+				activityFailed = true
+				await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'boom' }) })
+				return
+			}
+			await route.continue()
+		})
+		let channelFailed = false
+		await page.route('**/api/channels/C01ALERTS/messages**', async (route) => {
+			if (!channelFailed) {
+				channelFailed = true
+				await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'boom' }) })
+				return
+			}
+			await route.continue()
+		})
+
+		await login(page)
+		await page.locator('.nui-tabbar-item[data-tab="activity"]').click()
+		await settle(page)
+		await expect(page.locator('.nui-empty').filter({ visible: true })).toContainText('通知を読み込めなかった。')
+		await page.getByRole('button', { name: '再読み込み' }).filter({ visible: true }).click()
+		await expect(page.locator('.activity-item').filter({ visible: true })).toHaveCount(3)
+
+		await page.locator('.nui-tabbar-item[data-tab="home"]').click()
+		await settle(page)
+		await channelItem(page, 'alertmanager').click()
+		await expect(page.locator('.nui-empty').filter({ visible: true })).toContainText('メッセージを読み込めなかった。')
+		await page.getByRole('button', { name: '再読み込み' }).filter({ visible: true }).click()
+		await expect(page.getByText('KubeJobFailed').filter({ visible: true })).toBeVisible()
+	})
+
+	test('設定のプッシュ通知スイッチは確認完了後に確認中状態が解除される', async ({ page }) => {
+		await login(page)
+		await page.locator('.nui-tabbar-item[data-tab="settings"]').click()
+		await settle(page)
+		const pushToggle = page.getByRole('switch', { name: 'プッシュ通知を受け取る' }).filter({ visible: true })
+		await expect(pushToggle).toBeVisible()
+		await expect(pushToggle).not.toHaveAttribute('aria-busy', 'true', { timeout: 5000 })
 	})
 })

@@ -1,8 +1,279 @@
 {
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["react", "typescript", "oxc", "import"],
+	"rules": {
+		"react/rules-of-hooks": "error",
+		"react/only-export-components": ["warn", { "allowConstantExport": true }],
+		"import/no-cycle": "error"
+	},
+	"overrides": [
+		{
+			"files": ["src/types/**"],
+			"rules": {
+				"no-restricted-globals": [
+					"error",
+					{
+						"globals": [{ "name": "fetch", "message": "types 層での直接 fetch は禁止である。api 層を使う。" }],
+						"checkGlobalObject": true
+					}
+				],
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{ "group": ["../*"], "message": "types 層はアプリ内の他層へ依存できない。" },
+							{ "group": ["react", "react-*", "@nuage/ui"], "message": "types 層は React や UI ライブラリへ依存できない。" }
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["src/utils/**"],
+			"rules": {
+				"no-restricted-globals": [
+					"error",
+					{
+						"globals": [{ "name": "fetch", "message": "utils 層での直接 fetch は禁止である。api 層を使う。" }],
+						"checkGlobalObject": true
+					}
+				],
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": [
+									"../api",
+									"../api/*",
+									"../state",
+									"../state/*",
+									"../hooks",
+									"../hooks/*",
+									"../routes",
+									"../routes/*",
+									"../components",
+									"../components/*",
+									"../pages",
+									"../pages/*",
+									"../../**"
+								],
+								"message": "utils 層は types 層のみ参照できる。"
+							},
+							{ "group": ["react", "react-*", "@nuage/ui"], "message": "utils 層は React や UI ライブラリへ依存できない。" }
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["src/api/**"],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": [
+									"../state",
+									"../state/*",
+									"../hooks",
+									"../hooks/*",
+									"../routes",
+									"../routes/*",
+									"../components",
+									"../components/*",
+									"../pages",
+									"../pages/*",
+									"../../**"
+								],
+								"message": "api 層は utils / types 層のみ参照できる。"
+							},
+							{ "group": ["react", "react-*", "@nuage/ui"], "message": "api 層は React や @nuage/ui へ依存できない。" }
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["src/state/**"],
+			"rules": {
+				"no-restricted-globals": [
+					"error",
+					{
+						"globals": [{ "name": "fetch", "message": "state 層での直接 fetch は禁止である。api 層を使う。" }],
+						"checkGlobalObject": true
+					}
+				],
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": [
+									"../hooks",
+									"../hooks/*",
+									"../routes",
+									"../routes/*",
+									"../components",
+									"../components/*",
+									"../pages",
+									"../pages/*",
+									"../../**"
+								],
+								"message": "state 層は api / utils / types 層のみ参照できる。"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["src/routes/**"],
+			"rules": {
+				"no-restricted-globals": [
+					"error",
+					{
+						"globals": [{ "name": "fetch", "message": "routes 層での直接 fetch は禁止である。" }],
+						"checkGlobalObject": true
+					}
+				],
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": [
+									"../api",
+									"../api/*",
+									"../state",
+									"../state/*",
+									"../hooks",
+									"../hooks/*",
+									"../components",
+									"../components/*",
+									"../pages",
+									"../pages/*",
+									"../../**"
+								],
+								"message": "routes 層は types / @nuage/ui のみ参照できる。"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["src/hooks/**"],
+			"rules": {
+				"no-restricted-globals": [
+					"error",
+					{
+						"globals": [{ "name": "fetch", "message": "hooks 層での直接 fetch は禁止である。api 層を使う。" }],
+						"checkGlobalObject": true
+					}
+				],
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": [
+									"../routes",
+									"../routes/*",
+									"../components",
+									"../components/*",
+									"../pages",
+									"../pages/*",
+									"../../**"
+								],
+								"message": "hooks 層は components / pages / routes 層へ依存できない。"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["src/components/**"],
+			"rules": {
+				"no-restricted-globals": [
+					"error",
+					{
+						"globals": [{ "name": "fetch", "message": "components 層での直接 fetch は禁止である。" }],
+						"checkGlobalObject": true
+					}
+				],
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": [
+									"../api",
+									"../api/*",
+									"../state",
+									"../state/*",
+									"../hooks",
+									"../hooks/*",
+									"../routes",
+									"../routes/*",
+									"../pages",
+									"../pages/*",
+									"../../**"
+								],
+								"message": "components 層は純粋な表示部品であり、api / state / pages 等へ依存できない。"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["src/pages/**"],
+			"rules": {
+				"no-restricted-globals": [
+					"error",
+					{
+						"globals": [{ "name": "fetch", "message": "pages 層での直接 fetch は禁止である。state または hooks を使う。" }],
+						"checkGlobalObject": true
+					}
+				],
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": ["../api", "../api/*", "../../**"],
+								"message": "pages 層から api 層への直接インポートは禁止である。state または hooks 経由を使う。"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": ["src/App.tsx", "src/main.tsx"],
+			"rules": {
+				"no-restricted-globals": [
+					"error",
+					{
+						"globals": [{ "name": "fetch", "message": "アプリエントリでの直接 fetch は禁止である。state または hooks を使う。" }],
+						"checkGlobalObject": true
+					}
+				],
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": ["./api", "./api/*"],
+								"message": "App.tsx / main.tsx から api 層への直接インポートは禁止である。state または hooks 経由を使う。"
+							}
+						]
+					}
+				]
+			}
+		}
+	]
 }

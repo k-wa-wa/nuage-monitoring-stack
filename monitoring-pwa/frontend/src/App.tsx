@@ -1,18 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AppShell, EmptyState, Page, Spinner, SplitView, TabbedStacks, ToastProvider, useIsWide, type TabDefinition } from '@nuage/ui'
+import { useEffect, useMemo } from 'react'
+import { AppShell, EmptyState, LoadingState, Page, SplitView, TabbedStacks, ToastProvider, useIsWide, type TabDefinition } from '@nuage/ui'
 import { Bell, Home, Settings } from 'lucide-react'
 import { BrowserRouter, Navigate, useLocation, useNavigate, useParams, useRoutes } from 'react-router-dom'
 import ChannelNav from './components/ChannelNav'
+import { useChannelSearch } from './hooks/useChannelSearch'
+import { useFiringCount } from './hooks/useFiringCount'
 import ActivityPage from './pages/ActivityPage'
 import ChannelPage from './pages/ChannelPage'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
 import SettingsPage from './pages/SettingsPage'
 import ThreadPage from './pages/ThreadPage'
+import { channelPath, parentPath, threadPath } from './routes/paths'
 import { ChatProvider } from './state/ChatContext'
-import { API_BASE, useChatState } from './state/chatStore'
-import { parentPath } from './state/routes'
-import type { ActivityResponse } from './types/chat'
+import { useChatState } from './state/chatStore'
 
 // Service Worker から届く通知クリック (アプリが開いている時) を画面遷移に変える
 function NotificationClickBridge() {
@@ -28,25 +29,6 @@ function NotificationClickBridge() {
 		return () => navigator.serviceWorker.removeEventListener('message', handle)
 	}, [navigate])
 	return null
-}
-
-// 発生中のアラート数 (タブ・サイドバーのバッジ)
-function useFiringCount(): number {
-	const activityVersion = useChatState((s) => s.activityVersion)
-	const [count, setCount] = useState(0)
-	useEffect(() => {
-		let cancelled = false
-		fetch(`${API_BASE}/api/activity?filter=firing&limit=1`, { credentials: 'include' })
-			.then((res) => (res.ok ? (res.json() as Promise<ActivityResponse>) : null))
-			.then((data) => {
-				if (!cancelled && data) setCount(data.firing_count)
-			})
-			.catch(() => {})
-		return () => {
-			cancelled = true
-		}
-	}, [activityVersion])
-	return count
 }
 
 // Push 通知が開く URL (/channels/<ch>/threads/<ts>) を、タブの中のパスへ移す。
@@ -105,6 +87,9 @@ function MobileLayout({ firingCount }: { firingCount: number }) {
 function WideLayout({ firingCount }: { firingCount: number }) {
 	const { pathname } = useLocation()
 	const bot = useChatState((s) => s.bot)
+	const channels = useChatState((s) => s.channels)
+	const bootstrapLoaded = useChatState((s) => s.bootstrapLoaded)
+	const search = useChannelSearch()
 	const main = useRoutes([
 		{ path: '/tabs/home', element: <EmptyState>左の一覧からチャンネルを選んでほしい。</EmptyState> },
 		{ path: '/tabs/home/channels/:channelId', element: <ChannelPage /> },
@@ -120,7 +105,21 @@ function WideLayout({ firingCount }: { firingCount: number }) {
 					title={<span className="app-title-tap">Nuage Notify</span>}
 					subtitle={`${bot.name}: ${bot.online ? 'オンライン' : 'オフライン'}`}
 				>
-					<ChannelNav activePath={pathname} withAppLinks firingCount={firingCount} />
+					<ChannelNav
+						channels={channels}
+						bot={bot}
+						channelsLoading={!bootstrapLoaded}
+						query={search.query}
+						onQueryChange={search.setQuery}
+						searchResults={search.results}
+						searching={search.searching}
+						searchError={search.error}
+						channelLinkFor={(id) => channelPath('/tabs/home', id)}
+						threadLinkFor={(cid, ts) => threadPath('/tabs/home', cid, ts)}
+						activePath={pathname}
+						withAppLinks
+						firingCount={firingCount}
+					/>
 				</Page>
 			}
 			main={main}
@@ -147,11 +146,7 @@ function AppLayout() {
 function Shell() {
 	const authState = useChatState((s) => s.authState)
 	if (authState === 'loading') {
-		return (
-			<div className="boot-spinner">
-				<Spinner size={28} />
-			</div>
-		)
+		return <LoadingState size={28} fill />
 	}
 	if (authState === 'unauthenticated') return <LoginPage />
 	return (

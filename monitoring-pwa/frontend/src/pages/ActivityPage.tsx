@@ -1,12 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Chip, EmptyState, ListItem, ListSection, Page, Segmented, Spinner } from '@nuage/ui'
+import { Button, Chip, EmptyState, ListItem, ListSection, Page, Segmented } from '@nuage/ui'
 import { AlertTriangle, Bell, CheckCircle2, CircleAlert, XCircle } from 'lucide-react'
-import { API_BASE, useChatState } from '../state/chatStore'
-import { threadPath } from '../state/routes'
+import { useActivity } from '../hooks/useActivity'
+import { threadPath } from '../routes/paths'
 import { formatMessageTime } from '../utils/date'
-import type { ActivityItem, ActivityResponse, ChatMessage } from '../types/chat'
-
-type ActivityFilter = 'all' | 'firing' | 'resolved' | 'notice'
+import type { ActivityFilter, ChatMessage } from '../types/chat'
 
 function iconFor(m: ChatMessage) {
 	if (m.source_kind === 'alert') {
@@ -55,41 +52,19 @@ const EMPTY_TEXT: Record<ActivityFilter, string> = {
 }
 
 export default function ActivityPage() {
-	const activityVersion = useChatState((s) => s.activityVersion)
-	const [items, setItems] = useState<ActivityItem[] | null>(null)
-	const [firingCount, setFiringCount] = useState(0)
-	const [filter, setFilter] = useState<ActivityFilter>('all')
-
-	const fetchItems = useCallback(async () => {
-		try {
-			const res = await fetch(`${API_BASE}/api/activity?filter=${filter}&limit=100`, { credentials: 'include' })
-			if (!res.ok) throw new Error(`HTTP ${res.status}`)
-			const data = (await res.json()) as ActivityResponse
-			setItems(data.items)
-			setFiringCount(data.firing_count)
-		} catch (err) {
-			console.error('Failed to fetch activity:', err)
-			setItems((prev) => prev ?? [])
-		}
-	}, [filter])
-
-	useEffect(() => {
-		// 取得は非同期で、結果は await の後に反映する (描画中に同期で state を変えてはいない)
-		// oxlint-disable-next-line react/set-state-in-effect
-		void fetchItems()
-	}, [fetchItems, activityVersion])
+	const { items, firingCount, filter, setFilter, loading, error, reload } = useActivity()
+	const initialLoading = loading && items === null
 
 	return (
 		<Page
 			title="通知"
+			loading={initialLoading}
+			loadingMessage="通知を読み込んでいる…"
 			headerExtra={
 				<Segmented
 					label="通知の絞り込み"
 					value={filter}
-					onChange={(v) => {
-						setItems(null)
-						setFilter(v)
-					}}
+					onChange={setFilter}
 					options={[
 						{ value: 'all', label: 'すべて' },
 						{ value: 'firing', label: `発生中${firingCount > 0 ? ` ${firingCount}` : ''}` },
@@ -99,14 +74,17 @@ export default function ActivityPage() {
 				/>
 			}
 		>
-			{items === null ? (
-				<div className="center-spinner">
-					<Spinner />
-				</div>
-			) : items.length === 0 ? (
+			{error && (!items || items.length === 0) ? (
+				<EmptyState>
+					<p>{error}</p>
+					<div className="empty-action">
+						<Button onClick={reload}>再読み込み</Button>
+					</div>
+				</EmptyState>
+			) : items && items.length === 0 ? (
 				<EmptyState>{EMPTY_TEXT[filter]}</EmptyState>
-			) : (
-				<ListSection>
+			) : items ? (
+				<ListSection loading={loading}>
 					{items.map(({ channel_id, channel_name, message: m }) => {
 						const { title, body } = summarize(m.text)
 						const resolvedIn = m.source_kind === 'alert' ? durationLabel(m.fired_at, m.resolved_at) : null
@@ -138,7 +116,7 @@ export default function ActivityPage() {
 						)
 					})}
 				</ListSection>
-			)}
+			) : null}
 		</Page>
 	)
 }
