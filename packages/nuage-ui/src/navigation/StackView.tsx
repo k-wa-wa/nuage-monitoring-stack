@@ -208,6 +208,19 @@ export function StackView({ basePath, routes, parentPath, active = true, onTopCh
 	// ---- 左端からのスワイプで戻る (ホーム画面 PWA のみ) ----
 	const dragRef = useRef<{ startX: number; startT: number; lastX: number; lastT: number; width: number } | null>(null)
 	const belowKey = entries[entries.length - 2]?.key
+	// 指の動きに合わせた位置の更新は、1 フレームに 1 回にまとめる
+	const frameRef = useRef<number | null>(null)
+	const pendingDxRef = useRef(0)
+	// 指で戻し終えた後の片付け。URL が変わって手前の画面が外れてから行う
+	// (先に片付けると、外れる前の 1 フレームだけ手前の画面が元の位置に戻って見え、カクつく)
+	const swipeCleanupRef = useRef<(() => void) | null>(null)
+
+	useLayoutEffect(() => {
+		const cleanup = swipeCleanupRef.current
+		if (!cleanup) return
+		swipeCleanupRef.current = null
+		cleanup()
+	}, [top?.key])
 
 	const setDragTransforms = (dx: number, width: number) => {
 		const topEl = top ? pageEls.current.get(top.key) : undefined
@@ -229,12 +242,21 @@ export function StackView({ basePath, routes, parentPath, active = true, onTopCh
 		if (!d) return
 		d.lastX = e.clientX
 		d.lastT = e.timeStamp
-		setDragTransforms(Math.max(0, e.clientX - d.startX), d.width)
+		pendingDxRef.current = Math.max(0, e.clientX - d.startX)
+		if (frameRef.current !== null) return
+		frameRef.current = requestAnimationFrame(() => {
+			frameRef.current = null
+			if (dragRef.current) setDragTransforms(pendingDxRef.current, dragRef.current.width)
+		})
 	}
 	const onEdgeUp = (e: ReactPointerEvent<HTMLDivElement>) => {
 		const d = dragRef.current
 		dragRef.current = null
 		if (!d) return
+		if (frameRef.current !== null) {
+			cancelAnimationFrame(frameRef.current)
+			frameRef.current = null
+		}
 		const dx = Math.max(0, e.clientX - d.startX)
 		const velocity = (e.clientX - d.lastX) / Math.max(1, e.timeStamp - d.lastT) || dx / Math.max(1, e.timeStamp - d.startT)
 		const complete = dx / d.width > COMPLETE_PROGRESS || velocity > COMPLETE_VELOCITY
@@ -257,11 +279,19 @@ export function StackView({ basePath, routes, parentPath, active = true, onTopCh
 				})
 			].filter((a): a is Animation => Boolean(a))
 			Promise.all(anims.map((a) => a.finished.catch(() => undefined))).then(() => {
-				back({ swiped: true })
-				requestAnimationFrame(() => {
+				const cleanup = () => {
 					anims.forEach((a) => a.cancel())
 					finish()
-				})
+				}
+				swipeCleanupRef.current = cleanup
+				back({ swiped: true })
+				// 戻れなかった時 (URL が変わらなかった時) の保険
+				window.setTimeout(() => {
+					if (swipeCleanupRef.current === cleanup) {
+						swipeCleanupRef.current = null
+						cleanup()
+					}
+				}, 1000)
 			})
 		} else {
 			const anims = [
@@ -282,7 +312,7 @@ export function StackView({ basePath, routes, parentPath, active = true, onTopCh
 	const topIndex = entries.length - 1
 	return (
 		<StackContext.Provider value={ctx}>
-			<div className="nui-stack">
+			<div className="nui-stack" data-moving={dragging || transition !== null ? 'true' : 'false'}>
 				{rendered.map((entry, i) => {
 					const isLeaving = entry === leaving
 					const isTop = !isLeaving && i === topIndex

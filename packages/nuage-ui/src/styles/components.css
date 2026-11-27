@@ -28,7 +28,22 @@
   display: flex;
   flex-direction: column;
   background: var(--bg);
+  contain: layout paint;
+}
+
+/*
+ * 画面が動いている間 (押し込み・戻り・指でのスワイプ) だけ、画面を別のレイヤーにして動きを滑らかにする。
+ * ガラスのぼかし (backdrop-filter) は動くたびに計算し直しになり iPhone で重いので、その間だけ止める。
+ */
+.nui-stack[data-moving='true'] .nui-stack-page {
   will-change: transform;
+}
+
+.nui-stack[data-moving='true'] .nui-toolbar,
+.nui-stack[data-moving='true'] .nui-page-footer {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--bg);
 }
 
 .nui-stack-page[data-visible='false'] {
