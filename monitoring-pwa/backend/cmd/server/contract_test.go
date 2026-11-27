@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -23,9 +24,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/config"
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/notify"
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/realtime"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/domain"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/realtime"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/sqlite"
 )
 
 var updateGolden = flag.Bool("update", false, "update golden files")
@@ -35,25 +36,48 @@ type contractPushRecord struct {
 	Payload    json.RawMessage `json:"payload"`
 }
 
+type contractPushPayload struct {
+	Title      string `json:"title"`
+	Body       string `json:"body"`
+	URL        string `json:"url,omitempty"`
+	TargetURL  string `json:"target_url,omitempty"`
+	DirectOpen bool   `json:"direct_open,omitempty"`
+	Level      string `json:"level,omitempty"`
+	Tag        string `json:"tag,omitempty"`
+}
+
 type contractPushSpy struct {
 	mu      sync.Mutex
 	records []contractPushRecord
 }
 
-func (s *contractPushSpy) Broadcast(payload []byte) {
+func encodeContractPush(n domain.PushNotification) json.RawMessage {
+	b, _ := json.Marshal(contractPushPayload{
+		Title:      n.Title,
+		Body:       n.Body,
+		URL:        n.URL,
+		TargetURL:  n.TargetURL,
+		DirectOpen: n.DirectOpen,
+		Level:      n.Level,
+		Tag:        n.Tag,
+	})
+	return b
+}
+
+func (s *contractPushSpy) Broadcast(_ context.Context, n domain.PushNotification) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.records = append(s.records, contractPushRecord{
-		Payload: append(json.RawMessage(nil), payload...),
+		Payload: encodeContractPush(n),
 	})
 }
 
-func (s *contractPushSpy) BroadcastToUser(userID string, payload []byte) {
+func (s *contractPushSpy) BroadcastToUser(_ context.Context, userID string, n domain.PushNotification) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.records = append(s.records, contractPushRecord{
 		TargetUser: userID,
-		Payload:    append(json.RawMessage(nil), payload...),
+		Payload:    encodeContractPush(n),
 	})
 }
 
@@ -90,19 +114,19 @@ func newContractEnv(t *testing.T) *contractEnv {
 		},
 	}
 
-	db, err := push.InitDB(filepath.Join(t.TempDir(), "contract.db"))
+	users := toDomainUsers(cfg.Users)
+	db, err := sqlite.InitDB(filepath.Join(t.TempDir(), "contract.db"))
 	if err != nil {
 		t.Fatalf("InitDB failed: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if err := db.EnsureUserChannels(cfg.Users); err != nil {
+	if err := db.EnsureUserChannels(users); err != nil {
 		t.Fatalf("EnsureUserChannels failed: %v", err)
 	}
 
 	hub := realtime.NewHub()
 	spy := &contractPushSpy{}
-	svc := notify.New(db, hub, spy, notify.NewLocalLocker())
-	e := NewRouter(cfg, db, hub, spy, svc)
+	e, _ := buildApp(cfg, users, db, hub, spy)
 
 	srv := httptest.NewServer(e)
 	t.Cleanup(srv.Close)

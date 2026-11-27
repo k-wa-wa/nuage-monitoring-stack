@@ -4,24 +4,23 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/alertmanager"
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/auth"
+	httpadapter "github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/adapter/http"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/adapter/slackapi"
 	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/config"
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/handler"
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/notify"
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/push"
-	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/realtime"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/domain"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/alertmanager"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/realtime"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/sqlite"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/infra/webpush"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/usecase"
 )
 
 // alertReconcileInterval は Alertmanager と発生中のスレッドを突き合わせる間隔である。
@@ -37,32 +36,32 @@ func main() {
 		os.Exit(1)
 	}
 
+	users := toDomainUsers(cfg.Users)
+
 	// SQLite データベースの初期化
-	db, err := push.InitDB(cfg.DBPath)
+	db, err := sqlite.InitDB(cfg.DBPath)
 	if err != nil {
 		slog.Error("failed to initialize SQLite database", "error", err)
 		os.Exit(1)
 	}
 	defer db.Close()
 
-	if err := db.EnsureUserChannels(cfg.Users); err != nil {
+	if err := db.EnsureUserChannels(users); err != nil {
 		slog.Error("failed to initialize user DM channels", "error", err)
 		os.Exit(1)
 	}
 
 	hub := realtime.NewHub()
 	amClient := alertmanager.NewClient(cfg.AlertmanagerURL)
-	sender := push.NewSender(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, db)
-	svc := notify.New(db, hub, sender, notify.NewLocalLocker())
-
-	e := NewRouter(cfg, db, hub, sender, svc)
+	sender := webpush.NewSender(cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, cfg.VAPIDSubject, db)
+	e, alertUC := buildApp(cfg, users, db, hub, sender)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	// 解決・発生の Webhook の取りこぼしを、Alertmanager との突き合わせで埋める
 	if cfg.AlertReconcile {
-		go svc.RunReconciler(ctx, amClient, alertReconcileInterval)
+		go alertUC.RunReconciler(ctx, amClient, alertReconcileInterval)
 	} else {
 		slog.Warn("alert reconcile is disabled by ALERT_RECONCILE=off; missed alertmanager webhooks will not be recovered")
 	}
@@ -85,79 +84,43 @@ func main() {
 	}
 }
 
-// NewRouter は認証・チャット・Slack 互換 API・Webhook を含む Echo ルーターを構築する。
-func NewRouter(cfg config.Config, db *push.DB, hub *realtime.Hub, sender handler.PushSender, svc *notify.Service) *echo.Echo {
-	subscribeH := handler.NewSubscribeHandler(cfg.VAPIDPublicKey, db)
-	webhookH := handler.NewWebhookHandler(svc, sender)
-	authH := handler.NewAuthHandler([]byte(cfg.CookieSigningKey), cfg.Users)
-	chatH := handler.NewChatHandler(cfg, db, hub)
-	slackH := handler.NewSlackHandler(cfg, db, hub, sender)
+func buildApp(
+	cfg config.Config,
+	users []domain.User,
+	db *sqlite.DB,
+	hub *realtime.Hub,
+	sender usecase.PushSender,
+) (*echo.Echo, *usecase.AlertUsecase) {
+	authUC := usecase.NewAuthUsecase([]byte(cfg.CookieSigningKey), users)
+	chatUC := usecase.NewChatUsecase(db, db, hub, hub, sender)
+	activityUC := usecase.NewActivityUsecase(db)
+	alertUC := usecase.NewAlertUsecase(db, db, hub, sender, realtime.NewLocalLocker())
+	notifyUC := usecase.NewNotificationUsecase(db, hub, sender)
+	subUC := usecase.NewSubscriptionUsecase(cfg.VAPIDPublicKey, db, sender)
+	socketUC := usecase.NewSocketUsecase(hub, cfg.SlackBotToken, cfg.SlackAppToken)
+	slackH := slackapi.NewHandler(cfg.Port, chatUC, authUC, socketUC)
 
-	e := echo.New()
-	e.HideBanner = true
-	e.IPExtractor = buildTrustedIPExtractor()
-	e.Use(middleware.RequestID())
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOriginFunc: func(origin string) (bool, error) {
-			u, err := url.Parse(origin)
-			if err != nil || u.Scheme != "http" {
-				return false, nil
-			}
-			host := u.Hostname()
-			return host == "localhost" || host == "127.0.0.1", nil
-		},
-		AllowCredentials: true,
-	}))
-
-	// 認証不要の公開エンドポイント
-	e.GET("/health", handler.Health)
-	e.POST("/webhook/alertmanager", webhookH.AlertmanagerWebhook)
-	e.POST("/webhook/generic", webhookH.GenericWebhook)
-	e.POST("/webhook/keel", webhookH.KeelWebhook)
-	e.POST("/api/auth/login", authH.Login)
-	e.POST("/api/auth/logout", authH.Logout)
-
-	// 人間向け API (署名付きセッション Cookie 必須)
-	api := e.Group("/api")
-	api.Use(auth.RequireSessionMiddleware([]byte(cfg.CookieSigningKey), cfg.Users))
-	api.GET("/auth/me", authH.Me)
-	api.GET("/bootstrap", chatH.Bootstrap)
-	api.GET("/channels", chatH.ListChannels)
-	api.GET("/channels/:id/messages", chatH.ListMessages)
-	api.GET("/channels/:id/threads/:ts", chatH.GetThread)
-	api.POST("/channels/:id/messages", chatH.PostMessage)
-	api.POST("/channels/:id/read", chatH.MarkRead)
-	api.GET("/search", chatH.Search)
-	api.GET("/activity", chatH.Activity)
-	api.GET("/events", chatH.Events)
-
-	// Web Push
-	api.GET("/vapid-public-key", subscribeH.VAPIDPublicKey)
-	api.POST("/subscribe", subscribeH.Subscribe)
-	api.POST("/unsubscribe", subscribeH.Unsubscribe)
-	api.POST("/test-notify", webhookH.TestNotify)
-
-	// Slack 互換 API (bot / app トークン必須) & Socket Mode WebSocket
-	e.POST("/slack/api/:method", slackH.DispatchMethod)
-	e.GET("/slack/socket", slackH.SocketModeWS)
-
-	return e
+	e := httpadapter.NewRouter(httpadapter.Dependencies{
+		Auth:         authUC,
+		Chat:         chatUC,
+		Activity:     activityUC,
+		Alert:        alertUC,
+		Notification: notifyUC,
+		Subscription: subUC,
+		Slack:        slackH,
+	})
+	return e, alertUC
 }
 
-// buildTrustedIPExtractor はクラスタ内プロキシ (Cilium Pod CIDR と Loopback) からの
-// X-Forwarded-For のみを信頼して実クライアント IP を抽出する。
-// HAProxy (mode tcp, PROXY protocol なし) の 10.20.1.x は信頼対象に含めず、
-// XFF 左端の偽装を防ぐ。
-func buildTrustedIPExtractor() echo.IPExtractor {
-	opts := []echo.TrustOption{
-		echo.TrustLoopback(true),
-		echo.TrustLinkLocal(false),
-		echo.TrustPrivateNet(false),
+func toDomainUsers(cfgUsers []config.UserConfig) []domain.User {
+	users := make([]domain.User, 0, len(cfgUsers))
+	for _, u := range cfgUsers {
+		users = append(users, domain.User{
+			ID:             u.ID,
+			Name:           u.Name,
+			DisplayName:    u.DisplayName,
+			PassphraseHash: u.PassphraseHash,
+		})
 	}
-	if _, ipNet, err := net.ParseCIDR("10.244.0.0/16"); err == nil {
-		opts = append(opts, echo.TrustIPRange(ipNet))
-	}
-	return echo.ExtractIPFromXFFHeader(opts...)
+	return users
 }

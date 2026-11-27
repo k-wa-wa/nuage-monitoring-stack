@@ -1,0 +1,117 @@
+package webpush
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+
+	wp "github.com/SherClockHolmes/webpush-go"
+
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/domain"
+	"github.com/k-wa-wa/nuage-monitoring-stack/monitoring-pwa/backend/internal/usecase"
+)
+
+type pushPayloadDTO struct {
+	Title      string `json:"title"`
+	Body       string `json:"body"`
+	URL        string `json:"url,omitempty"`
+	TargetURL  string `json:"target_url,omitempty"`
+	DirectOpen bool   `json:"direct_open,omitempty"`
+	Level      string `json:"level,omitempty"`
+	Tag        string `json:"tag,omitempty"`
+}
+
+// Sender は VAPID キーペアを使用して、登録されたデバイスに Web Push 通知を送信する。
+type Sender struct {
+	publicKey  string
+	privateKey string
+	subject    string
+	subs       usecase.SubscriptionRepository
+}
+
+// NewSender は新しい Sender を生成する。
+func NewSender(publicKey, privateKey, subject string, subs usecase.SubscriptionRepository) *Sender {
+	return &Sender{
+		publicKey:  publicKey,
+		privateKey: privateKey,
+		subject:    subject,
+		subs:       subs,
+	}
+}
+
+// Broadcast は登録されたすべてのデバイスに通知を送信する。
+func (s *Sender) Broadcast(_ context.Context, n domain.PushNotification) {
+	payload, ok := encodePushNotification(n)
+	if !ok {
+		return
+	}
+	s.sendToSubscriptions(s.subs.List(), payload)
+}
+
+// BroadcastToUser は指定ユーザーに紐づくデバイスにのみ通知を送信する。
+func (s *Sender) BroadcastToUser(_ context.Context, userID string, n domain.PushNotification) {
+	if userID == "" {
+		return
+	}
+	payload, ok := encodePushNotification(n)
+	if !ok {
+		return
+	}
+	s.sendToSubscriptions(s.subs.ListByUser(userID), payload)
+}
+
+func encodePushNotification(n domain.PushNotification) ([]byte, bool) {
+	dto := pushPayloadDTO{
+		Title:      n.Title,
+		Body:       n.Body,
+		URL:        n.URL,
+		TargetURL:  n.TargetURL,
+		DirectOpen: n.DirectOpen,
+		Level:      n.Level,
+		Tag:        n.Tag,
+	}
+	payload, err := json.Marshal(dto)
+	if err != nil {
+		slog.Error("failed to encode push payload", "error", err)
+		return nil, false
+	}
+	return payload, true
+}
+
+// sendToSubscriptions は購読一覧へ通知を送信し、404/410 応答の購読を削除する。
+func (s *Sender) sendToSubscriptions(subs []domain.PushSubscription, payload []byte) {
+	for _, sub := range subs {
+		wpSub := wp.Subscription{
+			Endpoint: sub.Endpoint,
+			Keys: wp.Keys{
+				P256dh: sub.P256dh,
+				Auth:   sub.Auth,
+			},
+		}
+		resp, err := wp.SendNotification(payload, &wpSub, &wp.Options{
+			Subscriber:      s.subject,
+			VAPIDPublicKey:  s.publicKey,
+			VAPIDPrivateKey: s.privateKey,
+			TTL:             60,
+			Urgency:         wp.UrgencyHigh,
+		})
+		if err != nil {
+			slog.Error("push send failed", "endpoint", sub.Endpoint, "error", err)
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		switch {
+		case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone:
+			slog.Info("subscription expired, removing", "endpoint", sub.Endpoint)
+			s.subs.Remove(sub.Endpoint)
+		case resp.StatusCode >= 300:
+			slog.Error("push service rejected notification", "endpoint", sub.Endpoint, "status", resp.StatusCode, "body", string(body))
+		default:
+			slog.Info("push sent", "endpoint", sub.Endpoint, "status", resp.StatusCode)
+		}
+	}
+}
